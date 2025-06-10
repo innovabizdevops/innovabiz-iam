@@ -35,7 +35,7 @@ jobs:
 
       - name: Esperar o PostgreSQL iniciar
         run: |
-          for i in {1..30}; do
+          for i in {1..60}; do
             if PGPASSWORD=postgres psql -h localhost -U postgres -d innovabiz_iam -c '\q'; then
               echo "PostgreSQL está pronto!"
               break
@@ -44,6 +44,10 @@ jobs:
               sleep 2
             fi
           done
+      - name: Verificar status do PostgreSQL
+        run: |
+          echo "Checando bancos disponíveis:"
+          PGPASSWORD=postgres psql -h localhost -U postgres -d innovabiz_iam -c '\l'
       - name: Rodar scripts de migração (Flyway)
         uses: docker://flyway/flyway:10.11.0
         with:
