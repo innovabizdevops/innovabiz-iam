@@ -58,10 +58,15 @@ jobs:
               sleep 2
             fi
           done
-      - name: Verificar status do PostgreSQL
+      - name: Teste de funcionamento do PostgreSQL (porta 5433)
         run: |
-          echo "Checando bancos disponíveis:"
-          PGPASSWORD=postgres psql -h localhost -p 5433 -U postgres -d innovabiz_iam -c '\l'
+          echo "Testando conexão com PostgreSQL na porta 5433..."
+          if PGPASSWORD=postgres psql -h localhost -p 5433 -U postgres -d innovabiz_iam -c '\l'; then
+            echo "✅ Conexão bem-sucedida com PostgreSQL na porta 5433."
+          else
+            echo "❌ Falha na conexão com PostgreSQL na porta 5433."
+            exit 1
+          fi
       - name: Rodar scripts de migração (Flyway)
         uses: docker://flyway/flyway:10.11.0
         with:
