@@ -1,4 +1,4 @@
--- V1__create_core_schema.sql
+p-- V1__create_core_schema.sql
 -- Criação do schema e tabelas principais do domínio core
 
 CREATE SCHEMA IF NOT EXISTS iam;

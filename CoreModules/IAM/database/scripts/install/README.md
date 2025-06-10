@@ -12,7 +12,7 @@ Este diretório contém os scripts de instalação, automação e documentação
 ### Exemplo de Workflow com GitHub Actions
 
 ```yaml
-name: CI - IAM Database
+name: CI - IAM Database (Identity and Access Management)
 
 on:
   push:
