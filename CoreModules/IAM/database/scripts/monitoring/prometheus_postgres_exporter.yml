@@ -1,0 +1,46 @@
+# Prometheus PostgreSQL Exporter Configuration
+# Caminho: scripts/monitoring/prometheus_postgres_exporter.yml
+
+# URL de conexão ao banco IAM
+postgresql:
+  dsn: "postgresql://postgres:postgres@localhost:5432/innovabiz_iam?sslmode=disable"
+
+# Consultas customizadas (exemplo)
+queries:
+  - name: slow_queries
+    query: |
+      SELECT datname, query, calls, total_time, mean_time, rows
+      FROM pg_stat_statements
+      WHERE mean_time > 1000
+      ORDER BY mean_time DESC LIMIT 10;
+    metrics:
+      - datname:
+          usage: "LABEL"
+          description: "Database name"
+      - query:
+          usage: "LABEL"
+          description: "SQL query text"
+      - mean_time:
+          usage: "GAUGE"
+          description: "Mean execution time (ms)"
+
+  - name: active_connections
+    query: |
+      SELECT datname, count(*) as connections
+      FROM pg_stat_activity
+      GROUP BY datname;
+    metrics:
+      - datname:
+          usage: "LABEL"
+      - connections:
+          usage: "GAUGE"
+
+  - name: deadlocks
+    query: |
+      SELECT datname, deadlocks
+      FROM pg_stat_database;
+    metrics:
+      - datname:
+          usage: "LABEL"
+      - deadlocks:
+          usage: "GAUGE"

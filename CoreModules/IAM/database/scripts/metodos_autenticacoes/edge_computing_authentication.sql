@@ -1,0 +1,1 @@
+-- Métodos de Autenticação para Computação na Edge

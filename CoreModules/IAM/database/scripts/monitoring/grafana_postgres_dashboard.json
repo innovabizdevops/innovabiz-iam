@@ -1,0 +1,46 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "INNOVABIZ IAM - PostgreSQL Monitoring",
+    "panels": [
+      {
+        "type": "graph",
+        "title": "Active Connections",
+        "targets": [
+          {
+            "expr": "pg_stat_activity_count{job='postgres_exporter'}",
+            "legendFormat": "{{datname}}",
+            "refId": "A"
+          }
+        ],
+        "datasource": "Prometheus"
+      },
+      {
+        "type": "table",
+        "title": "Top Slow Queries",
+        "targets": [
+          {
+            "expr": "slow_queries_mean_time{job='postgres_exporter'}",
+            "legendFormat": "{{query}}",
+            "refId": "B"
+          }
+        ],
+        "datasource": "Prometheus"
+      },
+      {
+        "type": "stat",
+        "title": "Deadlocks",
+        "targets": [
+          {
+            "expr": "deadlocks{job='postgres_exporter'}",
+            "legendFormat": "Deadlocks",
+            "refId": "C"
+          }
+        ],
+        "datasource": "Prometheus"
+      }
+    ],
+    "schemaVersion": 26,
+    "version": 1
+  }
+}
