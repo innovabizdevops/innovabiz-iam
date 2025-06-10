@@ -33,6 +33,17 @@ jobs:
         run: |
           pip install pandas scikit-learn requests
 
+      - name: Esperar o PostgreSQL iniciar
+        run: |
+          for i in {1..30}; do
+            if PGPASSWORD=postgres psql -h localhost -U postgres -d innovabiz_iam -c '\q'; then
+              echo "PostgreSQL está pronto!"
+              break
+            else
+              echo "Aguardando PostgreSQL iniciar..."
+              sleep 2
+            fi
+          done
       - name: Rodar scripts de migração (Flyway)
         uses: docker://flyway/flyway:10.11.0
         with:
