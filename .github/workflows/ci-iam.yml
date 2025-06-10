@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - 'CoreModules/IAM/database/**'
+      - '.github/workflows/ci-iam.yml'
   pull_request:
     paths:
       - 'CoreModules/IAM/database/**'
