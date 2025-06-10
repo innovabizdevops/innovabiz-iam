@@ -67,10 +67,13 @@ jobs:
           echo "Listando bases de dados no PostgreSQL (porta 5433)..."
           PGPASSWORD=postgres psql -h localhost -p 5433 -U postgres -d postgres -t -c "SELECT count(*) FROM pg_database WHERE datistemplate = false;" | xargs echo "Total de bases de dados implementadas:"
 
+      - name: Baixar Flyway CLI
+        run: |
+          wget -qO- https://repo1.maven.org/maven2/org/flywaydb/flyway-commandline/10.11.0/flyway-commandline-10.11.0-linux-x64.tar.gz | tar xvz
+          sudo mv flyway-10.11.0/flyway /usr/local/bin/
       - name: Rodar scripts de migração (Flyway)
-        uses: docker://flyway/flyway:10.11.0
-        with:
-          args: -url=jdbc:postgresql://host.docker.internal:5433/innovabiz_iam -user=postgres -password=postgres -locations=filesystem:CoreModules/IAM/database/migrations migrate
+        run: |
+          flyway -url=jdbc:postgresql://localhost:5433/innovabiz_iam -user=postgres -password=postgres -locations=filesystem:CoreModules/IAM/database/migrations migrate
 
       - name: Validar schemas/tabelas principais
         run: |
