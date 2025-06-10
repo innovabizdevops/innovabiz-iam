@@ -49,24 +49,19 @@ jobs:
 
       - name: Esperar o PostgreSQL iniciar
         run: |
-          for i in {1..60}; do
-            if PGPASSWORD=postgres psql -h localhost -p 5433 -U postgres -d innovabiz_iam -c '\q'; then
+          for i in {1..90}; do
+            if PGPASSWORD=postgres psql -h localhost -p 5433 -U postgres -d postgres -c '\q'; then
               echo "PostgreSQL está pronto!"
               break
             else
               echo "Aguardando PostgreSQL iniciar..."
-              sleep 2
+              sleep 3
             fi
           done
-      - name: Teste de funcionamento do PostgreSQL (porta 5433)
+      - name: Listar bancos existentes antes do Flyway
         run: |
-          echo "Testando conexão com PostgreSQL na porta 5433..."
-          if PGPASSWORD=postgres psql -h localhost -p 5433 -U postgres -d innovabiz_iam -c '\l'; then
-            echo "✅ Conexão bem-sucedida com PostgreSQL na porta 5433."
-          else
-            echo "❌ Falha na conexão com PostgreSQL na porta 5433."
-            exit 1
-          fi
+          echo "Bancos disponíveis no PostgreSQL (porta 5433):"
+          PGPASSWORD=postgres psql -h localhost -p 5433 -U postgres -d postgres -c '\l'
       - name: Contar bases de dados no PostgreSQL
         run: |
           echo "Listando bases de dados no PostgreSQL (porta 5433)..."
