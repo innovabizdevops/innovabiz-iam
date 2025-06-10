@@ -67,6 +67,11 @@ jobs:
             echo "❌ Falha na conexão com PostgreSQL na porta 5433."
             exit 1
           fi
+      - name: Contar bases de dados no PostgreSQL
+        run: |
+          echo "Listando bases de dados no PostgreSQL (porta 5433)..."
+          PGPASSWORD=postgres psql -h localhost -p 5433 -U postgres -d postgres -t -c "SELECT count(*) FROM pg_database WHERE datistemplate = false;" | xargs echo "Total de bases de dados implementadas:"
+
       - name: Rodar scripts de migração (Flyway)
         uses: docker://flyway/flyway:10.11.0
         with:
