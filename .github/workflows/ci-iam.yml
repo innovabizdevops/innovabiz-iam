@@ -70,7 +70,7 @@ jobs:
       - name: Rodar scripts de migração (Flyway)
         uses: docker://flyway/flyway:10.11.0
         with:
-          args: -url=jdbc:postgresql://localhost:5433/innovabiz_iam -user=postgres -password=postgres -locations=filesystem:CoreModules/IAM/database/migrations migrate
+          args: -url=jdbc:postgresql://host.docker.internal:5433/innovabiz_iam -user=postgres -password=postgres -locations=filesystem:CoreModules/IAM/database/migrations migrate
 
       - name: Validar schemas/tabelas principais
         run: |
