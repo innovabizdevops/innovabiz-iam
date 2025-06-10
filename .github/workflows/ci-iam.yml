@@ -1,0 +1,58 @@
+name: CI IAM Database
+
+on:
+  push:
+    paths:
+      - 'CoreModules/IAM/database/**'
+  pull_request:
+    paths:
+      - 'CoreModules/IAM/database/**'
+
+jobs:
+  build-and-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v3
+
+      - name: Instalar PostgreSQL
+        uses: Harmon758/postgresql-action@v1.0.0
+        with:
+          postgresql version: '15'
+          postgresql db: innovabiz_iam
+          postgresql user: postgres
+          postgresql password: postgres
+
+      - name: Instalar Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Instalar dependências
+        run: |
+          pip install pandas scikit-learn requests
+
+      - name: Rodar scripts de migração (Flyway)
+        uses: docker://flyway/flyway:10.11.0
+        with:
+          args: -url=jdbc:postgresql://localhost:5432/innovabiz_iam -user=postgres -password=postgres -locations=filesystem:CoreModules/IAM/database/migrations migrate
+
+      - name: Validar schemas/tabelas principais
+        run: |
+          psql postgresql://postgres:postgres@localhost:5432/innovabiz_iam -c "\dt iam.*"
+
+      - name: Testar pipeline AI/ML (simulação)
+        run: |
+          cd CoreModules/IAM/database/scripts/ai_ml
+          python test_pipeline.py
+
+      - name: Checar scripts e documentação
+        run: |
+          ls -l CoreModules/IAM/database/scripts/install/
+          cat CoreModules/IAM/database/scripts/install/README.md
+
+      - name: Artefatos de logs e relatórios
+        uses: actions/upload-artifact@v3
+        with:
+          name: iam-anomaly-events
+          path: CoreModules/IAM/database/scripts/ai_ml/anomaly_events.csv
