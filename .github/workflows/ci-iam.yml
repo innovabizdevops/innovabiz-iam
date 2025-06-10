@@ -20,7 +20,7 @@ jobs:
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: innovabiz_iam
         ports:
-          - 5432:5432
+          - 5433:5432
         options: >-
           --health-cmd="pg_isready -U postgres"
           --health-interval=10s
@@ -50,7 +50,7 @@ jobs:
       - name: Esperar o PostgreSQL iniciar
         run: |
           for i in {1..60}; do
-            if PGPASSWORD=postgres psql -h localhost -U postgres -d innovabiz_iam -c '\q'; then
+            if PGPASSWORD=postgres psql -h localhost -p 5433 -U postgres -d innovabiz_iam -c '\q'; then
               echo "PostgreSQL está pronto!"
               break
             else
@@ -61,11 +61,11 @@ jobs:
       - name: Verificar status do PostgreSQL
         run: |
           echo "Checando bancos disponíveis:"
-          PGPASSWORD=postgres psql -h localhost -U postgres -d innovabiz_iam -c '\l'
+          PGPASSWORD=postgres psql -h localhost -p 5433 -U postgres -d innovabiz_iam -c '\l'
       - name: Rodar scripts de migração (Flyway)
         uses: docker://flyway/flyway:10.11.0
         with:
-          args: -url=jdbc:postgresql://localhost:5432/innovabiz_iam -user=postgres -password=postgres -locations=filesystem:CoreModules/IAM/database/migrations migrate
+          args: -url=jdbc:postgresql://localhost:5433/innovabiz_iam -user=postgres -password=postgres -locations=filesystem:CoreModules/IAM/database/migrations migrate
 
       - name: Validar schemas/tabelas principais
         run: |
