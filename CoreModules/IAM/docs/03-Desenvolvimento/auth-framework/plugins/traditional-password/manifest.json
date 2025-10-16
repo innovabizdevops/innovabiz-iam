@@ -1,0 +1,74 @@
+{
+  "plugin_id": "traditional-password",
+  "version": "1.0.0",
+  "auth_method_code": "K01",
+  "category": "knowledge",
+  "authentication_factor": "knowledge",
+  "display_name": {
+    "pt-BR": "Senha Tradicional",
+    "en": "Traditional Password"
+  },
+  "description": {
+    "pt-BR": "Autenticação baseada em usuário e senha, o método mais comum de autenticação digital.",
+    "en": "Authentication based on username and password, the most common digital authentication method."
+  },
+  "capabilities": {
+    "resetable": true,
+    "user_manageable": true,
+    "multi_step": false,
+    "passwordless": false,
+    "adaptive": true,
+    "phishing_resistant": false,
+    "mfa_eligible": true
+  },
+  "priority": 90,
+  "verification_specs": {
+    "storage": "hashed",
+    "hash_algorithm": "argon2id",
+    "allow_migration_from": ["pbkdf2", "bcrypt"]
+  },
+  "prerequisites": [],
+  "countries_supported": ["*"],
+  "regional_adaptations": {
+    "EU": {
+      "min_length": 12,
+      "require_special_chars": true,
+      "require_numbers": true,
+      "require_upper_lower": true,
+      "max_age_days": 90,
+      "history_check": 10
+    },
+    "BR": {
+      "min_length": 10,
+      "require_special_chars": true,
+      "require_numbers": true,
+      "require_upper_lower": true,
+      "max_age_days": 60,
+      "history_check": 5
+    },
+    "AO": {
+      "min_length": 8,
+      "require_special_chars": false,
+      "require_numbers": true,
+      "require_upper_lower": true,
+      "max_age_days": 90,
+      "history_check": 3
+    },
+    "US": {
+      "min_length": 8,
+      "require_special_chars": true,
+      "require_numbers": true,
+      "require_upper_lower": true,
+      "max_age_days": 120,
+      "history_check": 5
+    }
+  },
+  "security_level": "basic",
+  "recommendation_score": 60,
+  "standards_compliance": ["NIST SP 800-63B AAL1", "ISO/IEC 27001"],
+  "ui_components": {
+    "login_form": true,
+    "recovery_form": true,
+    "change_form": true
+  }
+}

@@ -1,0 +1,80 @@
+name: Provision Infrastructure (Sandbox)
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'infrastructure/**'
+      - '.github/workflows/provision_infrastructure_sandbox.yml'
+
+jobs:
+  provision:
+    runs-on: windows-latest
+    env:
+      POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+      VAULT_TOKEN: ${{ secrets.VAULT_TOKEN }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set execution policy
+        run: |
+          Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+        shell: pwsh
+
+      - name: Run Terraform Provisioning Script (Sandbox)
+        run: |
+          .\infrastructure\dev\scripts\install_and_apply_terraform_sandbox.ps1
+        shell: pwsh
+
+      - name: Run Healthcheck Script
+        run: |
+          .\infrastructure\dev\scripts\healthcheck_enterprise_stack.ps1
+        shell: pwsh
+
+      - name: Run Compliance Check
+        run: |
+          python scripts/check_compliance.py
+        shell: pwsh
+
+      - name: Upload Compliance Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: compliance-report
+          path: reports/security_report.json
+
+      - name: Upload Terraform logs (artifact)
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-logs
+          path: |
+            infrastructure/environments/sandbox/terraform.log
+            infrastructure/dev/scripts/*.log
+
+      - name: Upload logs e relatórios
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs
+          path: ./logs/
+
+      - name: Upload artefatos para MinIO
+        if: always()
+        shell: pwsh
+        run: |
+          ./infrastructure/dev/scripts/upload_artifacts_minio.ps1 -SourcePath "./logs/*" -Bucket "auditoria" -MinioAlias "myminio" -DestPathInBucket "logs"
+
+      - name: Notify Slack (success)
+        if: success()
+        uses: slackapi/slack-github-action@v1.25.0
+        with:
+          payload: '{"text": "Provisionamento do ambiente sandbox finalizado com sucesso!"}'
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      - name: Notify Slack (failure)
+        if: failure()
+        uses: slackapi/slack-github-action@v1.25.0
+        with:
+          payload: '{"text": "Provisionamento do ambiente sandbox falhou! Verifique os logs."}'
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

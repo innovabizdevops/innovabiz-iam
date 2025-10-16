@@ -1,0 +1,66 @@
+{
+  "plugin_id": "otp",
+  "version": "1.0.0",
+  "auth_method_code": "K05",
+  "category": "knowledge",
+  "authentication_factor": "possession",
+  "display_name": {
+    "pt-BR": "Senha de Uso Único (OTP)",
+    "en": "One-Time Password (OTP)"
+  },
+  "description": {
+    "pt-BR": "Autenticação baseada em códigos temporários enviados por SMS, e-mail ou outros canais de comunicação.",
+    "en": "Authentication based on temporary codes sent via SMS, email, or other communication channels."
+  },
+  "capabilities": {
+    "resetable": true,
+    "user_manageable": true,
+    "multi_step": true,
+    "passwordless": true,
+    "adaptive": true,
+    "phishing_resistant": false,
+    "mfa_eligible": true
+  },
+  "priority": 85,
+  "verification_specs": {
+    "delivery_methods": ["sms", "email", "push", "whatsapp"],
+    "code_length": 6,
+    "expiration_seconds": 300,
+    "rate_limit": 3
+  },
+  "prerequisites": [],
+  "countries_supported": ["*"],
+  "regional_adaptations": {
+    "EU": {
+      "preferred_channels": ["sms", "email"],
+      "code_timeout": 300,
+      "max_attempts": 5,
+      "rate_limit_period": 600
+    },
+    "BR": {
+      "preferred_channels": ["sms", "whatsapp", "email"],
+      "code_timeout": 300,
+      "max_attempts": 5,
+      "rate_limit_period": 600
+    },
+    "AO": {
+      "preferred_channels": ["sms", "whatsapp"],
+      "code_timeout": 600,
+      "max_attempts": 5,
+      "rate_limit_period": 600
+    },
+    "US": {
+      "preferred_channels": ["sms", "email", "push"],
+      "code_timeout": 300,
+      "max_attempts": 5,
+      "rate_limit_period": 600
+    }
+  },
+  "security_level": "basic",
+  "recommendation_score": 75,
+  "standards_compliance": ["NIST SP 800-63B AAL2", "ISO/IEC 27001"],
+  "ui_components": {
+    "code_entry_form": true,
+    "delivery_method_selector": true
+  }
+}

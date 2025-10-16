@@ -1,0 +1,657 @@
+---
+# INNOVABIZ IAM Audit Service - Portal de Observabilidade Integrado
+# Versão: 1.0.0
+# Ano: 2025
+# Ambiente: Multi-plataforma, Multi-dimensional e Multi-Contexto
+# Alinhado com: ISO 20000, ITIL v4, ISO 27001, NIST SP 800-53, PCI DSS 4.0, LGPD, GDPR
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: observability-portal-config
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: observability-portal
+    app.kubernetes.io/part-of: innovabiz-observability
+    app.kubernetes.io/component: portal
+    innovabiz.com/module: iam-audit
+    innovabiz.com/tier: observability
+data:
+  config.json: |
+    {
+      "portal": {
+        "name": "INNOVABIZ IAM Audit Service Observability Portal",
+        "version": "1.0.0",
+        "theme": {
+          "primaryColor": "#1976D2",
+          "secondaryColor": "#424242",
+          "accentColor": "#82B1FF",
+          "warningColor": "#FFC107",
+          "errorColor": "#FF5252",
+          "successColor": "#4CAF50",
+          "logo": "/assets/innovabiz-logo.png"
+        }
+      },
+      "multiTenant": {
+        "enabled": true,
+        "defaultTenant": "global",
+        "tenantHeaderName": "X-Tenant-ID",
+        "regionHeaderName": "X-Region-ID"
+      },
+      "auth": {
+        "required": true,
+        "type": "oauth2",
+        "oauthProvider": "keycloak",
+        "oauthConfig": {
+          "clientId": "${OAUTH_CLIENT_ID}",
+          "authority": "${OAUTH_AUTHORITY}",
+          "scope": "openid profile email",
+          "responseType": "code"
+        },
+        "roles": {
+          "admin": ["observability-admin"],
+          "viewer": ["observability-viewer"],
+          "operator": ["observability-operator"],
+          "auditor": ["observability-auditor"]
+        }
+      },
+      "dashboards": [
+        {
+          "name": "Service Overview",
+          "description": "Visão geral do IAM Audit Service com métricas de alto nível",
+          "path": "/dashboard/service-overview",
+          "defaultTimeRange": "last24h",
+          "refreshInterval": 60,
+          "minimumRole": "viewer",
+          "order": 1,
+          "panels": [
+            {
+              "title": "Service Health",
+              "datasource": "prometheus",
+              "query": "up{app='iam-audit-service'}"
+            },
+            {
+              "title": "Request Count",
+              "datasource": "prometheus",
+              "query": "sum(rate(http_server_requests_seconds_count{app='iam-audit-service'}[5m]))"
+            },
+            {
+              "title": "Error Rate",
+              "datasource": "prometheus",
+              "query": "sum(rate(http_server_requests_seconds_count{app='iam-audit-service',status=~'5..'}[5m]))/sum(rate(http_server_requests_seconds_count{app='iam-audit-service'}[5m]))"
+            }
+          ]
+        },
+        {
+          "name": "Audit Events",
+          "description": "Monitoramento de eventos de auditoria",
+          "path": "/dashboard/audit-events",
+          "defaultTimeRange": "last24h",
+          "refreshInterval": 60,
+          "minimumRole": "auditor",
+          "order": 2
+        }
+      ],
+      "tools": [
+        {
+          "name": "Grafana",
+          "description": "Visualização avançada de métricas e dashboards",
+          "url": "https://${GRAFANA_HOST}",
+          "icon": "grafana",
+          "category": "visualization",
+          "minimumRole": "viewer"
+        },
+        {
+          "name": "Prometheus",
+          "description": "Banco de dados de séries temporais e motor de consulta",
+          "url": "https://${PROMETHEUS_HOST}",
+          "icon": "prometheus",
+          "category": "metrics",
+          "minimumRole": "operator"
+        },
+        {
+          "name": "AlertManager",
+          "description": "Gerenciamento e roteamento de alertas",
+          "url": "https://${ALERTMANAGER_HOST}",
+          "icon": "alertmanager",
+          "category": "alerting",
+          "minimumRole": "operator"
+        },
+        {
+          "name": "Jaeger",
+          "description": "Rastreamento distribuído",
+          "url": "https://${JAEGER_HOST}",
+          "icon": "jaeger",
+          "category": "tracing",
+          "minimumRole": "viewer"
+        },
+        {
+          "name": "Kibana",
+          "description": "Visualização e análise de logs",
+          "url": "https://${KIBANA_HOST}",
+          "icon": "kibana",
+          "category": "logging",
+          "minimumRole": "viewer"
+        },
+        {
+          "name": "OpenTelemetry Collector",
+          "description": "Status e configuração do coletor",
+          "url": "http://otel-collector:8888",
+          "icon": "opentelemetry",
+          "category": "telemetry",
+          "minimumRole": "admin"
+        }
+      ],
+      "runbooks": [
+        {
+          "name": "Investigação de Falha de Auditoria",
+          "description": "Guia para investigar falhas em eventos de auditoria",
+          "path": "/runbooks/audit-failure",
+          "steps": [
+            "Verificar logs do serviço",
+            "Analisar traces para a requisição",
+            "Verificar disponibilidade do banco de dados",
+            "Consultar métricas de performance",
+            "Verificar alertas relacionados"
+          ],
+          "minimumRole": "operator"
+        },
+        {
+          "name": "Análise de Retenção de Dados",
+          "description": "Guia para analisar e ajustar políticas de retenção",
+          "path": "/runbooks/retention-analysis",
+          "minimumRole": "admin"
+        },
+        {
+          "name": "Resolução de Alertas de Alta Severidade",
+          "description": "Procedimentos para incidentes críticos",
+          "path": "/runbooks/high-severity",
+          "minimumRole": "operator"
+        }
+      ],
+      "apiEndpoints": [
+        {
+          "name": "status",
+          "path": "/api/v1/status",
+          "description": "Status do portal e componentes integrados"
+        },
+        {
+          "name": "metrics",
+          "path": "/api/v1/metrics",
+          "description": "Métricas coletadas dos diversos sistemas"
+        },
+        {
+          "name": "alerts",
+          "path": "/api/v1/alerts",
+          "description": "Alertas ativos e histórico recente"
+        }
+      ]
+    }
+  
+  nginx.conf: |
+    user nginx;
+    worker_processes auto;
+    error_log /var/log/nginx/error.log warn;
+    pid /var/run/nginx.pid;
+    
+    events {
+      worker_connections 4096;
+    }
+    
+    http {
+      include /etc/nginx/mime.types;
+      default_type application/octet-stream;
+      
+      log_format json_combined escape=json
+        '{'
+          '"time":"$time_iso8601",'
+          '"remote_addr":"$remote_addr",'
+          '"remote_user":"$remote_user",'
+          '"request":"$request",'
+          '"status":$status,'
+          '"body_bytes_sent":$body_bytes_sent,'
+          '"request_time":$request_time,'
+          '"http_referrer":"$http_referer",'
+          '"http_user_agent":"$http_user_agent",'
+          '"request_id":"$request_id",'
+          '"tenant_id":"$http_x_tenant_id",'
+          '"region_id":"$http_x_region_id"'
+        '}';
+      
+      access_log /var/log/nginx/access.log json_combined;
+      
+      sendfile on;
+      tcp_nopush on;
+      tcp_nodelay on;
+      keepalive_timeout 65;
+      types_hash_max_size 2048;
+      client_max_body_size 16M;
+      
+      # Configurações de segurança
+      server_tokens off;
+      add_header X-Frame-Options SAMEORIGIN;
+      add_header X-Content-Type-Options nosniff;
+      add_header X-XSS-Protection "1; mode=block";
+      add_header Content-Security-Policy "default-src 'self' https://*.innovabiz.com; script-src 'self' 'unsafe-inline' https://*.innovabiz.com; style-src 'self' 'unsafe-inline' https://*.innovabiz.com; img-src 'self' data: https://*.innovabiz.com; font-src 'self' data: https://*.innovabiz.com; connect-src 'self' https://*.innovabiz.com wss://*.innovabiz.com";
+      
+      # Gzip Settings
+      gzip on;
+      gzip_disable "msie6";
+      gzip_comp_level 6;
+      gzip_min_length 1100;
+      gzip_buffers 16 8k;
+      gzip_proxied any;
+      gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
+      
+      server {
+        listen 80;
+        
+        location / {
+          root /usr/share/nginx/html;
+          index index.html index.htm;
+          try_files $uri $uri/ /index.html;
+          
+          add_header Cache-Control "no-cache, no-store, must-revalidate";
+        }
+        
+        location /api/ {
+          proxy_pass http://localhost:3000;
+          proxy_http_version 1.1;
+          proxy_set_header Upgrade $http_upgrade;
+          proxy_set_header Connection 'upgrade';
+          proxy_set_header Host $host;
+          proxy_set_header X-Real-IP $remote_addr;
+          proxy_cache_bypass $http_upgrade;
+          proxy_set_header X-Tenant-ID $http_x_tenant_id;
+          proxy_set_header X-Region-ID $http_x_region_id;
+        }
+        
+        # Endpoints de saúde
+        location /health {
+          access_log off;
+          return 200 "OK";
+        }
+        
+        location /readiness {
+          access_log off;
+          return 200 "Ready";
+        }
+        
+        # Configuração de headers de segurança
+        location ~ /\. {
+          deny all;
+        }
+      }
+    }
+    
+  index.html: |
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>INNOVABIZ IAM Audit Service - Observability Portal</title>
+      <link rel="stylesheet" href="/css/main.css">
+      <link rel="icon" type="image/png" href="/assets/favicon.png">
+      <meta name="description" content="Portal integrado de observabilidade para o IAM Audit Service da INNOVABIZ">
+    </head>
+    <body>
+      <div id="app">
+        <div class="loading">
+          <img src="/assets/innovabiz-logo.png" alt="INNOVABIZ Logo" class="logo">
+          <div class="spinner"></div>
+          <p>Carregando Portal de Observabilidade...</p>
+        </div>
+      </div>
+      <script>
+        window.config = {
+          apiBaseUrl: '/api/v1',
+          auth: {
+            enabled: true,
+            loginUrl: '/api/v1/auth/login'
+          }
+        };
+      </script>
+      <script src="/js/main.js"></script>
+    </body>
+    </html>
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: observability-portal
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: observability-portal
+    app.kubernetes.io/part-of: innovabiz-observability
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: observability-portal
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: observability-portal
+    app.kubernetes.io/part-of: innovabiz-observability
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8080"
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 80
+    protocol: TCP
+    targetPort: http
+  - name: api
+    port: 3000
+    protocol: TCP
+    targetPort: api
+  - name: metrics
+    port: 8080
+    protocol: TCP
+    targetPort: metrics
+  selector:
+    app.kubernetes.io/name: observability-portal
+    app.kubernetes.io/part-of: innovabiz-observability
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: observability-portal
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: observability-portal
+    app.kubernetes.io/part-of: innovabiz-observability
+    app.kubernetes.io/component: portal
+    innovabiz.com/module: iam-audit
+    innovabiz.com/tier: observability
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: observability-portal
+      app.kubernetes.io/part-of: innovabiz-observability
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: observability-portal
+        app.kubernetes.io/part-of: innovabiz-observability
+        app.kubernetes.io/component: portal
+        innovabiz.com/module: iam-audit
+        innovabiz.com/tier: observability
+      annotations:
+        checksum/config: "${CONFIG_HASH}"
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+    spec:
+      serviceAccountName: observability-portal
+      securityContext:
+        fsGroup: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: nginx
+        image: nginx:1.25-alpine
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: http
+          containerPort: 80
+          protocol: TCP
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
+          runAsUser: 101
+          runAsGroup: 101
+          readOnlyRootFilesystem: true
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 10
+          timeoutSeconds: 5
+          periodSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /readiness
+            port: http
+          initialDelaySeconds: 5
+          timeoutSeconds: 3
+          periodSeconds: 5
+        resources:
+          limits:
+            cpu: 200m
+            memory: 256Mi
+          requests:
+            cpu: 50m
+            memory: 64Mi
+        volumeMounts:
+        - name: nginx-config
+          mountPath: /etc/nginx/nginx.conf
+          subPath: nginx.conf
+        - name: config-volume
+          mountPath: /usr/share/nginx/html/config.json
+          subPath: config.json
+        - name: html-content
+          mountPath: /usr/share/nginx/html/index.html
+          subPath: index.html
+        - name: nginx-tmp
+          mountPath: /var/cache/nginx
+        - name: nginx-tmp
+          mountPath: /var/run
+        - name: nginx-logs
+          mountPath: /var/log/nginx
+      - name: api
+        image: innovabiz/observability-portal-api:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: api
+          containerPort: 3000
+          protocol: TCP
+        - name: metrics
+          containerPort: 8080
+          protocol: TCP
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
+          runAsUser: 1000
+          runAsGroup: 1000
+          readOnlyRootFilesystem: true
+        env:
+        - name: PORT
+          value: "3000"
+        - name: METRICS_PORT
+          value: "8080"
+        - name: NODE_ENV
+          value: "production"
+        - name: LOG_LEVEL
+          value: "info"
+        - name: CONFIG_FILE
+          value: "/etc/observability-portal/config.json"
+        - name: PROMETHEUS_URL
+          value: "http://prometheus:9090"
+        - name: ALERTMANAGER_URL
+          value: "http://alertmanager:9093"
+        - name: JAEGER_URL
+          value: "http://jaeger-query:16686"
+        - name: GRAFANA_URL
+          value: "http://grafana:3000"
+        - name: LOKI_URL
+          value: "http://loki:3100"
+        - name: ELASTICSEARCH_URL
+          value: "https://elasticsearch:9200"
+        - name: ELASTICSEARCH_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: elasticsearch-credentials
+              key: elastic-username
+        - name: ELASTICSEARCH_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: elasticsearch-credentials
+              key: elastic-password
+        - name: OAUTH_CLIENT_ID
+          valueFrom:
+            secretKeyRef:
+              name: observability-portal-oauth
+              key: client-id
+        - name: OAUTH_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: observability-portal-oauth
+              key: client-secret
+        - name: OAUTH_AUTHORITY
+          valueFrom:
+            secretKeyRef:
+              name: observability-portal-oauth
+              key: authority
+        - name: INNOVABIZ_TENANT_CONTEXT
+          value: "${TENANT_CONTEXT}"
+        - name: INNOVABIZ_REGION_CONTEXT
+          value: "${REGION_CONTEXT}"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: api
+          initialDelaySeconds: 30
+          timeoutSeconds: 5
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /readiness
+            port: api
+          initialDelaySeconds: 10
+          timeoutSeconds: 3
+          periodSeconds: 10
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 100m
+            memory: 256Mi
+        volumeMounts:
+        - name: config-volume
+          mountPath: /etc/observability-portal/config.json
+          subPath: config.json
+        - name: tmp-dir
+          mountPath: /tmp
+      volumes:
+      - name: nginx-config
+        configMap:
+          name: observability-portal-config
+          items:
+          - key: nginx.conf
+            path: nginx.conf
+      - name: config-volume
+        configMap:
+          name: observability-portal-config
+          items:
+          - key: config.json
+            path: config.json
+      - name: html-content
+        configMap:
+          name: observability-portal-config
+          items:
+          - key: index.html
+            path: index.html
+      - name: nginx-tmp
+        emptyDir: {}
+      - name: nginx-logs
+        emptyDir: {}
+      - name: tmp-dir
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: observability-portal-oauth
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: observability-portal
+    app.kubernetes.io/part-of: innovabiz-observability
+type: Opaque
+data:
+  client-id: ${OAUTH_CLIENT_ID_BASE64}
+  client-secret: ${OAUTH_CLIENT_SECRET_BASE64}
+  authority: ${OAUTH_AUTHORITY_BASE64}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: observability-portal
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: observability-portal
+    app.kubernetes.io/part-of: innovabiz-observability
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "16m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      proxy_set_header X-Tenant-ID $http_x_tenant_id;
+      proxy_set_header X-Region-ID $http_x_region_id;
+spec:
+  tls:
+  - hosts:
+    - ${OBSERVABILITY_PORTAL_HOST}
+    secretName: observability-portal-tls
+  rules:
+  - host: ${OBSERVABILITY_PORTAL_HOST}
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: observability-portal
+            port:
+              name: http
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: observability-portal
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: observability-portal
+    app.kubernetes.io/part-of: innovabiz-observability
+    release: prometheus-operator
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: observability-portal
+      app.kubernetes.io/part-of: innovabiz-observability
+  namespaceSelector:
+    matchNames:
+      - iam-system
+  endpoints:
+  - port: metrics
+    interval: 15s
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: observability-portal
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: observability-portal
+    app.kubernetes.io/part-of: innovabiz-observability
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: observability-portal
+      app.kubernetes.io/part-of: innovabiz-observability

@@ -1,0 +1,187 @@
+{
+  "type": "record",
+  "name": "AuthenticationEvent",
+  "namespace": "io.innovabiz.iam.events",
+  "doc": "Esquema para eventos de autenticação no módulo IAM",
+  "fields": [
+    {
+      "name": "event_id",
+      "type": "string",
+      "doc": "Identificador único do evento, formato UUID"
+    },
+    {
+      "name": "event_type",
+      "type": {
+        "type": "enum",
+        "name": "AuthEventType",
+        "symbols": [
+          "LOGIN_ATTEMPT",
+          "LOGIN_SUCCESS",
+          "LOGIN_FAILURE",
+          "LOGOUT",
+          "MFA_CHALLENGE_ISSUED",
+          "MFA_CHALLENGE_SUCCESS",
+          "MFA_CHALLENGE_FAILURE",
+          "PASSWORD_RESET_REQUESTED",
+          "PASSWORD_RESET_COMPLETED",
+          "PASSWORD_CHANGED",
+          "ACCOUNT_LOCKED",
+          "ACCOUNT_UNLOCKED",
+          "TOKEN_ISSUED",
+          "TOKEN_REFRESHED",
+          "TOKEN_REVOKED",
+          "TOKEN_EXPIRED",
+          "SUSPICIOUS_ACTIVITY"
+        ]
+      },
+      "doc": "Tipo do evento de autenticação"
+    },
+    {
+      "name": "tenant_id",
+      "type": "string",
+      "doc": "Identificador do inquilino (tenant)"
+    },
+    {
+      "name": "user_id",
+      "type": ["string", "null"],
+      "doc": "Identificador do usuário, pode ser nulo em tentativas de login malsucedidas"
+    },
+    {
+      "name": "username",
+      "type": ["string", "null"],
+      "doc": "Nome de usuário, mascarado em regiões com GDPR/LGPD"
+    },
+    {
+      "name": "method_code",
+      "type": ["string", "null"],
+      "doc": "Código do método de autenticação utilizado (ex: K01, K05)"
+    },
+    {
+      "name": "status",
+      "type": {
+        "type": "enum",
+        "name": "AuthStatus",
+        "symbols": [
+          "SUCCESS", 
+          "FAILURE", 
+          "PENDING", 
+          "BLOCKED", 
+          "EXPIRED",
+          "REVOKED"
+        ]
+      },
+      "doc": "Status resultante da operação de autenticação"
+    },
+    {
+      "name": "timestamp",
+      "type": "long",
+      "logicalType": "timestamp-millis",
+      "doc": "Timestamp da ocorrência do evento (UTC)"
+    },
+    {
+      "name": "session_id",
+      "type": ["string", "null"],
+      "doc": "Identificador da sessão, se aplicável"
+    },
+    {
+      "name": "client_info",
+      "type": {
+        "type": "record",
+        "name": "ClientInfo",
+        "fields": [
+          {
+            "name": "ip_address",
+            "type": ["string", "null"],
+            "doc": "Endereço IP de origem, mascarado em algumas regiões"
+          },
+          {
+            "name": "user_agent",
+            "type": ["string", "null"],
+            "doc": "User-Agent do cliente"
+          },
+          {
+            "name": "device_id",
+            "type": ["string", "null"],
+            "doc": "Identificador do dispositivo, se disponível"
+          },
+          {
+            "name": "app_version",
+            "type": ["string", "null"],
+            "doc": "Versão do aplicativo cliente"
+          },
+          {
+            "name": "location",
+            "type": ["string", "null"],
+            "doc": "Localização geográfica aproximada baseada no IP"
+          }
+        ]
+      },
+      "doc": "Informações sobre o cliente que realizou a operação"
+    },
+    {
+      "name": "error_info",
+      "type": ["null", {
+        "type": "record",
+        "name": "ErrorInfo",
+        "fields": [
+          {
+            "name": "error_code",
+            "type": "string",
+            "doc": "Código de erro padronizado"
+          },
+          {
+            "name": "error_message",
+            "type": "string",
+            "doc": "Mensagem descritiva do erro"
+          },
+          {
+            "name": "error_details",
+            "type": ["string", "null"],
+            "doc": "Detalhes técnicos do erro, para debugging"
+          }
+        ]
+      }],
+      "default": null,
+      "doc": "Informações de erro, se aplicável"
+    },
+    {
+      "name": "risk_score",
+      "type": ["null", "int"],
+      "default": null,
+      "doc": "Pontuação de risco atribuída a esta operação (0-100)"
+    },
+    {
+      "name": "security_flags",
+      "type": {
+        "type": "array",
+        "items": "string"
+      },
+      "default": [],
+      "doc": "Flags de segurança associadas ao evento (ex: 'ABNORMAL_LOCATION', 'NEW_DEVICE')"
+    },
+    {
+      "name": "flow_id",
+      "type": ["string", "null"],
+      "doc": "Identificador do fluxo de autenticação"
+    },
+    {
+      "name": "region_code",
+      "type": "string",
+      "doc": "Código da região (EU, BR, AO, US)"
+    },
+    {
+      "name": "correlation_id",
+      "type": "string",
+      "doc": "Identificador de correlação para rastreabilidade"
+    },
+    {
+      "name": "additional_context",
+      "type": {
+        "type": "map",
+        "values": ["null", "string", "int", "boolean"]
+      },
+      "default": {},
+      "doc": "Dados contextuais adicionais específicos do evento"
+    }
+  ]
+}

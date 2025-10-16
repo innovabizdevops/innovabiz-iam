@@ -1,0 +1,265 @@
+groups:
+- name: innovabiz_api_gateway_alerts
+  rules:
+  # Alertas de Disponibilidade
+  - alert: APIGatewayDown
+    expr: up{job="krakend"} == 0
+    for: 1m
+    labels:
+      severity: critical
+      service: api-gateway
+      category: availability
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "API Gateway Indisponível"
+      description: "Instância {{ $labels.instance }} do API Gateway está offline há pelo menos 1 minuto. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/api-gateway-down"
+      dashboard_url: "https://grafana.innovabiz.com/d/innovabiz-api-gateway?var-tenant_id={{ $labels.tenant_id }}&var-region_id={{ $labels.region_id }}&var-environment={{ $labels.environment }}&var-instance={{ $labels.instance }}"
+
+  - alert: APIGatewayHighErrorRate
+    expr: sum(rate(krakend_http_request_duration_seconds_count{status_code=~"5.."}[5m])) / sum(rate(krakend_http_request_duration_seconds_count[5m])) > 0.05
+    for: 5m
+    labels:
+      severity: warning
+      service: api-gateway
+      category: availability
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Alta Taxa de Erros HTTP 5xx"
+      description: "Taxa de erros HTTP 5xx acima de 5% nos últimos 5 minutos. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/api-gateway-high-error-rate"
+
+  - alert: APIGatewayCircuitBreakerOpen
+    expr: krakend_circuit_breaker_state{state="open"} == 1
+    for: 2m
+    labels:
+      severity: warning
+      service: api-gateway
+      category: availability
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Circuit Breaker Aberto"
+      description: "Circuit breaker para backend {{ $labels.backend }} está aberto na instância {{ $labels.instance }}. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/api-gateway-circuit-breaker-open"
+
+  # Alertas de Performance
+  - alert: APIGatewayHighLatency
+    expr: histogram_quantile(0.95, sum(rate(krakend_http_request_duration_seconds_bucket[5m])) by (le)) > 1
+    for: 5m
+    labels:
+      severity: warning
+      service: api-gateway
+      category: performance
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Alta Latência P95"
+      description: "Latência P95 acima de 1 segundo nos últimos 5 minutos. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/api-gateway-high-latency"
+
+  - alert: APIGatewayBackendHighLatency
+    expr: histogram_quantile(0.95, sum by (backend, le) (rate(krakend_backend_request_duration_seconds_bucket[5m]))) > 2
+    for: 5m
+    labels:
+      severity: warning
+      service: api-gateway
+      category: performance
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Alta Latência Backend"
+      description: "Backend {{ $labels.backend }} com latência P95 acima de 2 segundos. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/api-gateway-backend-high-latency"
+
+  - alert: APIGatewayHighRequestRate
+    expr: sum(rate(krakend_http_request_duration_seconds_count[5m])) > 10000
+    for: 10m
+    labels:
+      severity: warning
+      service: api-gateway
+      category: performance
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Taxa de Requisições Elevada"
+      description: "Taxa de requisições acima de 10.000 req/s por mais de 10 minutos. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/api-gateway-high-request-rate"
+
+  # Alertas de Recursos
+  - alert: APIGatewayHighCPUUsage
+    expr: 100 * (1 - avg by(instance, tenant_id, region_id, environment) (irate(node_cpu_seconds_total{mode="idle", job="node"}[5m]))) > 80
+    for: 15m
+    labels:
+      severity: warning
+      service: api-gateway
+      category: resource
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Alto Uso de CPU"
+      description: "Uso de CPU acima de 80% por 15 minutos na instância {{ $labels.instance }}. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/api-gateway-high-cpu"
+
+  - alert: APIGatewayHighMemoryUsage
+    expr: 100 * (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) > 85
+    for: 15m
+    labels:
+      severity: warning
+      service: api-gateway
+      category: resource
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Alto Uso de Memória"
+      description: "Uso de memória acima de 85% por 15 minutos na instância {{ $labels.instance }}. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/api-gateway-high-memory"
+
+  - alert: APIGatewayHighGoroutines
+    expr: go_goroutines{job="krakend"} > 10000
+    for: 10m
+    labels:
+      severity: warning
+      service: api-gateway
+      category: resource
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Número Elevado de Goroutines"
+      description: "Mais de 10.000 goroutines ativas na instância {{ $labels.instance }}. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/api-gateway-high-goroutines"
+
+  - alert: APIGatewayHighConnectedClients
+    expr: krakend_router_connected_clients > 1000
+    for: 10m
+    labels:
+      severity: warning
+      service: api-gateway
+      category: resource
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Muitos Clientes Conectados"
+      description: "Mais de 1.000 clientes conectados simultaneamente na instância {{ $labels.instance }}. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/api-gateway-high-connected-clients"
+
+  # Alertas de Segurança
+  - alert: APIGatewayHighUnauthorizedRequests
+    expr: sum(rate(krakend_http_request_duration_seconds_count{status_code="401"}[5m])) > 100
+    for: 5m
+    labels:
+      severity: warning
+      service: api-gateway
+      category: security
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Alta Taxa de Requisições Não Autorizadas"
+      description: "Mais de 100 requisições 401 por minuto detectadas. Possível tentativa de ataque. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/api-gateway-unauthorized-requests"
+
+  - alert: APIGatewayHighForbiddenRequests
+    expr: sum(rate(krakend_http_request_duration_seconds_count{status_code="403"}[5m])) > 50
+    for: 5m
+    labels:
+      severity: warning
+      service: api-gateway
+      category: security
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Alta Taxa de Requisições Proibidas"
+      description: "Mais de 50 requisições 403 por minuto detectadas. Possível tentativa de acesso não autorizado. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/api-gateway-forbidden-requests"
+
+  - alert: APIGatewayRateLimitExceeded
+    expr: sum(rate(krakend_http_request_duration_seconds_count{status_code="429"}[5m])) > 200
+    for: 5m
+    labels:
+      severity: info
+      service: api-gateway
+      category: security
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Rate Limit Frequentemente Excedido"
+      description: "Mais de 200 requisições 429 por minuto. Rate limiting funcionando corretamente. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/api-gateway-rate-limit-exceeded"
+
+  # Alertas de SLA/SLO
+  - alert: APIGatewaySLOViolation
+    expr: (sum(rate(krakend_http_request_duration_seconds_count{status_code!~"5.."}[5m])) / sum(rate(krakend_http_request_duration_seconds_count[5m]))) < 0.995
+    for: 10m
+    labels:
+      severity: warning
+      service: api-gateway
+      category: slo
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Violação de SLO de Disponibilidade"
+      description: "SLO de disponibilidade violado - taxa de sucesso < 99.5% por mais de 10 minutos. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/api-gateway-slo-violation"
+
+  - alert: APIGatewayLatencySLOViolation
+    expr: histogram_quantile(0.99, sum(rate(krakend_http_request_duration_seconds_bucket[5m])) by (le)) > 2
+    for: 10m
+    labels:
+      severity: warning
+      service: api-gateway
+      category: slo
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Violação de SLO de Latência"
+      description: "SLO de latência violado - P99 > 2s por mais de 10 minutos. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/api-gateway-latency-slo-violation"
+
+  # Alertas de Rede
+  - alert: APIGatewayHighNetworkTraffic
+    expr: rate(node_network_receive_bytes_total{device!="lo"}[5m]) + rate(node_network_transmit_bytes_total{device!="lo"}[5m]) > 100000000
+    for: 15m
+    labels:
+      severity: info
+      service: api-gateway
+      category: network
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Alto Tráfego de Rede"
+      description: "Tráfego de rede acima de 100MB/s por 15 minutos na instância {{ $labels.instance }}. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/api-gateway-high-network-traffic"
+
+  # Alertas de Governança
+  - alert: APIGatewayEndpointUnusualActivity
+    expr: sum by (endpoint) (rate(krakend_http_request_duration_seconds_count[5m])) > 1000
+    for: 10m
+    labels:
+      severity: info
+      service: api-gateway
+      category: governance
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Atividade Incomum em Endpoint"
+      description: "Endpoint {{ $labels.endpoint }} com mais de 1000 req/s por 10 minutos. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/api-gateway-unusual-endpoint-activity"

@@ -1,0 +1,76 @@
+{
+  "extends": [
+    "eslint:recommended",
+    "plugin:@typescript-eslint/recommended",
+    "plugin:security/recommended"
+  ],
+  "parser": "@typescript-eslint/parser",
+  "parserOptions": {
+    "ecmaVersion": 2021,
+    "sourceType": "module",
+    "project": "./tsconfig.json"
+  },
+  "plugins": [
+    "@typescript-eslint",
+    "security"
+  ],
+  "rules": {
+    "security/detect-buffer-noassert": "error",
+    "security/detect-child-process": "warn",
+    "security/detect-disable-mustache-escape": "error",
+    "security/detect-eval-with-expression": "error",
+    "security/detect-new-buffer": "error",
+    "security/detect-no-csrf-before-method-override": "error",
+    "security/detect-non-literal-fs-filename": "warn",
+    "security/detect-non-literal-regexp": "warn",
+    "security/detect-non-literal-require": "warn",
+    "security/detect-object-injection": "warn",
+    "security/detect-possible-timing-attacks": "error",
+    "security/detect-pseudoRandomBytes": "error",
+    "security/detect-unsafe-regex": "error",
+    "@typescript-eslint/no-explicit-any": "warn",
+    "@typescript-eslint/explicit-module-boundary-types": "off",
+    "@typescript-eslint/no-unused-vars": ["error", {
+      "argsIgnorePattern": "^_",
+      "varsIgnorePattern": "^_"
+    }],
+    "no-console": ["warn", { "allow": ["warn", "error"] }],
+    "no-return-await": "error",
+    "prefer-promise-reject-errors": "error"
+  },
+  "overrides": [
+    {
+      "files": ["**/compliance/**/*.ts"],
+      "rules": {
+        "security/detect-object-injection": "error",
+        "security/detect-non-literal-fs-filename": "error",
+        "no-console": "error"
+      }
+    },
+    {
+      "files": ["**/*.test.ts", "**/*.spec.ts"],
+      "rules": {
+        "security/detect-object-injection": "off",
+        "security/detect-non-literal-fs-filename": "off",
+        "no-console": "off"
+      }
+    }
+  ],
+  "settings": {
+    "security": {
+      "detect-unsafe-regex": true,
+      "detect-buffer-noassert": true,
+      "detect-child-process": true,
+      "detect-disable-mustache-escape": true,
+      "detect-eval-with-expression": true,
+      "detect-new-buffer": true,
+      "detect-no-csrf-before-method-override": true,
+      "detect-non-literal-fs-filename": true,
+      "detect-non-literal-regexp": true,
+      "detect-non-literal-require": true,
+      "detect-object-injection": true,
+      "detect-possible-timing-attacks": true,
+      "detect-pseudoRandomBytes": true
+    }
+  }
+}

@@ -1,0 +1,182 @@
+name: Terraform Kafka Module CI/CD
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'infrastructure/dev/terraform/modules/kafka/**'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'infrastructure/dev/terraform/modules/kafka/**'
+  workflow_dispatch:
+
+env:
+  TF_VERSION: 1.3.0
+  TFLINT_VERSION: v0.41.0
+  CHECKOV_VERSION: 2.2.56
+  KUBE_VERSION: v1.24.0
+  HELM_VERSION: v3.10.0
+
+jobs:
+  validate:
+    name: Validate
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v2
+      with:
+        terraform_version: ${{ env.TF_VERSION }}
+        terraform_wrapper: false
+
+    - name: Setup Terraform Validate
+      id: setup
+      run: |
+        cd infrastructure/dev/terraform/modules/kafka
+        terraform init -backend=false
+        terraform validate
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      
+    - name: TFLint
+      uses: reviewdog/action-tflint@v2
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        reporter: github-pr-review
+        level: warning
+        tflint_flags: '--config=infrastructure/dev/terraform/modules/kafka/.tflint.hcl'
+
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      
+    - name: Run Checkov
+      uses: bridgecrewio/checkov-action@v12
+      with:
+        directory: infrastructure/dev/terraform/modules/kafka
+        quiet: true
+        framework: terraform
+        soft_fail: true
+        skip_check: CKV_AWS_21,CKV_AWS_19  # Skip checks not applicable to this module
+
+  test:
+    name: Integration Test
+    runs-on: ubuntu-latest
+    needs: [validate, lint, security]
+    
+    services:
+      # Spin up a local Kubernetes cluster using KinD
+      kind:
+        image: kindest/node:${{ env.KUBE_VERSION }}
+        ports:
+          - 6443/tcp
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Install kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: ${{ env.KUBE_VERSION }}
+    
+    - name: Install Helm
+      uses: azure/setup-helm@v3
+      with:
+        version: ${{ env.HELM_VERSION }}
+    
+    - name: Install KinD
+      uses: helm/kind-action@v1.5.0
+    
+    - name: Create Kind Cluster
+      run: |
+        cat > kind-config.yaml <<EOF
+        kind: Cluster
+        apiVersion: kind.x-k8s.io/v1alpha4
+        nodes:
+        - role: control-plane
+          kubeadmConfigPatches:
+          - |
+            kind: InitConfiguration
+            nodeRegistration:
+              kubeletExtraArgs:
+                node-labels: "ingress-ready=true"
+          extraPortMappings:
+          - containerPort: 80
+            hostPort: 80
+            protocol: TCP
+          - containerPort: 443
+            hostPort: 443
+            protocol: TCP
+        EOF
+        
+        kind create cluster --config=kind-config.yaml
+        kubectl cluster-info --context kind-kind
+    
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v2
+      with:
+        terraform_version: ${{ env.TF_VERSION }}
+    
+    - name: Run Terratest
+      run: |
+        cd infrastructure/dev/terraform/modules/kafka/test
+        go mod init test
+        go mod tidy
+        go test -v -timeout 30m -run TestKafkaDeployment
+    
+    - name: Cleanup
+      if: always()
+      run: |
+        kind delete cluster
+
+  release:
+    name: Release
+    needs: test
+    if: github.event_name == 'push' && contains(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+    
+    - name: Get version
+      id: get_version
+      run: echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+    
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref }}
+        release_name: Kafka Module ${{ steps.get_version.outputs.version }}
+        draft: false
+        prerelease: false
+    
+    - name: Upload Module Artifact
+      run: |
+        cd infrastructure/dev/terraform/modules/kafka
+        zip -r kafka-module-${{ steps.get_version.outputs.version }}.zip .
+        curl -X POST \
+          -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          -H "Content-Type: application/zip" \
+          --data-binary @kafka-module-${{ steps.get_version.outputs.version }}.zip \
+          "${{ steps.create_release.outputs.upload_url }}"?name=kafka-module-${{ steps.get_version.outputs.version }}.zip

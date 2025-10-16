@@ -1,0 +1,254 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: observability-portal-backend
+  namespace: innovabiz-observability
+  labels:
+    app: observability-portal
+    component: backend
+    innovabiz.com/module: iam
+    innovabiz.com/component: observability-portal
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: observability-portal
+      component: backend
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: observability-portal
+        component: backend
+        innovabiz.com/module: iam
+        innovabiz.com/component: observability-portal
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - observability-portal
+                - key: component
+                  operator: In
+                  values:
+                  - backend
+              topologyKey: kubernetes.io/hostname
+      securityContext:
+        fsGroup: 1000
+        runAsUser: 1000
+        runAsNonRoot: true
+      containers:
+      - name: backend
+        image: innovabiz/observability-portal-backend:2.0.0
+        imagePullPolicy: Always
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: ["ALL"]
+        ports:
+        - name: http
+          containerPort: 8080
+          protocol: TCP
+        - name: metrics
+          containerPort: 9090
+          protocol: TCP
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: LOG_LEVEL
+          value: "info"
+        - name: INNOVABIZ_REGION
+          valueFrom:
+            configMapKeyRef:
+              name: innovabiz-global-config
+              key: region
+        - name: INNOVABIZ_ENVIRONMENT
+          valueFrom:
+            configMapKeyRef:
+              name: innovabiz-global-config
+              key: environment
+        - name: PROMETHEUS_URL
+          valueFrom:
+            configMapKeyRef:
+              name: observability-portal-config
+              key: prometheus.url
+        - name: ELASTICSEARCH_URL
+          valueFrom:
+            configMapKeyRef:
+              name: observability-portal-config
+              key: elasticsearch.url
+        - name: LOKI_URL
+          valueFrom:
+            configMapKeyRef:
+              name: observability-portal-config
+              key: loki.url
+        - name: GRAFANA_URL
+          valueFrom:
+            configMapKeyRef:
+              name: observability-portal-config
+              key: grafana.url
+        - name: KIBANA_URL
+          valueFrom:
+            configMapKeyRef:
+              name: observability-portal-config
+              key: kibana.url
+        - name: JAEGER_URL
+          valueFrom:
+            configMapKeyRef:
+              name: observability-portal-config
+              key: jaeger.url
+        - name: REDIS_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: observability-portal-config
+              key: redis.host
+        - name: REDIS_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: observability-portal-config
+              key: redis.port
+        - name: PROMETHEUS_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: observability-credentials
+              key: prometheus-auth-token
+        - name: ELASTICSEARCH_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: observability-credentials
+              key: elasticsearch-username
+        - name: ELASTICSEARCH_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: observability-credentials
+              key: elasticsearch-password
+        - name: LOKI_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: observability-credentials
+              key: loki-auth-token
+        - name: JAEGER_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: observability-credentials
+              key: jaeger-auth-token
+        - name: OIDC_CLIENT_ID
+          valueFrom:
+            secretKeyRef:
+              name: observability-oidc
+              key: client-id
+        - name: OIDC_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: observability-oidc
+              key: client-secret
+        - name: SESSION_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: observability-portal
+              key: session-secret
+        - name: ENCRYPTION_KEY
+          valueFrom:
+            secretKeyRef:
+              name: observability-portal
+              key: encryption-key
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: observability-portal
+              key: redis-password
+        volumeMounts:
+        - name: config-volume
+          mountPath: /app/config
+          readOnly: true
+        - name: tmp-volume
+          mountPath: /tmp
+        resources:
+          requests:
+            cpu: 500m
+            memory: 512Mi
+          limits:
+            cpu: 1000m
+            memory: 1Gi
+        livenessProbe:
+          httpGet:
+            path: /health/live
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health/ready
+            port: http
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+        startupProbe:
+          httpGet:
+            path: /health/startup
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 12
+      volumes:
+      - name: config-volume
+        configMap:
+          name: observability-portal-backend-config
+      - name: tmp-volume
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: observability-portal-backend
+  namespace: innovabiz-observability
+  labels:
+    app: observability-portal
+    component: backend
+    innovabiz.com/module: iam
+    innovabiz.com/component: observability-portal
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 8080
+    targetPort: http
+    protocol: TCP
+  - name: metrics
+    port: 9090
+    targetPort: metrics
+    protocol: TCP
+  selector:
+    app: observability-portal
+    component: backend
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: observability-portal-backend-pdb
+  namespace: innovabiz-observability
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: observability-portal
+      component: backend

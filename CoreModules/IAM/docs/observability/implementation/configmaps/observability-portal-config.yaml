@@ -1,0 +1,599 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: observability-portal-config
+  namespace: innovabiz-observability
+  labels:
+    app: observability-portal
+    innovabiz.com/module: iam
+    innovabiz.com/component: observability-portal
+data:
+  general.json: |
+    {
+      "version": "2.0.0",
+      "name": "INNOVABIZ Observability Portal",
+      "description": "Plataforma centralizada de observabilidade para INNOVABIZ",
+      "basePath": "/",
+      "apiPrefix": "/api/v2",
+      "supportEmail": "innovabizdevops@gmail.com",
+      "maxConcurrentRequests": 100,
+      "timeout": 60000,
+      "retryAttempts": 3,
+      "retryDelay": 1000,
+      "cache": {
+        "ttl": 300,
+        "maxSize": 1000
+      },
+      "telemetry": {
+        "enabled": true,
+        "samplingRate": 0.1,
+        "metricsPrefix": "innovabiz_observability_portal"
+      },
+      "contextDimensions": [
+        {
+          "id": "tenant",
+          "label": "Tenant",
+          "description": "Organização/Cliente",
+          "required": true,
+          "propagate": true,
+          "labelKey": "innovabiz.tenant"
+        },
+        {
+          "id": "region",
+          "label": "Região",
+          "description": "Região geográfica",
+          "values": ["br", "us", "eu", "ao"],
+          "required": true,
+          "propagate": true,
+          "labelKey": "innovabiz.region"
+        },
+        {
+          "id": "environment",
+          "label": "Ambiente",
+          "description": "Ambiente de execução",
+          "values": ["dev", "qa", "staging", "prod"],
+          "required": true,
+          "propagate": true,
+          "labelKey": "innovabiz.environment"
+        },
+        {
+          "id": "module",
+          "label": "Módulo",
+          "description": "Módulo INNOVABIZ",
+          "values": ["iam", "payment-gateway", "mobile-money", "marketplace", "risk-management", "machine-learning"],
+          "required": false,
+          "propagate": true,
+          "labelKey": "innovabiz.module"
+        },
+        {
+          "id": "component",
+          "label": "Componente",
+          "description": "Componente específico",
+          "required": false,
+          "propagate": true,
+          "labelKey": "innovabiz.component"
+        }
+      ]
+    }
+  authentication.json: |
+    {
+      "providers": [
+        {
+          "id": "innovabiz-sso",
+          "type": "oidc",
+          "name": "INNOVABIZ SSO",
+          "enabled": true,
+          "config": {
+            "clientId": "${OIDC_CLIENT_ID}",
+            "clientSecret": "${OIDC_CLIENT_SECRET}",
+            "authorizationURL": "https://iam.${INNOVABIZ_ENVIRONMENT}.innovabiz.com/oauth2/authorize",
+            "tokenURL": "https://iam.${INNOVABIZ_ENVIRONMENT}.innovabiz.com/oauth2/token",
+            "userInfoURL": "https://iam.${INNOVABIZ_ENVIRONMENT}.innovabiz.com/userinfo",
+            "jwksURL": "https://iam.${INNOVABIZ_ENVIRONMENT}.innovabiz.com/.well-known/jwks.json",
+            "logoutURL": "https://iam.${INNOVABIZ_ENVIRONMENT}.innovabiz.com/logout",
+            "scope": "openid profile email",
+            "callbackURL": "/auth/callback",
+            "responseType": "code",
+            "userinfoSignedResponseAlg": "RS256"
+          }
+        }
+      ],
+      "session": {
+        "name": "innovabiz.sid",
+        "secret": "${SESSION_SECRET}",
+        "cookie": {
+          "maxAge": 86400000,
+          "secure": true,
+          "httpOnly": true,
+          "sameSite": "lax"
+        }
+      },
+      "authorization": {
+        "rbacEnabled": true,
+        "multiTenant": true,
+        "defaultRole": "viewer",
+        "roleMapping": {
+          "observability-admin": "admin",
+          "observability-editor": "editor",
+          "observability-viewer": "viewer",
+          "tenant-observability-admin": "tenant-admin"
+        },
+        "tenantAttributePath": "innovabiz_tenants",
+        "regionAttributePath": "innovabiz_regions"
+      },
+      "audit": {
+        "enabled": true,
+        "sensitiveActions": [
+          "login", 
+          "logout", 
+          "create", 
+          "update", 
+          "delete", 
+          "export"
+        ],
+        "destination": "elasticsearch"
+      }
+    }
+  datasources.json: |
+    {
+      "prometheus": {
+        "url": "http://prometheus-operated:9090",
+        "auth": {
+          "type": "token",
+          "tokenHeaderName": "Authorization",
+          "tokenPrefix": "Bearer"
+        },
+        "timeoutMs": 30000,
+        "checkIntervalMs": 60000,
+        "maxDataPoints": 11000,
+        "metricsPrefix": "innovabiz_",
+        "customLabels": [
+          "tenant", 
+          "region", 
+          "environment", 
+          "module", 
+          "component"
+        ]
+      },
+      "elasticsearch": {
+        "url": "https://elasticsearch-master:9200",
+        "auth": {
+          "type": "basic",
+          "username": "${ELASTICSEARCH_USERNAME}",
+          "password": "${ELASTICSEARCH_PASSWORD}"
+        },
+        "indexPrefix": "innovabiz-",
+        "timeoutMs": 30000,
+        "checkIntervalMs": 60000,
+        "sniff": false,
+        "ssl": {
+          "rejectUnauthorized": true,
+          "ca": "/certs/elastic/ca.pem"
+        },
+        "customFields": [
+          "tenant_id", 
+          "region_id", 
+          "environment", 
+          "module_id", 
+          "component_id"
+        ]
+      },
+      "loki": {
+        "url": "http://loki-gateway:3100",
+        "auth": {
+          "type": "token",
+          "tokenHeaderName": "X-Scope-OrgID",
+          "defaultOrg": "innovabiz"
+        },
+        "timeoutMs": 30000,
+        "checkIntervalMs": 60000,
+        "customLabels": [
+          "tenant", 
+          "region", 
+          "environment", 
+          "module", 
+          "component"
+        ]
+      },
+      "grafana": {
+        "url": "http://grafana:3000",
+        "auth": {
+          "type": "proxy",
+          "headerName": "X-INNOVABIZ-USER"
+        },
+        "timeoutMs": 30000,
+        "checkIntervalMs": 60000,
+        "embedDashboards": true,
+        "datasourceProxy": true
+      },
+      "kibana": {
+        "url": "http://kibana-kibana:5601",
+        "auth": {
+          "type": "basic",
+          "username": "${ELASTICSEARCH_USERNAME}",
+          "password": "${ELASTICSEARCH_PASSWORD}"
+        },
+        "timeoutMs": 30000,
+        "checkIntervalMs": 60000,
+        "embedDashboards": true,
+        "spaceSelector": "tenant_id"
+      },
+      "jaeger": {
+        "url": "http://jaeger-query:16686",
+        "auth": {
+          "type": "token",
+          "tokenHeaderName": "Authorization",
+          "tokenPrefix": "Bearer"
+        },
+        "timeoutMs": 30000,
+        "checkIntervalMs": 60000,
+        "customTags": [
+          "tenant", 
+          "region", 
+          "environment", 
+          "module", 
+          "component"
+        ]
+      }
+    }
+  federation.json: |
+    {
+      "enabled": true,
+      "cacheEnabled": true,
+      "cacheTTL": 300,
+      "queryTimeoutMs": 60000,
+      "queryBatchSize": 100,
+      "maxQueryConcurrency": 5,
+      "metricsFederation": {
+        "enabled": true,
+        "refreshIntervalMs": 300000,
+        "primarySource": "prometheus",
+        "mergePolicies": {
+          "alertStatus": "mostCritical",
+          "metricValues": "sum"
+        },
+        "contextPropagation": {
+          "tenant": "label",
+          "region": "label",
+          "environment": "label",
+          "module": "label",
+          "component": "label"
+        }
+      },
+      "logsFederation": {
+        "enabled": true,
+        "refreshIntervalMs": 300000,
+        "primarySource": "elasticsearch",
+        "secondarySources": ["loki"],
+        "mergePolicies": {
+          "logEntries": "interleaved",
+          "logLevel": "mostCritical"
+        },
+        "contextPropagation": {
+          "tenant": "field",
+          "region": "field",
+          "environment": "field",
+          "module": "field",
+          "component": "field"
+        }
+      },
+      "tracesFederation": {
+        "enabled": true,
+        "refreshIntervalMs": 300000,
+        "primarySource": "jaeger",
+        "contextPropagation": {
+          "tenant": "tag",
+          "region": "tag",
+          "environment": "tag",
+          "module": "tag",
+          "component": "tag"
+        }
+      }
+    }
+  alerting.json: |
+    {
+      "enabled": true,
+      "notifications": {
+        "email": {
+          "enabled": true,
+          "from": "observability@innovabiz.com",
+          "subjectPrefix": "[INNOVABIZ Observability]"
+        },
+        "slack": {
+          "enabled": true,
+          "defaultChannel": "#observability-alerts"
+        },
+        "pagerduty": {
+          "enabled": true,
+          "integrationKey": "${PAGERDUTY_INTEGRATION_KEY}"
+        },
+        "webhook": {
+          "enabled": true,
+          "endpoints": [
+            {
+              "name": "Internal Alerting System",
+              "url": "https://alerts.${INNOVABIZ_ENVIRONMENT}.innovabiz.com/api/v1/alerts",
+              "headers": {
+                "Authorization": "Bearer ${ALERTS_WEBHOOK_TOKEN}",
+                "Content-Type": "application/json"
+              }
+            }
+          ]
+        }
+      },
+      "routingRules": [
+        {
+          "name": "Critical Alerts",
+          "conditions": [
+            {
+              "field": "severity",
+              "operator": "eq",
+              "value": "critical"
+            }
+          ],
+          "destinations": ["slack:#observability-critical", "pagerduty", "email"],
+          "groupBy": ["alertname", "tenant", "region"]
+        },
+        {
+          "name": "High Alerts",
+          "conditions": [
+            {
+              "field": "severity",
+              "operator": "eq",
+              "value": "high"
+            }
+          ],
+          "destinations": ["slack:#observability-alerts", "email"],
+          "groupBy": ["alertname", "tenant", "region"]
+        },
+        {
+          "name": "Tenant-Specific Alerts",
+          "conditions": [
+            {
+              "field": "tenant",
+              "operator": "exists",
+              "value": true
+            }
+          ],
+          "destinations": ["slack:#tenant-${tenant}-alerts", "email"],
+          "groupBy": ["alertname", "module", "component"]
+        }
+      ],
+      "silencePolicies": [
+        {
+          "name": "Maintenance Windows",
+          "conditions": [
+            {
+              "field": "labels.maintenance",
+              "operator": "eq",
+              "value": "true"
+            }
+          ],
+          "duration": 86400
+        }
+      ],
+      "escalationPolicies": [
+        {
+          "name": "Default Escalation",
+          "steps": [
+            {
+              "destinations": ["slack:#observability-alerts"],
+              "delayMinutes": 0
+            },
+            {
+              "destinations": ["email"],
+              "delayMinutes": 15
+            },
+            {
+              "destinations": ["pagerduty"],
+              "delayMinutes": 30
+            }
+          ],
+          "repeatInterval": 120
+        }
+      ]
+    }
+  ui.json: |
+    {
+      "title": "INNOVABIZ Observability Portal",
+      "logo": "/assets/logo.png",
+      "favicon": "/assets/favicon.ico",
+      "theme": {
+        "colorMode": "auto",
+        "primaryColor": "#0057B8",
+        "accentColor": "#FFD700",
+        "brandColors": {
+          "primary": "#0057B8",
+          "secondary": "#FFD700",
+          "success": "#28a745",
+          "info": "#17a2b8",
+          "warning": "#ffc107",
+          "danger": "#dc3545"
+        },
+        "darkMode": {
+          "background": "#121212",
+          "surface": "#1E1E1E",
+          "text": "#FFFFFF"
+        }
+      },
+      "navigation": {
+        "items": [
+          {
+            "label": "Dashboard",
+            "icon": "dashboard",
+            "path": "/",
+            "permissions": ["viewer"]
+          },
+          {
+            "label": "Metrics",
+            "icon": "timeline",
+            "path": "/metrics",
+            "permissions": ["viewer"]
+          },
+          {
+            "label": "Logs",
+            "icon": "format_align_left",
+            "path": "/logs",
+            "permissions": ["viewer"]
+          },
+          {
+            "label": "Traces",
+            "icon": "timeline",
+            "path": "/traces",
+            "permissions": ["viewer"]
+          },
+          {
+            "label": "Alerts",
+            "icon": "notifications",
+            "path": "/alerts",
+            "permissions": ["viewer"]
+          },
+          {
+            "label": "Administration",
+            "icon": "settings",
+            "permissions": ["admin", "tenant-admin"],
+            "children": [
+              {
+                "label": "Users",
+                "icon": "people",
+                "path": "/admin/users",
+                "permissions": ["admin", "tenant-admin"]
+              },
+              {
+                "label": "Roles",
+                "icon": "security",
+                "path": "/admin/roles",
+                "permissions": ["admin"]
+              },
+              {
+                "label": "Settings",
+                "icon": "settings",
+                "path": "/admin/settings",
+                "permissions": ["admin", "tenant-admin"]
+              },
+              {
+                "label": "Datasources",
+                "icon": "storage",
+                "path": "/admin/datasources",
+                "permissions": ["admin"]
+              }
+            ]
+          }
+        ]
+      },
+      "defaultDashboard": "/dashboards/overview",
+      "dashboards": [
+        {
+          "id": "overview",
+          "title": "Visão Geral",
+          "description": "Dashboard principal com visão geral da plataforma",
+          "permissions": ["viewer"]
+        },
+        {
+          "id": "iam-authentication",
+          "title": "IAM - Autenticação",
+          "description": "Métricas de autenticação do IAM",
+          "category": "IAM",
+          "permissions": ["viewer"]
+        },
+        {
+          "id": "iam-authorization",
+          "title": "IAM - Autorização",
+          "description": "Métricas de autorização do IAM",
+          "category": "IAM",
+          "permissions": ["viewer"]
+        },
+        {
+          "id": "iam-audit",
+          "title": "IAM - Auditoria",
+          "description": "Métricas de auditoria do IAM",
+          "category": "IAM",
+          "permissions": ["viewer"]
+        },
+        {
+          "id": "payment-gateway",
+          "title": "Payment Gateway",
+          "description": "Métricas do Payment Gateway",
+          "category": "Payment Gateway",
+          "permissions": ["viewer"]
+        },
+        {
+          "id": "security",
+          "title": "Segurança",
+          "description": "Dashboard de segurança",
+          "category": "Segurança",
+          "permissions": ["admin", "tenant-admin"]
+        }
+      ]
+    }
+  features.json: |
+    {
+      "features": {
+        "multiTenant": true,
+        "multiRegion": true,
+        "multiEnvironment": true,
+        "anomalyDetection": true,
+        "correlationEngine": true,
+        "exportData": true,
+        "customDashboards": true,
+        "customAlerts": true,
+        "customFilters": true,
+        "advancedSearch": true,
+        "savedQueries": true,
+        "metricsExplorer": true,
+        "logsExplorer": true,
+        "tracesExplorer": true,
+        "alertsManager": true,
+        "dashboardSharing": true,
+        "realtimeUpdates": true,
+        "languageSupport": ["pt-BR", "en-US", "es-ES", "pt-AO"],
+        "machineLearningSuggestions": true,
+        "serviceMapVisualization": true,
+        "pdfExport": true,
+        "scheduledReports": true,
+        "mobileFriendly": true
+      },
+      "featureFlags": {
+        "aiSuggestions": true,
+        "metricCorrelation": true,
+        "naturalLanguageQuery": true,
+        "autoAnomalyDetection": true,
+        "newMetricsExplorer": true,
+        "unifiedSearch": true,
+        "betaFeatures": false
+      },
+      "permissions": {
+        "admin": [
+          "read:*", 
+          "write:*", 
+          "delete:*", 
+          "manage:*"
+        ],
+        "tenant-admin": [
+          "read:*", 
+          "write:tenant", 
+          "delete:tenant", 
+          "manage:tenant"
+        ],
+        "editor": [
+          "read:*", 
+          "write:dashboards", 
+          "write:alerts"
+        ],
+        "viewer": [
+          "read:dashboards", 
+          "read:metrics", 
+          "read:logs", 
+          "read:traces", 
+          "read:alerts"
+        ]
+      }
+    }
+  prometheus.url: "http://prometheus-operated:9090"
+  elasticsearch.url: "https://elasticsearch-master:9200"
+  loki.url: "http://loki-gateway:3100"
+  grafana.url: "http://grafana:3000"
+  kibana.url: "http://kibana-kibana:5601"
+  jaeger.url: "http://jaeger-query:16686"
+  redis.host: "redis-master"
+  redis.port: "6379"

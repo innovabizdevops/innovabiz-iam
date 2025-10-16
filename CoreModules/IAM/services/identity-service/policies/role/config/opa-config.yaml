@@ -1,0 +1,156 @@
+# Configuração do Servidor OPA para RoleService - INNOVABIZ Platform
+# Conformidade: ISO/IEC 27001:2022, TOGAF 10.0, COBIT 2019, NIST SP 800-53, PCI DSS v4.0
+# Data: 2025-08-05
+
+# Metadados da Configuração
+metadata:
+  name: innovabiz-iam-role-policies
+  version: 1.0.0
+  tenant_isolation: true
+  documentation: "https://docs.innovabiz.com/iam/policies"
+  tags:
+    - IAM
+    - RoleService
+    - Authorization
+    - Multitenancy
+    - RBAC
+    - Angola
+
+# Configurações do Servidor
+server:
+  # Configurações de rede
+  addr: ":8181"
+  diagnostic_addr: ":8282"
+
+  # Configurações TLS
+  cert_file: "/etc/opa/certs/server.crt"
+  key_file: "/etc/opa/certs/server.key"
+  ca_file: "/etc/opa/certs/ca.crt"
+
+  # Autenticação mTLS para clientes
+  authentication:
+    token:
+      authorized_keys: "/etc/opa/keys/token_keys.json"
+    client_certs:
+      trusted_ca_certs: "/etc/opa/certs/client_ca.crt"
+
+  # Configurações de logs
+  log:
+    level: "info"
+    format: "json"
+
+  # Limites de recursos
+  max_delay_seconds: 2
+  min_delay_seconds: 0.2
+  polling_min_delay_seconds: 60
+  polling_max_delay_seconds: 120
+
+# Configurações de persistência
+persistence_directory: "/etc/opa/data"
+
+# Gerenciamento de bundles (políticas)
+bundles:
+  innovabiz/iam/role:
+    service: bundle_service
+    resource: bundles/iam-role-policies.tar.gz
+    persist: true
+    polling:
+      min_delay_seconds: 60
+      max_delay_seconds: 120
+    signing:
+      keyid: global.innovabiz.security
+      scope: innovabiz/iam/role
+
+# Serviços externos
+services:
+  bundle_service:
+    url: "https://config.innovabiz.com/opa"
+    credentials:
+      bearer:
+        token_path: "/etc/opa/tokens/bundle_service_token"
+    headers:
+      X-Platform-Version: "1.0.0"
+      X-Service-Name: "iam-role-service"
+
+  status_service:
+    url: "https://status.innovabiz.com/opa"
+    credentials:
+      bearer:
+        token_path: "/etc/opa/tokens/status_service_token"
+
+  decision_log_service:
+    url: "https://logs.innovabiz.com/opa/logs"
+    credentials:
+      bearer:
+        token_path: "/etc/opa/tokens/decision_log_service_token"
+
+# Logs de decisão para auditoria
+decision_logs:
+  console: false
+  service: decision_log_service
+  reporting:
+    min_delay_seconds: 30
+    max_delay_seconds: 60
+    batch_size_limit_bytes: 1048576
+    upload_size_limit_bytes: 10485760
+  mask_decision: false
+  ignore_decision: []
+
+# Configuração de relatórios de status
+status:
+  service: status_service
+  partition_name: "iam-role-policies"
+
+# Distribuição de carga
+discovery:
+  name: innovabiz/iam/role
+  resource: /bundles/discovery.tar.gz
+  service: bundle_service
+  decision: discovery/config
+
+# Métricas do Prometheus
+prometheus:
+  addr: ":9182"
+
+# Configurações específicas para multitenancy
+config:
+  tenant_isolation:
+    enabled: true
+    header_name: "X-Tenant-ID"
+    default_tenant: "00000000-0000-0000-0000-000000000000"
+  
+  strict_security:
+    enabled: true
+    default_deny: true
+    require_authentication: true
+    require_explicit_permissions: true
+
+  role_settings:
+    max_hierarchy_depth: 5
+    protected_roles:
+      - "SUPER_ADMIN"
+      - "TENANT_ADMIN"
+      - "IAM_ADMIN"
+      - "SYSTEM_ROLE"
+    critical_permissions:
+      - "role:create"
+      - "role:delete"
+      - "role:assign_permission"
+      - "role:revoke_permission"
+      - "role:manage_hierarchy"
+      - "role:assign_to_user"
+
+  compliance:
+    standards:
+      - "ISO/IEC 27001:2022"
+      - "TOGAF 10.0"
+      - "COBIT 2019"
+      - "NIST SP 800-53"
+      - "PCI DSS v4.0"
+      - "GDPR"
+      - "APD Angola"
+      - "BNA"
+      - "Basel III"
+    auditing:
+      record_all_decisions: true
+      record_denial_reason: true

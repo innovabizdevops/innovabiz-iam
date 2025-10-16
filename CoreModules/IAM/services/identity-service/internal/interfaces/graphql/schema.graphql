@@ -1,0 +1,540 @@
+"""
+INNOVABIZ IAM - Identity Service GraphQL Schema
+Copyright (c) 2025 INNOVABIZ
+
+Este schema GraphQL segue os padrões da arquitetura de integração total
+da plataforma INNOVABIZ, permitindo consultas e mutações relacionadas
+ao gerenciamento de identidade e acesso.
+"""
+
+scalar DateTime
+scalar UUID
+scalar JSON
+scalar Upload
+
+"""
+Tipo de provedor de autenticação suportado
+"""
+enum AuthProvider {
+  LOCAL
+  GOOGLE
+  MICROSOFT
+  FACEBOOK
+  APPLE
+  TWITTER
+  GITHUB
+  LINKEDIN
+  OKTA_SAML
+  AZURE_AD
+  CUSTOM_OIDC
+  CUSTOM_SAML
+}
+
+"""
+Método de autenticação multi-fator
+"""
+enum MFAMethod {
+  NONE
+  TOTP
+  SMS
+  EMAIL
+  FIDO2
+  WEBAUTHN
+  PUSH_NOTIFICATION
+  RECOVERY_CODES
+}
+
+"""
+Status do usuário no sistema
+"""
+enum UserStatus {
+  ACTIVE
+  LOCKED
+  SUSPENDED
+  DISABLED
+  PENDING
+}
+
+"""
+Informações de contato do usuário
+"""
+type Contact {
+  id: UUID!
+  userId: UUID!
+  type: String!
+  value: String!
+  verified: Boolean!
+  isDefault: Boolean!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+"""
+Endereço associado ao usuário
+"""
+type Address {
+  id: UUID!
+  userId: UUID!
+  type: String!
+  street: String!
+  number: String!
+  complement: String
+  district: String!
+  city: String!
+  state: String!
+  country: String!
+  postalCode: String!
+  isDefault: Boolean!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+"""
+Configurações de autenticação multi-fator
+"""
+type MFASettings {
+  enabled: Boolean!
+  defaultMethod: MFAMethod!
+  methods: [MFAMethod!]!
+  phoneNumber: String
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+"""
+Informações básicas do usuário
+"""
+type User {
+  id: UUID!
+  tenantId: UUID!
+  username: String!
+  email: String!
+  emailVerified: Boolean!
+  firstName: String!
+  lastName: String!
+  displayName: String!
+  phoneNumber: String
+  phoneVerified: Boolean!
+  profilePictureUrl: String
+  locale: String
+  timezone: String
+  metadata: JSON
+  status: UserStatus!
+  loginCount: Int!
+  lastLoginAt: DateTime
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  deletedAt: DateTime
+  
+  # Relacionamentos
+  mfa: MFASettings
+  addresses: [Address!]
+  contacts: [Contact!]
+  roles: [Role!]
+}
+
+"""
+Função/Papel do usuário no sistema
+"""
+type Role {
+  id: UUID!
+  tenantId: UUID!
+  name: String!
+  description: String
+  isSystem: Boolean!
+  permissions: [Permission!]!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+"""
+Permissão específica no sistema
+"""
+type Permission {
+  id: UUID!
+  tenantId: UUID!
+  resource: String!
+  action: String!
+  description: String
+  isSystem: Boolean!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+"""
+Informações de sessão ativa do usuário
+"""
+type Session {
+  id: UUID!
+  userId: UUID!
+  tenantId: UUID!
+  expiresAt: DateTime!
+  refreshExpiresAt: DateTime!
+  ipAddress: String!
+  userAgent: String!
+  deviceInfo: String
+  location: String
+  lastActivity: DateTime!
+  createdAt: DateTime!
+}
+
+"""
+Resposta para autenticação bem-sucedida
+"""
+type AuthResponse {
+  accessToken: String!
+  tokenType: String!
+  expiresIn: Int!
+  refreshToken: String!
+  scope: String!
+  mfaRequired: Boolean!
+  mfaToken: String
+  issuedAt: DateTime!
+  expiresAt: DateTime!
+  user: User
+}
+
+"""
+Resposta para verificação de token
+"""
+type TokenVerificationResponse {
+  valid: Boolean!
+  userId: UUID
+  tenantId: UUID
+  permissions: [String!]
+  roles: [String!]
+  scopes: [String!]
+  metadata: JSON
+  expiresAt: DateTime
+  issuedAt: DateTime
+}
+
+"""
+Input para login
+"""
+input LoginInput {
+  tenantId: UUID!
+  username: String
+  password: String
+  provider: AuthProvider!
+  providerToken: String
+  ipAddress: String!
+  userAgent: String!
+  deviceInfo: String
+  location: String
+}
+
+"""
+Input para verificação MFA
+"""
+input MFAVerifyInput {
+  mfaToken: String!
+  method: MFAMethod!
+  code: String!
+}
+
+"""
+Input para refresh token
+"""
+input RefreshTokenInput {
+  refreshToken: String!
+  ipAddress: String!
+  userAgent: String!
+}
+
+"""
+Input para criação de usuário
+"""
+input CreateUserInput {
+  tenantId: UUID!
+  username: String!
+  email: String!
+  password: String
+  firstName: String!
+  lastName: String!
+  phoneNumber: String
+  profilePictureUrl: String
+  locale: String
+  timezone: String
+  metadata: JSON
+  provider: AuthProvider
+  providerUserId: String
+}
+
+"""
+Input para atualização de usuário
+"""
+input UpdateUserInput {
+  id: UUID!
+  tenantId: UUID!
+  email: String
+  firstName: String
+  lastName: String
+  phoneNumber: String
+  profilePictureUrl: String
+  locale: String
+  timezone: String
+  metadata: JSON
+}
+
+"""
+Input para alteração de senha
+"""
+input ChangePasswordInput {
+  userId: UUID!
+  tenantId: UUID!
+  currentPassword: String!
+  newPassword: String!
+}
+
+"""
+Input para redefinição de senha
+"""
+input ResetPasswordInput {
+  email: String!
+  tenantId: UUID!
+}
+
+"""
+Input para completar redefinição de senha
+"""
+input CompleteResetPasswordInput {
+  token: String!
+  newPassword: String!
+}
+
+"""
+Input para atualização de configurações MFA
+"""
+input UpdateMFAInput {
+  userId: UUID!
+  tenantId: UUID!
+  enabled: Boolean!
+  method: MFAMethod!
+}
+
+"""
+Input para adição de endereço
+"""
+input AddressInput {
+  userId: UUID!
+  type: String!
+  street: String!
+  number: String!
+  complement: String
+  district: String!
+  city: String!
+  state: String!
+  country: String!
+  postalCode: String!
+  isDefault: Boolean!
+}
+
+"""
+Input para adição de contato
+"""
+input ContactInput {
+  userId: UUID!
+  type: String!
+  value: String!
+  isDefault: Boolean!
+}
+
+"""
+Filtro para listagem de usuários
+"""
+input UserFilter {
+  status: [UserStatus!]
+  emailVerified: Boolean
+  phoneVerified: Boolean
+  searchTerm: String
+  sortBy: String
+  sortOrder: String
+  offset: Int
+  limit: Int
+}
+
+"""
+Resultado paginado para listagem de usuários
+"""
+type UserPaginatedResult {
+  items: [User!]!
+  total: Int!
+  offset: Int!
+  limit: Int!
+}
+
+"""
+Queries disponíveis no módulo IAM
+"""
+type Query {
+  """
+  Obtém usuário por ID
+  """
+  getUserById(tenantId: UUID!, userId: UUID!): User
+  
+  """
+  Obtém usuário pelo token de acesso atual
+  """
+  me: User
+  
+  """
+  Lista usuários com filtros e paginação
+  """
+  listUsers(tenantId: UUID!, filter: UserFilter!): UserPaginatedResult!
+  
+  """
+  Verifica informações de um token
+  """
+  verifyToken(token: String!, resource: String, action: String, scopes: [String!]): TokenVerificationResponse!
+  
+  """
+  Lista sessões ativas de um usuário
+  """
+  listSessions(tenantId: UUID!, userId: UUID!): [Session!]!
+  
+  """
+  Lista funções/papéis disponíveis
+  """
+  listRoles(tenantId: UUID!): [Role!]!
+  
+  """
+  Lista permissões disponíveis
+  """
+  listPermissions(tenantId: UUID!, resource: String): [Permission!]!
+}
+
+"""
+Mutações disponíveis no módulo IAM
+"""
+type Mutation {
+  """
+  Autentica um usuário
+  """
+  login(input: LoginInput!): AuthResponse!
+  
+  """
+  Verifica código MFA após login inicial
+  """
+  verifyMFA(input: MFAVerifyInput!): AuthResponse!
+  
+  """
+  Renova tokens usando refresh token
+  """
+  refreshToken(input: RefreshTokenInput!): AuthResponse!
+  
+  """
+  Encerra uma sessão
+  """
+  logout(token: String!, allSessions: Boolean): Boolean!
+  
+  """
+  Cria novo usuário
+  """
+  createUser(input: CreateUserInput!): User!
+  
+  """
+  Atualiza um usuário existente
+  """
+  updateUser(input: UpdateUserInput!): User!
+  
+  """
+  Altera a senha de um usuário
+  """
+  changePassword(input: ChangePasswordInput!): Boolean!
+  
+  """
+  Solicita redefinição de senha
+  """
+  requestPasswordReset(input: ResetPasswordInput!): Boolean!
+  
+  """
+  Completa a redefinição de senha
+  """
+  completePasswordReset(input: CompleteResetPasswordInput!): Boolean!
+  
+  """
+  Atualiza configurações MFA
+  """
+  updateMFASettings(input: UpdateMFAInput!): MFASettings!
+  
+  """
+  Gera códigos de backup para MFA
+  """
+  generateMFABackupCodes(userId: UUID!, tenantId: UUID!): [String!]!
+  
+  """
+  Adiciona endereço a um usuário
+  """
+  addAddress(input: AddressInput!): Address!
+  
+  """
+  Atualiza um endereço existente
+  """
+  updateAddress(id: UUID!, input: AddressInput!): Address!
+  
+  """
+  Remove um endereço
+  """
+  deleteAddress(id: UUID!, userId: UUID!, tenantId: UUID!): Boolean!
+  
+  """
+  Adiciona contato a um usuário
+  """
+  addContact(input: ContactInput!): Contact!
+  
+  """
+  Atualiza um contato existente
+  """
+  updateContact(id: UUID!, input: ContactInput!): Contact!
+  
+  """
+  Remove um contato
+  """
+  deleteContact(id: UUID!, userId: UUID!, tenantId: UUID!): Boolean!
+  
+  """
+  Ativa um usuário
+  """
+  activateUser(userId: UUID!, tenantId: UUID!): Boolean!
+  
+  """
+  Desativa um usuário
+  """
+  deactivateUser(userId: UUID!, tenantId: UUID!): Boolean!
+  
+  """
+  Bloqueia um usuário
+  """
+  lockUser(userId: UUID!, tenantId: UUID!): Boolean!
+  
+  """
+  Desbloqueia um usuário
+  """
+  unlockUser(userId: UUID!, tenantId: UUID!): Boolean!
+  
+  """
+  Atribui uma função a um usuário
+  """
+  assignRoleToUser(userId: UUID!, tenantId: UUID!, roleId: UUID!): Boolean!
+  
+  """
+  Remove uma função de um usuário
+  """
+  removeRoleFromUser(userId: UUID!, tenantId: UUID!, roleId: UUID!): Boolean!
+}
+
+"""
+Subscrições para eventos em tempo real
+"""
+type Subscription {
+  """
+  Notifica alterações no status de um usuário
+  """
+  userStatusChanged(tenantId: UUID!): User!
+  
+  """
+  Notifica novas sessões de login
+  """
+  newLoginSession(userId: UUID!, tenantId: UUID!): Session!
+}

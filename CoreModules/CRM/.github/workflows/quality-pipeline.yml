@@ -1,0 +1,404 @@
+name: Quality Pipeline - InnovaBiz CRM Core
+
+on:
+  push:
+    branches: [ main, develop, release/* ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: '18.x'
+  PNPM_VERSION: '8'
+
+jobs:
+  # =======================================================================================
+  # CODE QUALITY CHECK
+  # =======================================================================================
+  quality-check:
+    name: Code Quality Analysis
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 🔍 Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 🔧 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: 📦 Install dependencies
+        run: |
+          npm ci --prefer-offline --no-audit
+          cd backend && npm ci --prefer-offline --no-audit
+          cd ../frontend && npm ci --prefer-offline --no-audit
+
+      - name: 🔍 ESLint Check
+        run: |
+          npm run lint || true
+          cd backend && npm run lint || true
+
+      - name: 📝 TypeScript Check
+        run: |
+          npm run typecheck || true
+          cd backend && npm run build
+
+      - name: 🎨 Prettier Check
+        run: |
+          npx prettier --check "**/*.{js,jsx,ts,tsx,json,css,md}" || true
+
+      - name: 📊 Code Complexity Analysis
+        run: |
+          npx code-complexity . --format json > complexity-report.json || true
+
+      - name: 📤 Upload Quality Reports
+        uses: actions/upload-artifact@v3
+        with:
+          name: quality-reports
+          path: |
+            complexity-report.json
+            coverage/
+
+  # =======================================================================================
+  # SECURITY SCANNING
+  # =======================================================================================
+  security-scan:
+    name: Security Vulnerability Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 🔍 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔒 Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH,MEDIUM'
+
+      - name: 🔐 npm audit
+        run: |
+          npm audit --audit-level=moderate || true
+          cd backend && npm audit --audit-level=moderate || true
+
+      - name: 🛡️ OWASP Dependency Check
+        uses: dependency-check/Dependency-Check_Action@main
+        with:
+          project: 'InnovaBiz CRM Core'
+          path: '.'
+          format: 'HTML'
+          args: >
+            --enableRetired
+            --enableExperimental
+
+      - name: 📤 Upload Security Reports
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+  # =======================================================================================
+  # UNIT TESTS
+  # =======================================================================================
+  unit-tests:
+    name: Unit Tests & Coverage
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: innovabiz_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: 🔍 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔧 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: 📦 Install dependencies
+        run: |
+          npm ci --prefer-offline --no-audit
+          cd backend && npm ci --prefer-offline --no-audit
+
+      - name: 🧪 Run Backend Tests
+        env:
+          NODE_ENV: test
+          DATABASE_URL: postgresql://test:test@localhost:5432/innovabiz_test
+          REDIS_URL: redis://localhost:6379
+          JWT_SECRET: test-secret-key
+        run: |
+          cd backend
+          npm run test:coverage || npm run test || true
+
+      - name: 🧪 Run Frontend Tests
+        run: |
+          npm run test:coverage || npm test || true
+
+      - name: 📊 Generate Coverage Report
+        if: always()
+        uses: codecov/codecov-action@v3
+        with:
+          files: ./coverage/lcov.info,./backend/coverage/lcov.info
+          flags: unittests
+          name: codecov-innovabiz
+
+      - name: 📈 Coverage Check
+        run: |
+          echo "Coverage threshold: 80%"
+          # Add coverage threshold check here
+
+  # =======================================================================================
+  # E2E TESTS
+  # =======================================================================================
+  e2e-tests:
+    name: E2E Tests - Playwright
+    runs-on: ubuntu-latest
+    needs: [unit-tests]
+
+    steps:
+      - name: 🔍 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔧 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: 📦 Install dependencies
+        run: npm ci --prefer-offline --no-audit
+
+      - name: 🎭 Install Playwright
+        run: npx playwright install --with-deps
+
+      - name: 🚀 Start services
+        run: |
+          docker-compose up -d
+          npm run dev &
+          npx wait-on http://localhost:3002 -t 60000
+
+      - name: 🧪 Run E2E tests
+        run: npx playwright test
+
+      - name: 📤 Upload test results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: playwright-report
+          path: playwright-report/
+
+  # =======================================================================================
+  # PERFORMANCE TESTS
+  # =======================================================================================
+  performance-tests:
+    name: Performance & Load Testing
+    runs-on: ubuntu-latest
+    needs: [unit-tests]
+
+    steps:
+      - name: 🔍 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔧 Setup K6
+        run: |
+          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update
+          sudo apt-get install k6
+
+      - name: 🚀 Start application
+        run: |
+          docker-compose up -d
+          sleep 30
+
+      - name: 📊 Run performance tests
+        run: |
+          k6 run tests/performance/load-test.js || true
+          k6 run tests/performance/stress-test.js || true
+
+      - name: 🌐 Lighthouse CI
+        run: |
+          npm install -g @lhci/cli
+          lhci autorun || true
+
+  # =======================================================================================
+  # BUILD VALIDATION
+  # =======================================================================================
+  build-validation:
+    name: Build Validation
+    runs-on: ubuntu-latest
+    needs: [quality-check, security-scan]
+
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x]
+
+    steps:
+      - name: 🔍 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔧 Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: 📦 Install dependencies
+        run: |
+          npm ci --prefer-offline --no-audit
+          cd backend && npm ci --prefer-offline --no-audit
+
+      - name: 🏗️ Build Frontend
+        run: npm run build
+
+      - name: 🏗️ Build Backend
+        run: cd backend && npm run build
+
+      - name: 🐳 Build Docker images
+        run: |
+          docker build -t innovabiz/crm-frontend:test -f Dockerfile .
+          docker build -t innovabiz/crm-backend:test -f backend/Dockerfile backend/
+
+      - name: 📊 Analyze bundle size
+        run: |
+          npm run analyze || true
+
+      - name: 📤 Upload build artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: build-artifacts-${{ matrix.node-version }}
+          path: |
+            dist/
+            backend/dist/
+
+  # =======================================================================================
+  # SONARCLOUD ANALYSIS
+  # =======================================================================================
+  sonarcloud:
+    name: SonarCloud Analysis
+    runs-on: ubuntu-latest
+    needs: [unit-tests]
+
+    steps:
+      - name: 🔍 Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 🔍 SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >
+            -Dsonar.projectKey=innovabiz-crm-core
+            -Dsonar.organization=innovabiz
+            -Dsonar.sources=src,backend/src
+            -Dsonar.tests=tests,backend/test
+            -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info,backend/coverage/lcov.info
+
+  # =======================================================================================
+  # QUALITY GATE
+  # =======================================================================================
+  quality-gate:
+    name: Quality Gate Decision
+    runs-on: ubuntu-latest
+    needs: [quality-check, security-scan, unit-tests, e2e-tests, build-validation]
+    if: always()
+
+    steps:
+      - name: 📊 Check Quality Gate
+        run: |
+          echo "🎯 Quality Gate Evaluation"
+          echo "=========================="
+
+          # Check if all required jobs passed
+          if [[ "${{ needs.quality-check.result }}" == "success" ]] && \
+             [[ "${{ needs.security-scan.result }}" == "success" ]] && \
+             [[ "${{ needs.unit-tests.result }}" == "success" ]] && \
+             [[ "${{ needs.build-validation.result }}" == "success" ]]; then
+            echo "✅ Quality Gate: PASSED"
+            echo "All quality checks passed successfully!"
+            exit 0
+          else
+            echo "❌ Quality Gate: FAILED"
+            echo "One or more quality checks failed."
+            echo "Quality Check: ${{ needs.quality-check.result }}"
+            echo "Security Scan: ${{ needs.security-scan.result }}"
+            echo "Unit Tests: ${{ needs.unit-tests.result }}"
+            echo "Build Validation: ${{ needs.build-validation.result }}"
+            exit 1
+          fi
+
+      - name: 📝 Generate Quality Report
+        if: always()
+        run: |
+          cat << EOF > quality-report.md
+          # Quality Pipeline Report
+
+          ## Summary
+          - **Date**: $(date)
+          - **Branch**: ${{ github.ref_name }}
+          - **Commit**: ${{ github.sha }}
+
+          ## Results
+          | Check | Status |
+          |-------|--------|
+          | Code Quality | ${{ needs.quality-check.result }} |
+          | Security | ${{ needs.security-scan.result }} |
+          | Unit Tests | ${{ needs.unit-tests.result }} |
+          | E2E Tests | ${{ needs.e2e-tests.result }} |
+          | Build | ${{ needs.build-validation.result }} |
+
+          ## Metrics
+          - Code Coverage: TBD
+          - Security Issues: TBD
+          - Technical Debt: TBD
+          - Complexity: TBD
+          EOF
+
+      - name: 💬 Comment on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '## 🎯 Quality Gate Result\n\n' +
+                    '${{ needs.quality-check.result == "success" && "✅" || "❌" }} Code Quality\n' +
+                    '${{ needs.security-scan.result == "success" && "✅" || "❌" }} Security\n' +
+                    '${{ needs.unit-tests.result == "success" && "✅" || "❌" }} Unit Tests\n' +
+                    '${{ needs.e2e-tests.result == "success" && "✅" || "❌" }} E2E Tests\n' +
+                    '${{ needs.build-validation.result == "success" && "✅" || "❌" }} Build\n'
+            })

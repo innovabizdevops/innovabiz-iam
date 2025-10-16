@@ -1,0 +1,29 @@
+{
+  "user": {
+    "id": "00000000-0000-0000-0000-000000000001",
+    "tenant_id": "10000000-0000-0000-0000-000000000001",
+    "username": "super.admin",
+    "roles": ["SUPER_ADMIN"],
+    "permissions": ["*:*"]
+  },
+  "resource": {
+    "tenant_id": "10000000-0000-0000-0000-000000000001",
+    "data": {
+      "name": "NEW_SYSTEM_ROLE",
+      "description": "New System Role",
+      "type": "SYSTEM",
+      "status": "ACTIVE"
+    }
+  },
+  "method": "POST",
+  "context": {
+    "requests_per_minute": 5,
+    "geo": {
+      "country": "AO",
+      "region": "Luanda"
+    },
+    "timestamp": "2025-08-05T10:15:00Z",
+    "client_ip": "192.168.1.100",
+    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+  }
+}

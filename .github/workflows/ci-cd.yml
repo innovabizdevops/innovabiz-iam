@@ -1,0 +1,179 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Cache Gradle packages
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Build with Gradle
+        run: ./gradlew build
+
+  test:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Run tests
+        run: ./gradlew test
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-results
+          path: build/test-results/
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Run SonarQube
+        uses: SonarSource/sonarqube-scan-action@master
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run Snyk
+        uses: snyk/actions/node@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+
+  deploy:
+    needs: [build, test, security]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push IAM images
+        uses: docker/build-push-action@v3
+        with:
+          context: infrastructure/iam
+          push: true
+          tags: innovabiz/iam-${{ github.sha }}
+
+      - name: Build and push KrakenD images
+        uses: docker/build-push-action@v3
+        with:
+          context: infrastructure/krakend
+          push: true
+          tags: innovabiz/krakend-${{ github.sha }}
+
+      - name: Deploy to Docker Compose
+        run: |
+          docker-compose -f docker-compose.yml -f docker-compose-devops.yml up -d
+
+  monitor:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up monitoring
+        uses: prometheus-community/prometheus-operator@v1
+        with:
+          namespace: monitoring
+          grafana_admin_password: ${{ secrets.GRAFANA_PASSWORD }}
+
+      - name: Configure alerts
+        run: |
+          kubectl apply -f monitoring/alerts.yaml
+          kubectl apply -f monitoring/rules.yaml
+
+      - name: Configure IAM monitoring
+        run: |
+          kubectl apply -f monitoring/iam-alerts.yaml
+          kubectl apply -f monitoring/iam-rules.yaml
+
+      - name: Configure KrakenD monitoring
+        run: |
+          kubectl apply -f monitoring/krakend-alerts.yaml
+          kubectl apply -f monitoring/krakend-rules.yaml
+
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Build documentation
+        run: |
+          cd docs
+          make html
+
+      - name: Deploy documentation
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: docs/_build/html
+
+  iam:
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Configure IAM
+        run: |
+          docker-compose -f docker-compose.yml exec iam-auth-server /app/bin/configure-iam.sh
+
+      - name: Configure Multi-Region
+        run: |
+          docker-compose -f docker-compose.yml exec iam-auth-server /app/bin/configure-region.sh ${REGION:-eu}
+
+      - name: Configure Multi-Tenant
+        run: |
+          docker-compose -f docker-compose.yml exec iam-auth-server /app/bin/configure-tenant.sh
+
+  krakend:
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Configure KrakenD
+        run: |
+          docker-compose -f docker-compose.yml exec krakend /bin/configure-krakend.sh
+
+      - name: Configure MCP Integration
+        run: |
+          docker-compose -f docker-compose.yml exec krakend-integration-handler /bin/configure-mcp.sh
+
+      - name: Configure GraphQL
+        run: |
+          docker-compose -f docker-compose.yml exec graphql-federation /bin/configure-graphql.sh

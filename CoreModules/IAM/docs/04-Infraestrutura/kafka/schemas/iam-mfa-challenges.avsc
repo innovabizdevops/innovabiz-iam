@@ -1,0 +1,302 @@
+{
+  "type": "record",
+  "name": "MfaChallengeEvent",
+  "namespace": "io.innovabiz.iam.events",
+  "doc": "Esquema para eventos relacionados a desafios de autenticação multifator no módulo IAM",
+  "fields": [
+    {
+      "name": "event_id",
+      "type": "string",
+      "doc": "Identificador único do evento, formato UUID"
+    },
+    {
+      "name": "challenge_id",
+      "type": "string",
+      "doc": "Identificador único do desafio MFA"
+    },
+    {
+      "name": "event_type",
+      "type": {
+        "type": "enum",
+        "name": "MfaChallengeEventType",
+        "symbols": [
+          "CHALLENGE_ISSUED",
+          "CHALLENGE_VERIFIED",
+          "CHALLENGE_FAILED",
+          "CHALLENGE_EXPIRED",
+          "CHALLENGE_RESENT",
+          "CHALLENGE_CANCELLED"
+        ]
+      },
+      "doc": "Tipo do evento de desafio MFA"
+    },
+    {
+      "name": "tenant_id",
+      "type": "string",
+      "doc": "Identificador do inquilino (tenant)"
+    },
+    {
+      "name": "user_id",
+      "type": "string",
+      "doc": "Identificador do usuário associado ao desafio"
+    },
+    {
+      "name": "method_code",
+      "type": "string",
+      "doc": "Código do método de autenticação MFA (ex: K05 para OTP)"
+    },
+    {
+      "name": "method_category",
+      "type": {
+        "type": "enum",
+        "name": "MethodCategory",
+        "symbols": [
+          "POSSE",
+          "CONHECIMENTO",
+          "INERENCIA",
+          "COMPORTAMENTO",
+          "CONTEXTO"
+        ]
+      },
+      "doc": "Categoria do método de autenticação"
+    },
+    {
+      "name": "timestamp",
+      "type": "long",
+      "logicalType": "timestamp-millis",
+      "doc": "Timestamp da ocorrência do evento (UTC)"
+    },
+    {
+      "name": "expiry",
+      "type": "long",
+      "logicalType": "timestamp-millis",
+      "doc": "Timestamp de expiração do desafio (UTC)"
+    },
+    {
+      "name": "delivery_channel",
+      "type": ["null", {
+        "type": "enum",
+        "name": "DeliveryChannel",
+        "symbols": [
+          "EMAIL",
+          "SMS",
+          "PUSH_NOTIFICATION",
+          "WHATSAPP",
+          "AUTHENTICATOR_APP",
+          "HARDWARE_TOKEN",
+          "VOICE_CALL",
+          "BIOMETRICS",
+          "NONE"
+        ]
+      }],
+      "default": null,
+      "doc": "Canal utilizado para entrega do desafio"
+    },
+    {
+      "name": "delivery_destination",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "Destino da entrega, mascarado (ex: m***@e***.com)"
+    },
+    {
+      "name": "verification_attempts",
+      "type": ["null", "int"],
+      "default": null,
+      "doc": "Número de tentativas de verificação realizadas"
+    },
+    {
+      "name": "status",
+      "type": {
+        "type": "enum",
+        "name": "ChallengeStatus",
+        "symbols": [
+          "PENDING",
+          "VERIFIED",
+          "FAILED",
+          "EXPIRED",
+          "CANCELLED"
+        ]
+      },
+      "doc": "Status atual do desafio MFA"
+    },
+    {
+      "name": "client_info",
+      "type": {
+        "type": "record",
+        "name": "ClientInfo",
+        "fields": [
+          {
+            "name": "ip_address",
+            "type": ["string", "null"],
+            "doc": "Endereço IP de origem, mascarado em regiões com GDPR/LGPD"
+          },
+          {
+            "name": "user_agent",
+            "type": ["string", "null"],
+            "doc": "User-Agent do cliente"
+          },
+          {
+            "name": "device_id",
+            "type": ["string", "null"],
+            "doc": "Identificador do dispositivo, se disponível"
+          },
+          {
+            "name": "location",
+            "type": ["string", "null"],
+            "doc": "Localização geográfica aproximada baseada no IP"
+          }
+        ]
+      },
+      "doc": "Informações sobre o cliente que realizou a operação"
+    },
+    {
+      "name": "challenge_metadata",
+      "type": {
+        "type": "record",
+        "name": "ChallengeMetadata",
+        "fields": [
+          {
+            "name": "code_length",
+            "type": ["null", "int"],
+            "default": null,
+            "doc": "Comprimento do código, se aplicável"
+          },
+          {
+            "name": "code_type",
+            "type": ["null", {
+              "type": "enum",
+              "name": "CodeType",
+              "symbols": [
+                "NUMERIC",
+                "ALPHANUMERIC",
+                "ALPHABETIC",
+                "PATTERN",
+                "BINARY"
+              ]
+            }],
+            "default": null,
+            "doc": "Tipo do código, se aplicável"
+          },
+          {
+            "name": "max_attempts",
+            "type": ["null", "int"],
+            "default": null,
+            "doc": "Número máximo de tentativas permitidas"
+          },
+          {
+            "name": "validity_seconds",
+            "type": ["null", "int"],
+            "default": null,
+            "doc": "Tempo de validade em segundos"
+          },
+          {
+            "name": "adaptive_context",
+            "type": ["null", {
+              "type": "map",
+              "values": ["null", "string", "int", "boolean"]
+            }],
+            "default": null,
+            "doc": "Contexto de autenticação adaptativa, se aplicável"
+          }
+        ]
+      },
+      "doc": "Metadados do desafio MFA"
+    },
+    {
+      "name": "error_info",
+      "type": ["null", {
+        "type": "record",
+        "name": "ErrorInfo",
+        "fields": [
+          {
+            "name": "error_code",
+            "type": "string",
+            "doc": "Código de erro padronizado"
+          },
+          {
+            "name": "error_message",
+            "type": "string",
+            "doc": "Mensagem descritiva do erro"
+          },
+          {
+            "name": "error_details",
+            "type": ["string", "null"],
+            "doc": "Detalhes técnicos do erro, para debugging"
+          }
+        ]
+      }],
+      "default": null,
+      "doc": "Informações de erro, se aplicável"
+    },
+    {
+      "name": "flow_id",
+      "type": ["string", "null"],
+      "doc": "Identificador do fluxo de autenticação"
+    },
+    {
+      "name": "region_code",
+      "type": "string",
+      "doc": "Código da região (EU, BR, AO, US)"
+    },
+    {
+      "name": "correlation_id",
+      "type": "string",
+      "doc": "Identificador de correlação para rastreabilidade"
+    },
+    {
+      "name": "additional_context",
+      "type": {
+        "type": "map",
+        "values": ["null", "string", "int", "boolean"]
+      },
+      "default": {},
+      "doc": "Dados contextuais adicionais específicos do evento"
+    },
+    {
+      "name": "regional_compliance",
+      "type": ["null", {
+        "type": "record",
+        "name": "RegionalCompliance",
+        "fields": [
+          {
+            "name": "data_protection_framework",
+            "type": ["null", {
+              "type": "enum",
+              "name": "DataProtectionFramework",
+              "symbols": [
+                "GDPR",
+                "LGPD",
+                "PNDSB",
+                "HIPAA",
+                "CCPA",
+                "NONE"
+              ]
+            }],
+            "default": null,
+            "doc": "Framework de proteção de dados aplicável"
+          },
+          {
+            "name": "data_processing_consent",
+            "type": ["null", "boolean"],
+            "default": null,
+            "doc": "Indica se há consentimento explícito para processamento de dados"
+          },
+          {
+            "name": "data_minimization_applied",
+            "type": ["null", "boolean"],
+            "default": null,
+            "doc": "Indica se técnicas de minimização de dados foram aplicadas"
+          },
+          {
+            "name": "data_residency_policy",
+            "type": ["null", "string"],
+            "default": null,
+            "doc": "Política de residência de dados aplicada"
+          }
+        ]
+      }],
+      "default": null,
+      "doc": "Informações de compliance regional"
+    }
+  ]
+}

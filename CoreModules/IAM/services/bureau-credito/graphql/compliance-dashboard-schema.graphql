@@ -1,0 +1,183 @@
+"""
+Schema GraphQL para Dashboard de Conformidade Multi-Regulatória
+Este esquema define os tipos de dados e queries necessários para o dashboard
+de conformidade do módulo Bureau de Créditos.
+"""
+
+"""
+Estatísticas gerais de conformidade
+"""
+type ComplianceOverallStats {
+  totalOperations: Int!
+  compliantOperations: Int!
+  nonCompliantOperations: Int!
+  complianceRate: Float!
+  blockedOperations: Int!
+  restrictedOperations: Int!
+}
+
+"""
+Estatísticas específicas para uma regulamentação
+"""
+type RegulationStats {
+  applicableOperations: Int!
+  compliantOperations: Int!
+  nonCompliantOperations: Int!
+  complianceRate: Float!
+}
+
+"""
+Distribuição de operações por nível de risco
+"""
+type RiskDistribution {
+  highRiskOperations: Int!
+  mediumRiskOperations: Int!
+  lowRiskOperations: Int!
+}
+
+"""
+Problema comum de conformidade identificado
+"""
+type ComplianceIssue {
+  issueType: String!
+  regulation: String!
+  occurrences: Int!
+  severity: ComplianceSeverity!
+}
+
+"""
+Dados de tendência de conformidade
+"""
+type ComplianceTrend {
+  timeframe: String!
+  complianceRate: Float!
+  operationCount: Int!
+}
+
+"""
+Dados agregados para o dashboard de conformidade
+"""
+type ComplianceDashboard {
+  tenantId: String!
+  timestamp: Float!
+  overallStats: ComplianceOverallStats!
+  regulationStats: RegulationStatsList!
+  riskDistribution: RiskDistribution!
+  topIssues: [ComplianceIssue!]!
+  trendsData: [ComplianceTrend!]!
+}
+
+"""
+Lista de estatísticas de regulamentação indexada por nome da regulamentação
+"""
+type RegulationStatsList {
+  gdpr: RegulationStats
+  lgpd: RegulationStats
+  popia: RegulationStats
+  ccpa: RegulationStats
+  hipaa: RegulationStats
+}
+
+"""
+Detalhes de uma única validação específica
+"""
+type ValidationDetail {
+  regulation: String!
+  validationType: String!
+  valid: Boolean!
+  severity: ComplianceSeverity!
+  details: String
+  errors: [String!]
+  warnings: [String!]
+}
+
+"""
+Registro completo de uma validação de conformidade
+"""
+type ValidationRecord {
+  validationId: ID!
+  tenantId: String!
+  userId: String!
+  timestamp: Float!
+  operationId: String!
+  operationType: String!
+  dataSubjectCountry: String!
+  dataProcessingCountry: String!
+  applicableRegulations: [String!]!
+  overallCompliant: Boolean!
+  processingAllowed: Boolean!
+  processingRestrictions: [String!]
+  validationDetails: [ValidationDetail!]!
+}
+
+"""
+Resultado paginado de registros de validação
+"""
+type ValidationRecordsResult {
+  validations: [ValidationRecord!]!
+  totalCount: Int!
+  hasMoreResults: Boolean!
+}
+
+"""
+Dados específicos para uma regulamentação
+"""
+type RegulationComplianceData {
+  regulation: String!
+  stats: RegulationStats!
+  topIssues: [ComplianceIssue!]!
+}
+
+"""
+Nível de severidade para problemas de conformidade
+"""
+enum ComplianceSeverity {
+  high
+  medium
+  low
+}
+
+"""
+Queries disponíveis para o dashboard de conformidade
+"""
+type Query {
+  """
+  Obter dados agregados do dashboard de conformidade
+  """
+  complianceDashboard(
+    tenantId: String!
+    timeframeHours: Int = 24
+    includeDetails: Boolean = false
+  ): ComplianceDashboard!
+  
+  """
+  Obter registros detalhados de validações
+  """
+  validationDetails(
+    tenantId: String!
+    timeframeHours: Int = 24
+    regulationFilter: String
+    compliantOnly: Boolean = false
+    nonCompliantOnly: Boolean = false
+    severityFilter: ComplianceSeverity
+    limit: Int = 50
+    offset: Int = 0
+  ): ValidationRecordsResult!
+  
+  """
+  Obter dados de conformidade para uma regulamentação específica
+  """
+  regulationCompliance(
+    tenantId: String!
+    regulation: String!
+    timeframeHours: Int = 24
+  ): RegulationComplianceData!
+  
+  """
+  Obter dados de tendência de conformidade
+  """
+  complianceTrends(
+    tenantId: String!
+    timeframeHours: Int = 168
+  ): [ComplianceTrend!]!
+}

@@ -1,0 +1,259 @@
+"""
+INNOVABIZ IAM - Esquema GraphQL Principal
+Copyright (c) 2025 INNOVABIZ
+
+Definição do esquema GraphQL para o módulo Core IAM, com foco no gerenciamento
+avançado de grupos, seguindo a arquitetura multi-dimensional, multi-tenant e
+com observabilidade total da plataforma INNOVABIZ.
+
+Compliance:
+- ISO/IEC 27001:2022 (A.5.15 - Controle de acesso)
+- PCI DSS v4.0 (Requisito 7.2.4 - Gestão de grupos)
+- LGPD/GDPR/PDPA (Controle de acesso)
+- BNA Instrução 7/2021 (Segurança cibernética)
+- SOX (Rastreabilidade e auditoria)
+- NIST CSF (PR.AC-4: Gerenciamento de identidades)
+"""
+
+# Diretivas personalizadas
+directive @auth(roles: [String!]) on FIELD_DEFINITION
+directive @validateInput on FIELD_DEFINITION
+
+# Scalars personalizados
+scalar DateTime
+scalar JSONObject
+
+# Enums
+enum GroupStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  DELETED
+}
+
+enum SortDirection {
+  ASC
+  DESC
+}
+
+# Tipos principais
+type Group {
+  id: ID!
+  code: String!
+  name: String!
+  description: String
+  tenantId: ID!
+  parentGroupId: ID
+  parentGroup: Group
+  path: String!
+  level: Int!
+  status: GroupStatus!
+  attributes: JSONObject
+  metadata: JSONObject
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  createdBy: ID!
+  updatedBy: ID!
+  userCount: Int!
+  childGroupsCount: Int!
+}
+
+type User {
+  id: ID!
+  username: String!
+  email: String!
+  firstName: String!
+  lastName: String!
+  tenantId: ID!
+  status: String!
+  attributes: JSONObject
+  metadata: JSONObject
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+# Tipos para paginação
+type PageInfo {
+  totalCount: Int!
+  hasNextPage: Boolean!
+  hasPreviousPage: Boolean!
+}
+
+# Tipos para resultados paginados
+type GroupListResult {
+  items: [Group!]!
+  pageInfo: PageInfo!
+}
+
+type UserListResult {
+  items: [User!]!
+  pageInfo: PageInfo!
+}
+
+# Tipos para estatísticas
+type GroupStatistics {
+  totalGroups: Int!
+  activeGroups: Int!
+  inactiveGroups: Int!
+  suspendedGroups: Int!
+  deletedGroups: Int!
+  rootGroups: Int!
+  maxNestingLevel: Int!
+  averageMembersPerGroup: Float!
+  largestGroupId: ID
+  largestGroupName: String
+  largestGroupSize: Int!
+  groupsByLevel: JSONObject!
+  tenantId: ID!
+}
+
+# Tipos para filtros
+input GroupFilter {
+  ids: [ID!]
+  codes: [String!]
+  names: [String!]
+  parentGroupId: ID
+  status: [GroupStatus!]
+  createdAfter: DateTime
+  createdBefore: DateTime
+  updatedAfter: DateTime
+  updatedBefore: DateTime
+}
+
+input UserFilter {
+  ids: [ID!]
+  usernames: [String!]
+  emails: [String!]
+  status: [String!]
+}
+
+# Tipos para inputs de criação e atualização
+input CreateGroupInput {
+  code: String!
+  name: String!
+  description: String
+  tenantId: ID!
+  parentGroupId: ID
+  attributes: JSONObject
+  metadata: JSONObject
+}
+
+input UpdateGroupInput {
+  id: ID!
+  code: String
+  name: String
+  description: String
+  tenantId: ID!
+  parentGroupId: ID
+  attributes: JSONObject
+  metadata: JSONObject
+}
+
+input ChangeGroupStatusInput {
+  id: ID!
+  tenantId: ID!
+  status: GroupStatus!
+}
+
+input AddUserToGroupInput {
+  groupId: ID!
+  userId: ID!
+  tenantId: ID!
+}
+
+input RemoveUserFromGroupInput {
+  groupId: ID!
+  userId: ID!
+  tenantId: ID!
+}
+
+# Queries
+type Query {
+  # Queries para Grupos
+  getGroupByID(id: ID!, tenantId: ID!): Group @auth(roles: ["READER", "ADMIN"])
+  
+  getGroupByCode(code: String!, tenantId: ID!): Group @auth(roles: ["READER", "ADMIN"])
+  
+  listGroups(
+    tenantId: ID!
+    page: Int! = 1
+    pageSize: Int! = 10
+    filter: GroupFilter
+    sortField: String
+    sortDirection: SortDirection
+  ): GroupListResult! @auth(roles: ["READER", "ADMIN"])
+  
+  # Queries para Hierarquia e Membros de Grupos
+  getGroupHierarchy(
+    groupId: ID!
+    tenantId: ID!
+    maxDepth: Int
+  ): [Group!]! @auth(roles: ["READER", "ADMIN"])
+  
+  listGroupMembers(
+    groupId: ID!
+    tenantId: ID!
+    page: Int! = 1
+    pageSize: Int! = 10
+    filter: UserFilter
+    sortField: String
+    sortDirection: SortDirection
+  ): UserListResult! @auth(roles: ["READER", "ADMIN"])
+  
+  listUserGroups(
+    userId: ID!
+    tenantId: ID!
+    includeInheritedGroups: Boolean = false
+    page: Int! = 1
+    pageSize: Int! = 10
+    filter: GroupFilter
+    sortField: String
+    sortDirection: SortDirection
+  ): GroupListResult! @auth(roles: ["READER", "ADMIN"])
+  
+  # Queries para Estatísticas e Verificações de Grupos
+  getGroupStatistics(
+    tenantId: ID!
+    groupId: ID
+  ): GroupStatistics! @auth(roles: ["READER", "ADMIN"])
+  
+  checkGroupCircularReference(
+    groupId: ID!
+    parentGroupID: ID!
+    tenantId: ID!
+  ): Boolean! @auth(roles: ["READER", "ADMIN"])
+}
+
+# Mutations
+type Mutation {
+  # Mutations para CRUD de Grupos
+  createGroup(input: CreateGroupInput!): Group! 
+    @auth(roles: ["ADMIN"]) 
+    @validateInput
+  
+  updateGroup(input: UpdateGroupInput!): Group! 
+    @auth(roles: ["ADMIN"]) 
+    @validateInput
+  
+  changeGroupStatus(input: ChangeGroupStatusInput!): Group! 
+    @auth(roles: ["ADMIN"]) 
+    @validateInput
+  
+  deleteGroup(id: ID!, tenantId: ID!): Boolean! 
+    @auth(roles: ["ADMIN"])
+  
+  # Mutations para Gerenciamento de Membros de Grupos
+  addUserToGroup(input: AddUserToGroupInput!): Group! 
+    @auth(roles: ["ADMIN"]) 
+    @validateInput
+  
+  removeUserFromGroup(input: RemoveUserFromGroupInput!): Group! 
+    @auth(roles: ["ADMIN"]) 
+    @validateInput
+}
+
+# Schema root
+schema {
+  query: Query
+  mutation: Mutation
+}

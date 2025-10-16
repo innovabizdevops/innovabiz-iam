@@ -1,0 +1,210 @@
+{
+  "plugin_id": "pin-auth",
+  "version": "1.0.0",
+  "display_name": {
+    "pt-BR": "Autenticação por PIN",
+    "en": "PIN Authentication"
+  },
+  "description": {
+    "pt-BR": "Fornece autenticação baseada em PIN numérico para a plataforma INNOVABIZ, com suporte a políticas regionais e setoriais.",
+    "en": "Provides numeric PIN-based authentication for the INNOVABIZ platform, with support for regional and sector-specific policies."
+  },
+  "author": "INNOVABIZ",
+  "type": "authentication",
+  "category": "knowledge",
+  "authentication_factor": "knowledge",
+  "auth_method_code": "K02",
+  "capabilities": {
+    "authentication": true,
+    "verification": true,
+    "enrollment": true,
+    "recovery": true,
+    "mfa": true
+  },
+  "priority": 20,
+  "requires_user_interaction": true,
+  "self_service": true,
+  "admin_configurable": true,
+  "config_schema": {
+    "type": "object",
+    "required": ["pin_length", "pin_lifetime_days", "max_attempts"],
+    "properties": {
+      "pin_length": {
+        "type": "integer",
+        "minimum": 4,
+        "maximum": 12,
+        "default": 6,
+        "description": {
+          "pt-BR": "Comprimento do PIN (entre 4 e 12 dígitos)",
+          "en": "PIN length (between 4 and 12 digits)"
+        }
+      },
+      "pin_lifetime_days": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 365,
+        "default": 90,
+        "description": {
+          "pt-BR": "Tempo de validade do PIN em dias",
+          "en": "PIN lifetime in days"
+        }
+      },
+      "allow_pin_reset": {
+        "type": "boolean",
+        "default": true,
+        "description": {
+          "pt-BR": "Permitir que o usuário redefina seu PIN",
+          "en": "Allow users to reset their PIN"
+        }
+      },
+      "enforce_pin_history": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 24,
+        "default": 3,
+        "description": {
+          "pt-BR": "Número de PINs antigos que não podem ser reutilizados",
+          "en": "Number of previous PINs that cannot be reused"
+        }
+      },
+      "max_attempts": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 20,
+        "default": 5,
+        "description": {
+          "pt-BR": "Número máximo de tentativas antes do bloqueio",
+          "en": "Maximum number of attempts before lockout"
+        }
+      },
+      "lockout_duration_minutes": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 1440,
+        "default": 30,
+        "description": {
+          "pt-BR": "Duração do bloqueio em minutos após exceder as tentativas",
+          "en": "Lockout duration in minutes after exceeding attempts"
+        }
+      },
+      "prevent_sequential": {
+        "type": "boolean",
+        "default": true,
+        "description": {
+          "pt-BR": "Impedir PINs sequenciais (ex: 1234, 9876)",
+          "en": "Prevent sequential PINs (e.g. 1234, 9876)"
+        }
+      },
+      "prevent_repetitive": {
+        "type": "boolean",
+        "default": true,
+        "description": {
+          "pt-BR": "Impedir PINs repetitivos (ex: 1111, 9999)",
+          "en": "Prevent repetitive PINs (e.g. 1111, 9999)"
+        }
+      },
+      "prevent_common": {
+        "type": "boolean",
+        "default": true,
+        "description": {
+          "pt-BR": "Impedir PINs comuns (ex: 123456, 111111)",
+          "en": "Prevent common PINs (e.g. 123456, 111111)"
+        }
+      },
+      "prevent_personal_info": {
+        "type": "boolean",
+        "default": true,
+        "description": {
+          "pt-BR": "Impedir PINs baseados em informações pessoais (data de nascimento, etc.)",
+          "en": "Prevent PINs based on personal information (birth date, etc.)"
+        }
+      },
+      "require_notification": {
+        "type": "boolean",
+        "default": true,
+        "description": {
+          "pt-BR": "Enviar notificação ao usuário quando o PIN for alterado",
+          "en": "Send notification to user when PIN is changed"
+        }
+      }
+    }
+  },
+  "compatibility": {
+    "platforms": ["web", "mobile", "tv", "kiosk", "atm"],
+    "browsers": ["all"],
+    "regions": ["EU", "BR", "AO", "US"],
+    "industries": ["banking", "retail", "healthcare", "insurance", "telecom", "government", "utilities"]
+  },
+  "compliance": {
+    "EU": {
+      "standards": ["GDPR", "eIDAS", "PSD2"],
+      "suitable_for": ["all"]
+    },
+    "BR": {
+      "standards": ["LGPD", "Resolução BC 4.474/2016"],
+      "suitable_for": ["all"]
+    },
+    "AO": {
+      "standards": ["PNDSB", "Lei 22/11"],
+      "suitable_for": ["all"]
+    },
+    "US": {
+      "standards": ["NIST 800-63B", "FFIEC"],
+      "suitable_for": ["all"]
+    }
+  },
+  "default_configs": {
+    "general": {
+      "pin_length": 6,
+      "pin_lifetime_days": 90,
+      "allow_pin_reset": true,
+      "enforce_pin_history": 3,
+      "max_attempts": 5,
+      "lockout_duration_minutes": 30,
+      "prevent_sequential": true,
+      "prevent_repetitive": true,
+      "prevent_common": true,
+      "prevent_personal_info": true,
+      "require_notification": true
+    },
+    "finance": {
+      "pin_length": 6,
+      "pin_lifetime_days": 60,
+      "allow_pin_reset": true,
+      "enforce_pin_history": 5,
+      "max_attempts": 3,
+      "lockout_duration_minutes": 60,
+      "prevent_sequential": true,
+      "prevent_repetitive": true,
+      "prevent_common": true,
+      "prevent_personal_info": true,
+      "require_notification": true
+    },
+    "healthcare": {
+      "pin_length": 6,
+      "pin_lifetime_days": 60,
+      "allow_pin_reset": true,
+      "enforce_pin_history": 4,
+      "max_attempts": 4,
+      "lockout_duration_minutes": 45,
+      "prevent_sequential": true,
+      "prevent_repetitive": true,
+      "prevent_common": true,
+      "prevent_personal_info": true,
+      "require_notification": true
+    },
+    "government": {
+      "pin_length": 8,
+      "pin_lifetime_days": 30,
+      "allow_pin_reset": true,
+      "enforce_pin_history": 8,
+      "max_attempts": 3,
+      "lockout_duration_minutes": 60,
+      "prevent_sequential": true,
+      "prevent_repetitive": true,
+      "prevent_common": true,
+      "prevent_personal_info": true,
+      "require_notification": true
+    }
+  }
+}

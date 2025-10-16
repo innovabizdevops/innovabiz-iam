@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="{{ language }}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>INNOVABIZ IAM Compliance Certificate</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap');
+        
+        body {
+            font-family: 'Roboto', sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f9f9f9;
+            color: #333;
+        }
+        
+        .certificate-container {
+            max-width: 800px;
+            margin: 40px auto;
+            background-color: #fff;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        
+        .certificate-header {
+            background: linear-gradient(135deg, #0056b3 0%, #0080ff 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+            position: relative;
+        }
+        
+        .certificate-header h1 {
+            margin: 0;
+            font-size: 32px;
+            font-weight: 700;
+        }
+        
+        .certificate-header h2 {
+            margin: 10px 0 0;
+            font-size: 18px;
+            font-weight: 400;
+            opacity: 0.9;
+        }
+        
+        .certificate-logo {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            width: 100px;
+            height: auto;
+        }
+        
+        .certificate-body {
+            padding: 40px;
+            position: relative;
+        }
+        
+        .watermark {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) rotate(-45deg);
+            font-size: 120px;
+            opacity: 0.03;
+            pointer-events: none;
+            color: #000;
+            font-weight: 700;
+            white-space: nowrap;
+        }
+        
+        .certificate-section {
+            margin-bottom: 30px;
+        }
+        
+        .certificate-section h3 {
+            color: #0056b3;
+            margin-bottom: 15px;
+            font-size: 20px;
+            border-bottom: 1px solid #e0e0e0;
+            padding-bottom: 10px;
+        }
+        
+        .certificate-section p {
+            margin: 10px 0;
+            font-size: 16px;
+            line-height: 1.6;
+        }
+        
+        .certificate-data {
+            display: flex;
+            flex-wrap: wrap;
+        }
+        
+        .data-item {
+            width: 50%;
+            margin-bottom: 20px;
+        }
+        
+        .data-item .label {
+            font-weight: 500;
+            color: #666;
+            font-size: 14px;
+            display: block;
+            margin-bottom: 5px;
+        }
+        
+        .data-item .value {
+            font-weight: 500;
+            font-size: 16px;
+            color: #333;
+        }
+        
+        .frameworks-list {
+            margin: 0;
+            padding: 0;
+            list-style: none;
+        }
+        
+        .frameworks-list li {
+            margin-bottom: 10px;
+            padding-left: 25px;
+            position: relative;
+        }
+        
+        .frameworks-list li:before {
+            content: "✓";
+            position: absolute;
+            left: 0;
+            color: #28a745;
+            font-weight: bold;
+        }
+        
+        .verification-section {
+            background-color: #f5f5f5;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 30px;
+        }
+        
+        .verification-section h3 {
+            margin-top: 0;
+            border-bottom-color: #ccc;
+        }
+        
+        .verification-code {
+            font-family: monospace;
+            background-color: #eee;
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 14px;
+            word-break: break-all;
+            margin-top: 10px;
+        }
+        
+        .certificate-footer {
+            text-align: center;
+            padding: 30px;
+            border-top: 1px solid #e0e0e0;
+            color: #666;
+            font-size: 14px;
+        }
+        
+        .digital-signature {
+            margin-top: 40px;
+            text-align: center;
+        }
+        
+        .signature-label {
+            display: block;
+            margin-bottom: 10px;
+            color: #666;
+        }
+        
+        .signature-value {
+            font-family: 'Courier New', monospace;
+            word-break: break-all;
+            background-color: #f5f5f5;
+            padding: 15px;
+            border-radius: 5px;
+            font-size: 14px;
+            max-width: 100%;
+            overflow: hidden;
+        }
+        
+        @media print {
+            body {
+                background-color: white;
+            }
+            
+            .certificate-container {
+                box-shadow: none;
+                margin: 0;
+                max-width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="validation-table-container">
+        <table class="validation-table">
+            <div class="certificate-header">
+                <img src="data:image/svg+xml;base64,{{ logo_base64 }}" alt="INNOVABIZ Logo" class="certificate-logo">
+                <h1>{{ certificate_title }}</h1>
+                <h2>{{ certificate_subtitle }}</h2>
+            </div>
+            
+            <div class="certificate-body">
+                <div class="watermark">INNOVABIZ</div>
+                
+                <div class="certificate-data">
+                    <div class="data-item">
+                        <span class="label">{{ total_validations_label }}</span>
+                        <span class="value">{{ total_validations }}</span>
+                    </div>
+                    <div class="data-item">
+                        <span class="label">{{ passed_validations_label }}</span>
+                        <span class="value">{{ passed_validations }}</span>
+                    </div>
+                    <div class="data-item">
+                        <span class="label">{{ compliance_score_label }}</span>
+                        <span class="value">{{ compliance_score }}%</span>
+                    </div>
+                    <div class="data-item">
+                        <span class="label">{{ overall_status_label }}</span>
+                        <span class="value" style="color: {% if overall_status == 'PASSED' %}#28a745{% else %}#dc3545{% endif %};">
+                            {{ overall_status }}
+                        </span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="verification-section">
+                <h3>{{ verification_label }}</h3>
+                <p>{{ verification_instructions }}</p>
+                <div class="verification-code">{{ verification_hash }}</div>
+            </div>
+            
+            <div class="digital-signature">
+                <span class="signature-label">{{ signature_label }}</span>
+                <div class="signature-value">{{ digital_signature }}</div>
+            </div>
+        </div>
+        
+        <div class="certificate-footer">
+            <p>{{ footer_text }}</p>
+            <p>© {{ current_year }} INNOVABIZ. {{ all_rights_reserved }}</p>
+        </div>
+    </div>
+</body>
+</html>

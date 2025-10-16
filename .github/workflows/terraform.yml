@@ -1,0 +1,39 @@
+name: Terraform CI/CD
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        environment: [development, homologation, quality, production, sandbox]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.3.0
+
+      - name: Terraform Init
+        run: terraform -chdir=infrastructure/environments/${{ matrix.environment }} init
+
+      - name: Terraform Validate
+        run: terraform -chdir=infrastructure/environments/${{ matrix.environment }} validate
+
+      - name: Terraform Plan
+        run: terraform -chdir=infrastructure/environments/${{ matrix.environment }} plan -out=tfplan
+
+      - name: Terraform Apply
+        if: github.ref == 'refs/heads/main'
+        run: terraform -chdir=infrastructure/environments/${{ matrix.environment }} apply -auto-approve tfplan
+
+      - name: Healthcheck Pós-Deploy
+        shell: pwsh
+        run: |
+          powershell -ExecutionPolicy Bypass -File scripts/healthcheck.ps1

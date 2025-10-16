@@ -1,0 +1,30 @@
+{
+  "user": {
+    "id": "00000000-0000-0000-0000-000000000002",
+    "tenant_id": "20000000-0000-0000-0000-000000000001",
+    "username": "tenant.admin",
+    "roles": ["TENANT_ADMIN"],
+    "permissions": ["tenant:manage", "role:*", "role:assign_permission"]
+  },
+  "resource": {
+    "tenant_id": "20000000-0000-0000-0000-000000000001",
+    "role_id": "20000000-0000-0000-0000-000000000002",
+    "permission_id": "00000000-0000-0000-0000-000000000001"
+  },
+  "method": "POST",
+  "context": {
+    "requests_per_minute": 2,
+    "geo": {
+      "country": "AO",
+      "region": "Luanda"
+    },
+    "timestamp": "2025-08-05T14:25:00Z",
+    "client_ip": "192.168.1.120",
+    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+    "request_id": "a8e5fb42-1c4a-4b56-98d3-3c9d2a81f601",
+    "audit": {
+      "transaction_id": "tx-20250805-142500-9873",
+      "source_ip": "192.168.1.120"
+    }
+  }
+}

@@ -1,0 +1,357 @@
+"""
+Esquema GraphQL para serviço de escalonamento adaptativo.
+
+Autor: Eduardo Jeremias
+Projeto: INNOVABIZ IAM/TrustGuard
+Data: 20/08/2025
+"""
+
+# Tipos comuns
+scalar DateTime
+scalar JSON
+
+# Enums
+enum ScalingDirection {
+  UP
+  DOWN
+  NEUTRAL
+}
+
+enum SecurityDimension {
+  AUTHENTICATION
+  AUTHORIZATION
+  DATA_ACCESS
+  TRANSACTION
+  API
+  SESSION
+  DEVICE
+}
+
+enum TriggerType {
+  TRUST_SCORE
+  RISK_SIGNAL
+  USER_BEHAVIOR
+  ADMIN_ACTION
+  SCHEDULED
+  EXTERNAL_EVENT
+  COMPLIANCE
+}
+
+# Inputs para consultas
+
+input SecurityProfileFilterInput {
+  userId: ID
+  tenantId: ID
+  contextId: ID
+  regionCode: String
+  includeExpired: Boolean
+  fromDate: DateTime
+  toDate: DateTime
+}
+
+input ScalingEventFilterInput {
+  userId: ID
+  tenantId: ID
+  contextId: ID
+  regionCode: String
+  triggerId: ID
+  policyId: ID
+  direction: ScalingDirection
+  dimension: SecurityDimension
+  includeRevoked: Boolean
+  includeExpired: Boolean
+  fromDate: DateTime
+  toDate: DateTime
+}
+
+input ScalingTriggerFilterInput {
+  tenantId: ID
+  contextId: ID
+  regionCode: String
+  type: TriggerType
+  includeDisabled: Boolean
+}
+
+input ScalingPolicyFilterInput {
+  tenantId: ID
+  contextId: ID
+  regionCode: String
+  includeDisabled: Boolean
+}
+
+input PaginationInput {
+  offset: Int
+  limit: Int
+}
+
+# Inputs para mutations
+
+input SecurityAdjustmentInput {
+  userId: ID!
+  dimensions: [SecurityDimension!]!
+  direction: ScalingDirection!
+  magnitude: Int!
+  reason: String!
+  expiresInMinutes: Int
+  metadata: JSON
+  tenantId: ID
+  contextId: ID
+  regionCode: String
+}
+
+input ScalingTriggerInput {
+  id: ID
+  name: String!
+  description: String
+  enabled: Boolean
+  type: TriggerType!
+  conditions: JSON!
+  tenantId: ID
+  contextId: ID
+  regionCode: String
+  metadata: JSON
+}
+
+input ScalingPolicyInput {
+  id: ID
+  name: String!
+  description: String
+  enabled: Boolean
+  priority: Int!
+  triggerIds: [ID!]!
+  adjustmentMap: JSON!
+  tenantId: ID
+  contextId: ID
+  regionCode: String
+  metadata: JSON
+}
+
+# Tipos de resposta
+
+type SecurityLevel {
+  dimension: SecurityDimension!
+  level: Int!
+  baseline: Int!
+  delta: Int!
+  lastModified: DateTime!
+  metadata: JSON
+}
+
+type ScalingEvent {
+  id: ID!
+  userId: ID!
+  tenantId: ID
+  contextId: ID
+  regionCode: String
+  triggerId: ID
+  policyId: ID
+  dimension: SecurityDimension!
+  direction: ScalingDirection!
+  magnitude: Int!
+  reason: String!
+  eventTime: DateTime!
+  expiresAt: DateTime
+  revokedAt: DateTime
+  revokedBy: ID
+  revocationReason: String
+  metadata: JSON
+}
+
+type SecurityProfile {
+  userId: ID!
+  tenantId: ID
+  contextId: ID
+  regionCode: String
+  securityLevels: [SecurityLevel!]!
+  activeScalingEvents: [ScalingEvent!]!
+  recentScalingEvents: [ScalingEvent!]!
+  trustScore: Float
+  lastUpdated: DateTime!
+}
+
+type ScalingTrigger {
+  id: ID!
+  name: String!
+  description: String
+  enabled: Boolean!
+  type: TriggerType!
+  conditions: JSON!
+  tenantId: ID
+  contextId: ID
+  regionCode: String
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  metadata: JSON
+}
+
+type ScalingPolicy {
+  id: ID!
+  name: String!
+  description: String
+  enabled: Boolean!
+  priority: Int!
+  triggerIds: [ID!]!
+  adjustmentMap: JSON!
+  tenantId: ID
+  contextId: ID
+  regionCode: String
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  metadata: JSON
+}
+
+type AdaptiveScalingStatus {
+  uptime: Int!
+  activeEventsCount: Int!
+  activePoliciesCount: Int!
+  activeTriggersCount: Int!
+  cacheHealth: Float!
+  dbResponseTime: Int!
+  version: String!
+  lastRefreshTime: DateTime!
+}
+
+type PaginatedScalingEvents {
+  items: [ScalingEvent!]!
+  totalCount: Int!
+  hasMore: Boolean!
+}
+
+type PaginatedScalingTriggers {
+  items: [ScalingTrigger!]!
+  totalCount: Int!
+  hasMore: Boolean!
+}
+
+type PaginatedScalingPolicies {
+  items: [ScalingPolicy!]!
+  totalCount: Int!
+  hasMore: Boolean!
+}
+
+# Respostas para mutations
+
+type SecurityAdjustmentResult {
+  success: Boolean!
+  eventId: ID
+  userId: ID
+  error: String
+}
+
+type ScalingTriggerResult {
+  id: ID!
+  name: String!
+  enabled: Boolean!
+  type: TriggerType!
+  conditions: JSON!
+  tenantId: ID
+  contextId: ID
+  regionCode: String
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  metadata: JSON
+}
+
+type ScalingPolicyResult {
+  id: ID!
+  name: String!
+  enabled: Boolean!
+  priority: Int!
+  triggerIds: [ID!]!
+  adjustmentMap: JSON!
+  tenantId: ID
+  contextId: ID
+  regionCode: String
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  description: String
+  metadata: JSON
+}
+
+type TriggerStateResult {
+  success: Boolean!
+  triggerId: ID!
+  enabled: Boolean!
+  error: String
+}
+
+type PolicyStateResult {
+  success: Boolean!
+  policyId: ID!
+  enabled: Boolean!
+  error: String
+}
+
+type DeleteResult {
+  success: Boolean!
+  policyId: ID
+  triggerId: ID
+  eventId: ID
+  message: String
+  error: String
+}
+
+type RevokeEventResult {
+  success: Boolean!
+  eventId: ID!
+  userId: ID
+  tenantId: ID
+  error: String
+}
+
+# Consultas e Mutações
+
+type Query {
+  # Perfil de segurança do usuário com eventos ativos e recentes
+  userSecurityProfile(userId: ID!, tenantId: ID, contextId: ID): SecurityProfile!
+  
+  # Níveis de segurança atuais para um usuário por dimensão
+  currentSecurityLevel(userId: ID!, dimension: SecurityDimension): [SecurityLevel!]!
+  
+  # Lista de eventos de escalonamento com filtros e paginação
+  scalingEvents(filter: ScalingEventFilterInput, pagination: PaginationInput): PaginatedScalingEvents!
+  
+  # Obter evento de escalonamento específico por ID
+  scalingEventById(id: ID!): ScalingEvent
+  
+  # Lista de gatilhos de escalonamento com filtros e paginação
+  scalingTriggers(filter: ScalingTriggerFilterInput, pagination: PaginationInput): PaginatedScalingTriggers!
+  
+  # Obter gatilho específico por ID
+  scalingTriggerById(id: ID!): ScalingTrigger
+  
+  # Lista de políticas de escalonamento com filtros e paginação
+  scalingPolicies(filter: ScalingPolicyFilterInput, pagination: PaginationInput): PaginatedScalingPolicies!
+  
+  # Obter política específica por ID
+  scalingPolicyById(id: ID!): ScalingPolicy
+  
+  # Status do serviço de escalonamento adaptativo
+  adaptiveScalingStatus: AdaptiveScalingStatus!
+}
+
+type Mutation {
+  # Aplicar ajuste manual de segurança
+  applySecurityAdjustment(input: SecurityAdjustmentInput!): SecurityAdjustmentResult!
+  
+  # Criar ou atualizar gatilho de escalonamento
+  upsertScalingTrigger(input: ScalingTriggerInput!): ScalingTriggerResult!
+  
+  # Ativar ou desativar gatilho
+  setScalingTriggerEnabled(triggerId: ID!, enabled: Boolean!): TriggerStateResult!
+  
+  # Excluir gatilho
+  deleteScalingTrigger(triggerId: ID!): DeleteResult!
+  
+  # Criar ou atualizar política de escalonamento
+  upsertScalingPolicy(input: ScalingPolicyInput!): ScalingPolicyResult!
+  
+  # Ativar ou desativar política
+  setScalingPolicyEnabled(policyId: ID!, enabled: Boolean!): PolicyStateResult!
+  
+  # Excluir política
+  deleteScalingPolicy(policyId: ID!): DeleteResult!
+  
+  # Revogar evento de escalonamento
+  revokeScalingEvent(eventId: ID!, reason: String!): RevokeEventResult!
+}

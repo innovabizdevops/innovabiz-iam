@@ -1,0 +1,82 @@
+"""
+Schema GraphQL para o módulo TrustScore.
+
+Define as queries disponíveis para consulta de pontuações de confiança.
+
+Autor: Eduardo Jeremias
+Projeto: INNOVABIZ IAM/TrustGuard
+Data: 20/08/2025
+"""
+
+# Importação dos tipos definidos
+#import "./types.graphql"
+
+type Query {
+  """
+  Retorna o perfil de confiança completo de um usuário.
+  """
+  userTrustProfile(
+    userId: ID!
+    tenantId: ID!
+    contextId: ID
+  ): UserTrustProfile!
+
+  """
+  Retorna uma linha do tempo otimizada das pontuações de confiança de um usuário.
+  """
+  trustScoreTimeline(
+    userId: ID!
+    tenantId: ID!
+    days: Int = 30
+    contextId: ID
+    includeAnomalies: Boolean = true
+  ): TrustScoreTimeline!
+
+  """
+  Compara a pontuação de confiança de um usuário com a média regional.
+  """
+  regionalComparison(
+    userId: ID!
+    tenantId: ID!
+    regionCode: String!
+    contextId: ID
+  ): RegionalComparison!
+
+  """
+  Retorna detalhes avançados sobre anomalias detectadas para um usuário.
+  """
+  anomalyDetails(
+    userId: ID!
+    tenantId: ID!
+    days: Int = 90
+    anomalyTypes: [String!]
+    minSeverity: String
+    contextId: ID
+  ): AnomalyDetails!
+
+  """
+  Retorna estatísticas agregadas por tenant.
+  """
+  tenantStatistics(
+    tenantId: ID!
+    days: Int = 30
+    regionCode: String
+    contextId: ID
+  ): TenantStatistics!
+
+  """
+  Retorna resultados de pontuação de confiança paginados com opções de filtragem.
+  """
+  trustScoreResults(
+    userId: ID
+    tenantId: ID!
+    contextId: ID
+    regionCode: String
+    limit: Int = 10
+    offset: Int = 0
+    startDate: String
+    endDate: String
+    sortBy: String = "timestamp"
+    sortDirection: String = "desc"
+  ): TrustScoreResultConnection!
+}

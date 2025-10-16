@@ -1,0 +1,716 @@
+"""
+Schema GraphQL para o Microserviço de Identidade Multi-Contexto
+Parte do Módulo IAM do INNOVABIZ
+"""
+
+scalar DateTime
+scalar JSON
+scalar UUID
+scalar Decimal
+
+"""
+Tipo de chave primária utilizada para identificação
+"""
+enum PrimaryKeyType {
+  CPF
+  NATIONAL_ID
+  PASSPORT
+  DRIVING_LICENSE
+  TAX_ID
+  COMPANY_REGISTRY
+  EMAIL
+  PHONE
+  CUSTOM
+}
+
+"""
+Status possíveis para uma identidade
+"""
+enum IdentityStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  BLOCKED
+  PENDING_VERIFICATION
+}
+
+"""
+Níveis de confiabilidade para uma identidade
+"""
+enum TrustLevel {
+  BASIC
+  VERIFIED
+  ENHANCED
+  CERTIFIED
+  DELEGATED
+}
+
+"""
+Tipos de contexto disponíveis no sistema
+"""
+enum ContextType {
+  FINANCIAL
+  HEALTH
+  GOVERNMENT
+  EDUCATION
+  ECOMMERCE
+  MARKETPLACE
+  TELECOM
+  MOBILITY
+  REAL_ESTATE
+  INSURANCE
+  EMPLOYMENT
+  CUSTOM
+}
+
+"""
+Status possíveis para um contexto de identidade
+"""
+enum ContextStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  BLOCKED
+  PENDING_VERIFICATION
+}
+
+"""
+Níveis de verificação para contextos
+"""
+enum VerificationLevel {
+  BASIC
+  VERIFIED
+  ENHANCED
+  CERTIFIED
+  DELEGATED
+}
+
+"""
+Níveis de risco para contextos
+"""
+enum RiskLevel {
+  VERY_LOW
+  LOW
+  MEDIUM
+  HIGH
+  VERY_HIGH
+}
+
+"""
+Níveis de sensibilidade para atributos
+"""
+enum SensitivityLevel {
+  PUBLIC
+  NORMAL
+  SENSITIVE
+  HIGHLY_SENSITIVE
+  RESTRICTED
+}
+
+"""
+Status de verificação para atributos
+"""
+enum VerificationStatus {
+  UNVERIFIED
+  VERIFIED
+  REJECTED
+  EXPIRED
+  PENDING
+}
+
+"""
+Status de consentimento
+"""
+enum ConsentStatus {
+  ACTIVE
+  REVOKED
+  EXPIRED
+  PENDING
+}
+
+"""
+Métodos de consentimento
+"""
+enum ConsentMethod {
+  WEB_FORM
+  MOBILE_APP
+  API
+  VERBAL
+  WRITTEN
+  SMS
+  EMAIL
+  BIOMETRIC
+}
+
+"""
+Base legal para processamento de dados
+"""
+enum LegalBasis {
+  CONSENT
+  CONTRACT
+  LEGAL_OBLIGATION
+  VITAL_INTEREST
+  PUBLIC_TASK
+  LEGITIMATE_INTEREST
+}
+
+"""
+Nível de acesso a atributos
+"""
+enum AccessLevel {
+  READ
+  WRITE
+  READ_WRITE
+  DELEGATE
+}
+
+"""
+Tipo de mapeamento entre atributos
+"""
+enum MappingType {
+  DIRECT
+  TRANSFORM
+  CONDITIONAL
+  DERIVED
+}
+
+"""
+Identidade base no sistema multi-contexto
+"""
+type Identity {
+  identityId: UUID!
+  primaryKeyType: PrimaryKeyType!
+  primaryKeyValue: String!
+  masterPersonId: UUID
+  status: IdentityStatus!
+  trustLevel: TrustLevel!
+  contexts: [IdentityContext!]
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  metadata: JSON
+}
+
+"""
+Contexto específico de uma identidade
+"""
+type IdentityContext {
+  contextId: UUID!
+  identityId: UUID!
+  identity: Identity!
+  contextType: ContextType!
+  contextSubtype: String
+  contextStatus: ContextStatus!
+  trustScore: Decimal
+  verificationLevel: VerificationLevel
+  riskLevel: RiskLevel
+  regionCode: String
+  countryCode: String
+  legalFramework: String
+  issuer: String
+  expiresAt: DateTime
+  attributes: [ContextAttribute!]
+  consents: [ContextConsent!]
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  lastVerifiedAt: DateTime
+  metadata: JSON
+}
+
+"""
+Atributo específico de um contexto
+"""
+type ContextAttribute {
+  attributeId: UUID!
+  contextId: UUID!
+  context: IdentityContext!
+  attributeKey: String!
+  attributeValue: String
+  sensitivityLevel: SensitivityLevel!
+  verificationStatus: VerificationStatus!
+  verificationSource: String
+  verificationTimestamp: DateTime
+  expirationDate: DateTime
+  isRequired: Boolean!
+  isMutable: Boolean!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  verifiedBy: UUID
+  metadata: JSON
+}
+
+"""
+Mapeamento entre atributos de diferentes contextos
+"""
+type AttributeContextMapping {
+  mappingId: UUID!
+  sourceContextId: UUID!
+  sourceContext: IdentityContext!
+  targetContextId: UUID!
+  targetContext: IdentityContext!
+  sourceAttributeKey: String!
+  targetAttributeKey: String!
+  mappingType: MappingType!
+  transformationRule: String
+  isActive: Boolean!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  createdBy: UUID
+}
+
+"""
+Finalidade de consentimento
+"""
+type ConsentPurpose {
+  purposeId: UUID!
+  purposeCode: String!
+  purposeName: String!
+  purposeDescription: String!
+  contextType: ContextType!
+  legalBasis: LegalBasis!
+  riskLevel: RiskLevel!
+  requiresExplicitConsent: Boolean!
+  retentionPeriod: String
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  metadata: JSON
+}
+
+"""
+Consentimento contextual
+"""
+type ContextConsent {
+  consentId: UUID!
+  identityId: UUID!
+  identity: Identity!
+  contextId: UUID!
+  context: IdentityContext!
+  purposeId: UUID!
+  purpose: ConsentPurpose!
+  thirdPartyId: UUID
+  thirdPartyName: String
+  grantedAt: DateTime!
+  expiresAt: DateTime
+  lastConfirmedAt: DateTime
+  status: ConsentStatus!
+  consentProof: String
+  consentMethod: ConsentMethod!
+  ipAddress: String
+  userAgent: String
+  geolocation: String
+  revocationReason: String
+  revokedAt: DateTime
+  scopes: [ConsentScope!]
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  metadata: JSON
+}
+
+"""
+Escopo específico de um consentimento
+"""
+type ConsentScope {
+  scopeId: UUID!
+  consentId: UUID!
+  consent: ContextConsent!
+  attributeKey: String!
+  accessLevel: AccessLevel!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+"""
+Input para criar uma nova identidade
+"""
+input CreateIdentityInput {
+  primaryKeyType: PrimaryKeyType!
+  primaryKeyValue: String!
+  masterPersonId: UUID
+  status: IdentityStatus = ACTIVE
+  trustLevel: TrustLevel = BASIC
+  metadata: JSON
+}
+
+"""
+Input para atualizar uma identidade existente
+"""
+input UpdateIdentityInput {
+  identityId: UUID!
+  status: IdentityStatus
+  trustLevel: TrustLevel
+  masterPersonId: UUID
+  metadata: JSON
+}
+
+"""
+Input para criar um contexto de identidade
+"""
+input CreateIdentityContextInput {
+  identityId: UUID!
+  contextType: ContextType!
+  contextSubtype: String
+  contextStatus: ContextStatus = ACTIVE
+  trustScore: Decimal
+  verificationLevel: VerificationLevel = BASIC
+  riskLevel: RiskLevel = MEDIUM
+  regionCode: String
+  countryCode: String
+  legalFramework: String
+  issuer: String
+  expiresAt: DateTime
+  metadata: JSON
+}
+
+"""
+Input para atualizar um contexto de identidade
+"""
+input UpdateIdentityContextInput {
+  contextId: UUID!
+  contextStatus: ContextStatus
+  trustScore: Decimal
+  verificationLevel: VerificationLevel
+  riskLevel: RiskLevel
+  expiresAt: DateTime
+  lastVerifiedAt: DateTime
+  metadata: JSON
+}
+
+"""
+Input para criar um atributo de contexto
+"""
+input CreateContextAttributeInput {
+  contextId: UUID!
+  attributeKey: String!
+  attributeValue: String
+  sensitivityLevel: SensitivityLevel = NORMAL
+  verificationStatus: VerificationStatus = UNVERIFIED
+  verificationSource: String
+  verificationTimestamp: DateTime
+  expirationDate: DateTime
+  isRequired: Boolean = false
+  isMutable: Boolean = true
+  metadata: JSON
+}
+
+"""
+Input para atualizar um atributo de contexto
+"""
+input UpdateContextAttributeInput {
+  attributeId: UUID!
+  attributeValue: String
+  sensitivityLevel: SensitivityLevel
+  verificationStatus: VerificationStatus
+  verificationSource: String
+  verificationTimestamp: DateTime
+  expirationDate: DateTime
+  isRequired: Boolean
+  isMutable: Boolean
+  verifiedBy: UUID
+  metadata: JSON
+}
+
+"""
+Input para criar um mapeamento entre atributos
+"""
+input CreateAttributeMappingInput {
+  sourceContextId: UUID!
+  targetContextId: UUID!
+  sourceAttributeKey: String!
+  targetAttributeKey: String!
+  mappingType: MappingType = DIRECT
+  transformationRule: String
+  isActive: Boolean = true
+}
+
+"""
+Input para criar um consentimento contextual
+"""
+input CreateContextConsentInput {
+  identityId: UUID!
+  contextId: UUID!
+  purposeId: UUID!
+  thirdPartyId: UUID
+  thirdPartyName: String
+  expiresAt: DateTime
+  consentMethod: ConsentMethod!
+  ipAddress: String
+  userAgent: String
+  geolocation: String
+  scopes: [CreateConsentScopeInput!]!
+  metadata: JSON
+}
+
+"""
+Input para criar um escopo de consentimento
+"""
+input CreateConsentScopeInput {
+  attributeKey: String!
+  accessLevel: AccessLevel = READ
+}
+
+"""
+Input para revogar um consentimento
+"""
+input RevokeConsentInput {
+  consentId: UUID!
+  revocationReason: String!
+}
+
+"""
+Filtro para busca de identidades
+"""
+input IdentityFilterInput {
+  identityIds: [UUID!]
+  primaryKeyType: PrimaryKeyType
+  primaryKeyValue: String
+  status: IdentityStatus
+  trustLevel: TrustLevel
+  masterPersonId: UUID
+  createdAfter: DateTime
+  createdBefore: DateTime
+}
+
+"""
+Filtro para busca de contextos de identidade
+"""
+input ContextFilterInput {
+  contextIds: [UUID!]
+  identityIds: [UUID!]
+  contextType: ContextType
+  contextSubtype: String
+  contextStatus: ContextStatus
+  verificationLevel: VerificationLevel
+  riskLevel: RiskLevel
+  regionCode: String
+  countryCode: String
+  legalFramework: String
+  issuer: String
+  createdAfter: DateTime
+  createdBefore: DateTime
+}
+
+"""
+Filtro para busca de atributos de contexto
+"""
+input AttributeFilterInput {
+  attributeIds: [UUID!]
+  contextIds: [UUID!]
+  attributeKey: String
+  sensitivityLevel: SensitivityLevel
+  verificationStatus: VerificationStatus
+  createdAfter: DateTime
+  createdBefore: DateTime
+}
+
+"""
+Filtro para busca de consentimentos
+"""
+input ConsentFilterInput {
+  consentIds: [UUID!]
+  identityIds: [UUID!]
+  contextIds: [UUID!]
+  purposeIds: [UUID!]
+  thirdPartyIds: [UUID!]
+  status: ConsentStatus
+  createdAfter: DateTime
+  createdBefore: DateTime
+  expiresAfter: DateTime
+  expiresBefore: DateTime
+}
+
+"""
+Resposta padrão para operações
+"""
+type OperationResult {
+  success: Boolean!
+  message: String
+  code: String
+}
+
+"""
+Resultado de consulta paginada de identidades
+"""
+type IdentitiesResult {
+  items: [Identity!]!
+  totalCount: Int!
+  hasMore: Boolean!
+}
+
+"""
+Resultado de consulta paginada de contextos
+"""
+type ContextsResult {
+  items: [IdentityContext!]!
+  totalCount: Int!
+  hasMore: Boolean!
+}
+
+"""
+Resultado de consulta paginada de atributos
+"""
+type AttributesResult {
+  items: [ContextAttribute!]!
+  totalCount: Int!
+  hasMore: Boolean!
+}
+
+"""
+Resultado de consulta paginada de consentimentos
+"""
+type ConsentsResult {
+  items: [ContextConsent!]!
+  totalCount: Int!
+  hasMore: Boolean!
+}
+
+"""
+Resultado verificação de identidade multi-contexto
+"""
+type IdentityVerificationResult {
+  identityId: UUID!
+  verificationId: UUID!
+  verificationStatus: VerificationStatus!
+  trustScore: Decimal
+  verificationDetails: JSON
+  timestamp: DateTime!
+}
+
+"""
+Opções de paginação para consultas
+"""
+input PaginationInput {
+  page: Int = 1
+  pageSize: Int = 20
+}
+
+type Query {
+  """
+  Busca uma identidade pelo ID
+  """
+  identity(identityId: UUID!): Identity
+
+  """
+  Busca identidades com filtros
+  """
+  identities(filter: IdentityFilterInput, pagination: PaginationInput): IdentitiesResult!
+
+  """
+  Busca uma identidade pelo tipo e valor da chave primária
+  """
+  identityByPrimaryKey(type: PrimaryKeyType!, value: String!): Identity
+
+  """
+  Busca um contexto específico pelo ID
+  """
+  identityContext(contextId: UUID!): IdentityContext
+
+  """
+  Busca contextos com filtros
+  """
+  identityContexts(filter: ContextFilterInput, pagination: PaginationInput): ContextsResult!
+
+  """
+  Busca um atributo específico pelo ID
+  """
+  contextAttribute(attributeId: UUID!): ContextAttribute
+
+  """
+  Busca atributos com filtros
+  """
+  contextAttributes(filter: AttributeFilterInput, pagination: PaginationInput): AttributesResult!
+
+  """
+  Busca um consentimento específico pelo ID
+  """
+  contextConsent(consentId: UUID!): ContextConsent
+
+  """
+  Busca consentimentos com filtros
+  """
+  contextConsents(filter: ConsentFilterInput, pagination: PaginationInput): ConsentsResult!
+
+  """
+  Busca finalidades de consentimento por tipo de contexto
+  """
+  consentPurposes(contextType: ContextType!): [ConsentPurpose!]!
+
+  """
+  Verifica se uma identidade existe em um contexto específico
+  """
+  verifyIdentityInContext(primaryKeyType: PrimaryKeyType!, primaryKeyValue: String!, contextType: ContextType!): Boolean!
+
+  """
+  Verifica consentimento para uma finalidade específica
+  """
+  verifyConsent(identityId: UUID!, contextType: ContextType!, purposeCode: String!, thirdPartyId: UUID): ContextConsent
+}
+
+type Mutation {
+  """
+  Cria uma nova identidade
+  """
+  createIdentity(input: CreateIdentityInput!): Identity!
+
+  """
+  Atualiza uma identidade existente
+  """
+  updateIdentity(input: UpdateIdentityInput!): Identity!
+
+  """
+  Cria um novo contexto para uma identidade
+  """
+  createIdentityContext(input: CreateIdentityContextInput!): IdentityContext!
+
+  """
+  Atualiza um contexto existente
+  """
+  updateIdentityContext(input: UpdateIdentityContextInput!): IdentityContext!
+
+  """
+  Adiciona um atributo a um contexto
+  """
+  createContextAttribute(input: CreateContextAttributeInput!): ContextAttribute!
+
+  """
+  Atualiza um atributo de contexto
+  """
+  updateContextAttribute(input: UpdateContextAttributeInput!): ContextAttribute!
+
+  """
+  Cria um mapeamento entre atributos de diferentes contextos
+  """
+  createAttributeMapping(input: CreateAttributeMappingInput!): AttributeContextMapping!
+
+  """
+  Concede consentimento contextual
+  """
+  createContextConsent(input: CreateContextConsentInput!): ContextConsent!
+
+  """
+  Revoga um consentimento
+  """
+  revokeConsent(input: RevokeConsentInput!): OperationResult!
+
+  """
+  Verifica uma identidade usando TrustGuard no contexto específico
+  """
+  verifyIdentityWithTrustGuard(
+    identityId: UUID!,
+    contextType: ContextType!,
+    verificationLevel: VerificationLevel!
+  ): IdentityVerificationResult!
+
+  """
+  Remove um contexto de uma identidade
+  """
+  removeIdentityContext(contextId: UUID!): OperationResult!
+  
+  """
+  Remove um atributo de contexto
+  """
+  removeContextAttribute(attributeId: UUID!): OperationResult!
+
+  """
+  Remove um mapeamento de atributos
+  """
+  removeAttributeMapping(mappingId: UUID!): OperationResult!
+}

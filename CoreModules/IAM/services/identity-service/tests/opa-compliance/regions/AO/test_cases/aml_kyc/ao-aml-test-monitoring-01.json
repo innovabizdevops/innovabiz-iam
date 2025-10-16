@@ -1,0 +1,120 @@
+{
+  "id": "ao-aml-test-monitoring-01",
+  "name": "Deteção de Transações Suspeitas para Compliance AML",
+  "description": "Testa se as políticas OPA identificam corretamente padrões de transações suspeitas conforme exigido pela Lei nº 14/21 de Angola",
+  "requirementIds": ["ao-aml-monitoramento"],
+  "policyPath": "innovabiz/iam/authz/transaction_monitoring",
+  "input": {
+    "user": {
+      "id": "user789",
+      "tenant_id": "tenant_ao_001",
+      "roles": ["customer"],
+      "kyc_status": "verified",
+      "account_age_days": 15,
+      "risk_profile": "medium"
+    },
+    "resource": {
+      "type": "transaction_batch",
+      "id": "batch123",
+      "transactions": [
+        {
+          "id": "trx001",
+          "amount": 25000000.00,
+          "currency": "AOA",
+          "destination": {
+            "account": "ACC98765",
+            "bank_code": "BFA",
+            "owner_name": "Empresa XYZ, Lda.",
+            "country_code": "AO"
+          },
+          "source": {
+            "account": "ACC12345",
+            "bank_code": "BAI",
+            "owner_id": "user789",
+            "country_code": "AO"
+          },
+          "timestamp": "2025-08-05T08:30:00Z",
+          "description": "Pagamento de serviços",
+          "category": "business"
+        },
+        {
+          "id": "trx002",
+          "amount": 24800000.00,
+          "currency": "AOA",
+          "destination": {
+            "account": "ACC45678",
+            "bank_code": "BFA",
+            "owner_name": "Empresa ABC, Lda.",
+            "country_code": "AO"
+          },
+          "source": {
+            "account": "ACC12345",
+            "bank_code": "BAI",
+            "owner_id": "user789",
+            "country_code": "AO"
+          },
+          "timestamp": "2025-08-05T08:45:00Z",
+          "description": "Pagamento de fornecedores",
+          "category": "business"
+        }
+      ]
+    },
+    "action": "process",
+    "context": {
+      "historical_patterns": {
+        "average_transaction_value": 500000.00,
+        "transactions_last_30_days": 5,
+        "largest_transaction_amount": 2000000.00
+      },
+      "aml_configuration": {
+        "threshold_large_transaction_ao": 15000000.00,
+        "threshold_structured_transactions": 20000000.00,
+        "monitoring_period_minutes": 60
+      }
+    }
+  },
+  "expectedDecision": {
+    "allow": false,
+    "reason": "suspicious_transactions_detected",
+    "triggers": [
+      "structured_transactions",
+      "unusual_volume",
+      "deviation_from_profile"
+    ],
+    "risk_score": 0.85,
+    "violations": [
+      {
+        "code": "AO-AML-001",
+        "description": "Transações estruturadas potencialmente para evitar limites de reporte",
+        "reference": "Lei nº 14/21, Artigo 26º"
+      },
+      {
+        "code": "AO-AML-002",
+        "description": "Volume de transações incomum para o histórico do cliente",
+        "reference": "Lei nº 14/21, Artigo 26º"
+      }
+    ],
+    "required_actions": [
+      {
+        "action": "report_to_uif",
+        "priority": "high",
+        "deadline_hours": 24
+      },
+      {
+        "action": "enhanced_due_diligence",
+        "priority": "high"
+      },
+      {
+        "action": "suspend_transactions",
+        "priority": "immediate",
+        "transaction_ids": ["trx001", "trx002"]
+      }
+    ]
+  },
+  "tags": ["aml", "kyc", "angola", "lei-14-21", "transacoes_suspeitas", "compliance"],
+  "context": {
+    "compliance_region": "AO",
+    "regulatory_framework": "lei-14-21",
+    "reporting_authority": "UIF-Angola"
+  }
+}

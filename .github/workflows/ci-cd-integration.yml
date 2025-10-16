@@ -1,0 +1,65 @@
+name: CI/CD Integration
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - '.github/workflows/**'
+      - 'infrastructure/ci-cd/**'
+      - 'docs/ci-cd/**'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - '.github/workflows/**'
+      - 'infrastructure/ci-cd/**'
+      - 'docs/ci-cd/**'
+
+jobs:
+  ci-cd-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Validate Workflows
+        run: |
+          for workflow in .github/workflows/*.yml; do
+            echo "Validating $workflow"
+            docker run --rm -v "$(pwd):/github/workspace" actions/runner:latest validate-workflow /github/workspace/$workflow
+          done
+
+      - name: Test Workflows
+        uses: actions/runner@v2
+        with:
+          workflow: ${{ github.workflow }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Test IAM Integration
+        run: |
+          docker-compose -f docker-compose.yml exec iam-auth-server /app/bin/test-ci-cd.sh
+
+      - name: Test KrakenD Integration
+        run: |
+          docker-compose -f docker-compose.yml exec krakend-integration-handler /bin/test-ci-cd.sh
+
+      - name: Test MCP Integration
+        run: |
+          docker-compose -f docker-compose.yml exec mcp-core /bin/test-ci-cd.sh
+
+      - name: Test GraphQL Integration
+        run: |
+          docker-compose -f docker-compose.yml exec graphql-federation /bin/test-ci-cd.sh
+
+      - name: Test DevOps Integration
+        run: |
+          docker-compose -f docker-compose-devops.yml exec devops-integration /bin/test-ci-cd.sh
+
+      - name: Generate Documentation
+        run: |
+          cd docs/ci-cd
+          make html
+
+      - name: Deploy Documentation
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: docs/ci-cd/_build/html

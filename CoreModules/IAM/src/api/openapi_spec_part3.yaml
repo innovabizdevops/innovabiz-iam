@@ -1,0 +1,912 @@
+  /permissions:
+    get:
+      tags:
+        - Permissions
+      summary: Listar permissões
+      operationId: listPermissions
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: resource_type
+          in: query
+          schema:
+            type: string
+        - name: permission_scope
+          in: query
+          schema:
+            type: string
+            enum: [organization, application, module, feature, resource, action]
+      responses:
+        '200':
+          description: Lista de permissões
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  permissions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PermissionSummary'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          description: Não autenticado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Sem permissão
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /healthcare/compliance/validate/{regulation}:
+    post:
+      tags:
+        - Healthcare
+        - Compliance
+      summary: Executar validação de compliance para Healthcare
+      operationId: validateHealthcareCompliance
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: regulation
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [hipaa, gdpr_health, lgpd_health, pndsb, all]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                parameters:
+                  type: object
+                  description: Parâmetros específicos para a validação
+      responses:
+        '200':
+          description: Resultado da validação
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthcareComplianceResult'
+        '400':
+          description: Parâmetros inválidos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Não autenticado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Sem permissão
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /healthcare/compliance/history:
+    get:
+      tags:
+        - Healthcare
+        - Compliance
+      summary: Obter histórico de validações de compliance
+      operationId: getHealthcareComplianceHistory
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: regulation
+          in: query
+          schema:
+            type: string
+            enum: [hipaa, gdpr_health, lgpd_health, pndsb, all]
+        - name: start_date
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [passed, failed, warning, not_applicable]
+      responses:
+        '200':
+          description: Histórico de validações
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  validations:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/HealthcareComplianceValidationSummary'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          description: Não autenticado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Sem permissão
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /ar/continuous-auth/start:
+    post:
+      tags:
+        - AR/VR
+        - Authentication
+      summary: Iniciar sessão de autenticação contínua para AR/VR
+      operationId: startArContinuousAuth
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - device_id
+              properties:
+                device_id:
+                  type: string
+                  description: Identificador único do dispositivo AR/VR
+                initial_confidence:
+                  type: number
+                  format: float
+                  minimum: 0
+                  maximum: 1
+                  default: 1.0
+                  description: Confiança inicial na autenticação (0.0 a 1.0)
+                session_duration_hours:
+                  type: integer
+                  minimum: 1
+                  maximum: 24
+                  default: 4
+                  description: Duração da sessão em horas
+                metadata:
+                  type: object
+                  description: Metadados adicionais para a sessão
+      responses:
+        '200':
+          description: Sessão de autenticação contínua iniciada com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ArContinuousAuthSession'
+        '400':
+          description: Parâmetros inválidos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Não autenticado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Sem permissão
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /ar/continuous-auth/update:
+    put:
+      tags:
+        - AR/VR
+        - Authentication
+      summary: Atualizar confiança da autenticação contínua AR/VR
+      operationId: updateArAuthConfidence
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - session_id
+                - confidence_update
+              properties:
+                session_id:
+                  type: string
+                  format: uuid
+                  description: ID da sessão de autenticação contínua
+                confidence_update:
+                  type: number
+                  format: float
+                  description: Ajuste na confiança da autenticação (-1.0 a 1.0)
+                reason:
+                  type: string
+                  description: Motivo para o ajuste de confiança
+      responses:
+        '200':
+          description: Confiança atualizada com sucesso
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  session_id:
+                    type: string
+                    format: uuid
+                  new_confidence:
+                    type: number
+                    format: float
+                  previous_confidence:
+                    type: number
+                    format: float
+                  update_time:
+                    type: string
+                    format: date-time
+        '400':
+          description: Parâmetros inválidos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Não autenticado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Sem permissão
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Sessão não encontrada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    AuthResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+        token_type:
+          type: string
+          default: Bearer
+        expires_in:
+          type: integer
+          description: Tempo de expiração em segundos
+        refresh_token:
+          type: string
+        user:
+          $ref: '#/components/schemas/UserSummary'
+        organization:
+          $ref: '#/components/schemas/OrganizationSummary'
+        mfa_required:
+          type: boolean
+          description: Indica se é necessário verificação MFA adicional
+        mfa_token:
+          type: string
+          description: Token para verificação MFA, presente apenas se mfa_required for true
+
+    MfaInitiateResponse:
+      type: object
+      properties:
+        mfa_token:
+          type: string
+          description: Token para verificação MFA
+        method_type:
+          type: string
+          enum: [totp, sms, email, push_notification, ar_spatial_gesture, ar_gaze_pattern, ar_spatial_password, backup_codes]
+        expires_in:
+          type: integer
+          description: Tempo de expiração em segundos
+        challenge:
+          type: object
+          description: Informações específicas do desafio MFA dependendo do método
+        verification_url:
+          type: string
+          format: uri
+          description: URL para verificação (para alguns métodos)
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Código de erro
+        message:
+          type: string
+          description: Mensagem de erro descritiva
+        details:
+          type: object
+          description: Detalhes adicionais sobre o erro
+        request_id:
+          type: string
+          description: Identificador único da requisição para rastreamento
+
+    Pagination:
+      type: object
+      properties:
+        total_items:
+          type: integer
+        total_pages:
+          type: integer
+        current_page:
+          type: integer
+        per_page:
+          type: integer
+        next_page:
+          type: integer
+          nullable: true
+        prev_page:
+          type: integer
+          nullable: true
+
+    UserSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        username:
+          type: string
+        email:
+          type: string
+          format: email
+        full_name:
+          type: string
+        status:
+          type: string
+          enum: [active, inactive, suspended, locked]
+        created_at:
+          type: string
+          format: date-time
+        last_login:
+          type: string
+          format: date-time
+          nullable: true
+
+    User:
+      allOf:
+        - $ref: '#/components/schemas/UserSummary'
+        - type: object
+          properties:
+            organization_id:
+              type: string
+              format: uuid
+            updated_at:
+              type: string
+              format: date-time
+            preferences:
+              type: object
+            metadata:
+              type: object
+            roles:
+              type: array
+              items:
+                $ref: '#/components/schemas/RoleSummary'
+            mfa_methods:
+              type: array
+              items:
+                $ref: '#/components/schemas/MfaMethodSummary'
+            federated_identities:
+              type: array
+              items:
+                $ref: '#/components/schemas/FederatedIdentitySummary'
+
+    UserCreate:
+      type: object
+      required:
+        - username
+        - email
+        - full_name
+        - password
+      properties:
+        username:
+          type: string
+        email:
+          type: string
+          format: email
+        full_name:
+          type: string
+        password:
+          type: string
+          format: password
+        status:
+          type: string
+          enum: [active, inactive]
+          default: active
+        preferences:
+          type: object
+        metadata:
+          type: object
+        initial_roles:
+          type: array
+          items:
+            type: string
+            format: uuid
+
+    UserUpdate:
+      type: object
+      properties:
+        full_name:
+          type: string
+        email:
+          type: string
+          format: email
+        status:
+          type: string
+          enum: [active, inactive, suspended, locked]
+        password:
+          type: string
+          format: password
+        preferences:
+          type: object
+        metadata:
+          type: object
+
+    RoleSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        code:
+          type: string
+        name:
+          type: string
+        is_system_role:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+
+    Role:
+      allOf:
+        - $ref: '#/components/schemas/RoleSummary'
+        - type: object
+          properties:
+            organization_id:
+              type: string
+              format: uuid
+            description:
+              type: string
+            parent_role_id:
+              type: string
+              format: uuid
+              nullable: true
+            is_active:
+              type: boolean
+            updated_at:
+              type: string
+              format: date-time
+            metadata:
+              type: object
+            permissions:
+              type: array
+              items:
+                $ref: '#/components/schemas/PermissionSummary'
+
+    RoleCreate:
+      type: object
+      required:
+        - code
+        - name
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        is_system_role:
+          type: boolean
+          default: false
+        parent_role_id:
+          type: string
+          format: uuid
+          nullable: true
+        metadata:
+          type: object
+        permissions:
+          type: array
+          items:
+            type: string
+            format: uuid
+
+    PermissionSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        code:
+          type: string
+        name:
+          type: string
+        permission_scope:
+          type: string
+          enum: [organization, application, module, feature, resource, action]
+        resource_type:
+          type: string
+
+    OrganizationSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        code:
+          type: string
+        industry:
+          type: string
+        sector:
+          type: string
+        country_code:
+          type: string
+        region_code:
+          type: string
+
+    UserRoleAssignment:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        role_id:
+          type: string
+          format: uuid
+        organization_id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_by:
+          type: string
+          format: uuid
+          nullable: true
+        metadata:
+          type: object
+
+    MfaMethodSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        method_type:
+          type: string
+          enum: [totp, sms, email, push_notification, biometric, security_key, backup_codes, ar_spatial_gesture, ar_gaze_pattern, ar_spatial_password]
+        name:
+          type: string
+        status:
+          type: string
+          enum: [enabled, disabled, pending_activation, suspended]
+        last_used:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    MfaMethodDetail:
+      allOf:
+        - $ref: '#/components/schemas/MfaMethodSummary'
+        - type: object
+          properties:
+            user_id:
+              type: string
+              format: uuid
+            organization_id:
+              type: string
+              format: uuid
+            updated_at:
+              type: string
+              format: date-time
+            metadata:
+              type: object
+            setup_details:
+              type: object
+              description: Detalhes de configuração específicos para o método
+
+    MfaMethodRegistration:
+      type: object
+      required:
+        - method_type
+        - name
+      properties:
+        method_type:
+          type: string
+          enum: [totp, sms, email, push_notification, biometric, security_key, backup_codes]
+        name:
+          type: string
+        phone_number:
+          type: string
+        email:
+          type: string
+          format: email
+        metadata:
+          type: object
+
+    ArMethodSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        method_type:
+          type: string
+          enum: [ar_spatial_gesture, ar_gaze_pattern, ar_spatial_password]
+        name:
+          type: string
+        status:
+          type: string
+          enum: [enabled, disabled, pending_activation, suspended]
+        complexity_score:
+          type: integer
+          minimum: 1
+          maximum: 100
+        last_used:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    ArMethodDetail:
+      allOf:
+        - $ref: '#/components/schemas/ArMethodSummary'
+        - type: object
+          properties:
+            user_id:
+              type: string
+              format: uuid
+            organization_id:
+              type: string
+              format: uuid
+            dimension_count:
+              type: integer
+            updated_at:
+              type: string
+              format: date-time
+            metadata:
+              type: object
+
+    ArMethodRegistration:
+      type: object
+      required:
+        - method_type
+        - name
+        - method_data
+      properties:
+        method_type:
+          type: string
+          enum: [ar_spatial_gesture, ar_gaze_pattern, ar_spatial_password]
+        name:
+          type: string
+        method_data:
+          type: string
+          format: binary
+        complexity_score:
+          type: integer
+          minimum: 1
+          maximum: 100
+        metadata:
+          type: object
+
+    ArContinuousAuthSession:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        session_id:
+          type: string
+          format: uuid
+        device_id:
+          type: string
+        confidence_score:
+          type: number
+          format: float
+        last_verification:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+        metadata:
+          type: object
+
+    IdentityProviderSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        protocol:
+          type: string
+          enum: [oidc, saml, oauth2, ws_federation]
+        status:
+          type: string
+          enum: [active, inactive, testing, error]
+        issuer_url:
+          type: string
+          format: uri
+        logo_url:
+          type: string
+          format: uri
+          nullable: true
+
+    FederatedIdentitySummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider_id:
+          type: string
+          format: uuid
+        provider_name:
+          type: string
+        external_id:
+          type: string
+        external_username:
+          type: string
+          nullable: true
+        external_email:
+          type: string
+          format: email
+          nullable: true
+        last_login:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    HealthcareComplianceResult:
+      type: object
+      properties:
+        regulation:
+          type: string
+          enum: [hipaa, gdpr_health, lgpd_health, pndsb, all]
+        timestamp:
+          type: string
+          format: date-time
+        validator:
+          type: string
+        status:
+          type: string
+          enum: [passed, failed, warning, not_applicable]
+        score:
+          type: integer
+          minimum: 0
+          maximum: 100
+        checks:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              requirement:
+                type: string
+              status:
+                type: string
+                enum: [passed, failed, warning, not_applicable]
+              details:
+                type: string
+        remediation_plan:
+          type: string
+          nullable: true
+
+    HealthcareComplianceValidationSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        validation_timestamp:
+          type: string
+          format: date-time
+        regulation:
+          type: string
+          enum: [hipaa, gdpr_health, lgpd_health, pndsb]
+        validator_name:
+          type: string
+        status:
+          type: string
+          enum: [passed, failed, warning, not_applicable]
+        score:
+          type: integer
+          minimum: 0
+          maximum: 100
+        validated_by:
+          type: string
+          format: uuid
+          nullable: true

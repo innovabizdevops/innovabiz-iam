@@ -1,0 +1,30 @@
+apiVersion: 1
+
+providers:
+  # Carregador de dashboards bureau-credito
+  - name: 'bureau-credito'
+    orgId: 1
+    folder: 'Bureau de Crédito'
+    folderUid: 'bureau_credito'
+    type: file
+    disableDeletion: false
+    editable: true
+    updateIntervalSeconds: 10
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards/bureau-credito
+      foldersFromFilesStructure: true
+
+  # Carregador de dashboards IAM
+  - name: 'iam-auth'
+    orgId: 1
+    folder: 'IAM - Autenticação'
+    folderUid: 'iam_auth'
+    type: file
+    disableDeletion: false
+    editable: true
+    updateIntervalSeconds: 10
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards/iam-auth
+      foldersFromFilesStructure: true

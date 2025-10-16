@@ -1,0 +1,509 @@
+name: Pull Request Validation
+
+on:
+  pull_request:
+    branches: [ main, master, develop ]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+env:
+  NODE_VERSION: '20'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  pr-info:
+    name: PR Information
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+    steps:
+    - name: PR Info
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const pr = context.payload.pull_request;
+          console.log(`PR #${pr.number}: ${pr.title}`);
+          console.log(`Author: ${pr.user.login}`);
+          console.log(`Base: ${pr.base.ref} ← Head: ${pr.head.ref}`);
+          console.log(`Files changed: ${pr.changed_files}`);
+          console.log(`Additions: ${pr.additions}, Deletions: ${pr.deletions}`);
+
+  changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      docs: ${{ steps.filter.outputs.docs }}
+      tests: ${{ steps.filter.outputs.tests }}
+      workflows: ${{ steps.filter.outputs.workflows }}
+    steps:
+    - uses: actions/checkout@v4
+    - uses: dorny/paths-filter@v3
+      id: filter
+      with:
+        filters: |
+          backend:
+            - 'backend/**'
+          frontend:
+            - 'src/**'
+            - 'package*.json'
+            - 'vite.config.ts'
+            - 'tsconfig.json'
+          docs:
+            - '**/*.md'
+            - 'docs/**'
+          tests:
+            - 'tests/**'
+            - '**/*.test.ts'
+            - '**/*.spec.ts'
+            - 'playwright.config.ts'
+          workflows:
+            - '.github/workflows/**'
+
+  lint-and-format:
+    name: Lint & Format Check
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.backend == 'true'
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Lint frontend
+      if: needs.changes.outputs.frontend == 'true'
+      run: npm run lint
+
+    - name: Format check frontend
+      if: needs.changes.outputs.frontend == 'true'
+      run: npm run format:check
+
+    - name: Lint backend
+      if: needs.changes.outputs.backend == 'true'
+      run: |
+        cd backend
+        npm ci
+        npm run lint
+
+    - name: Format check backend
+      if: needs.changes.outputs.backend == 'true'
+      run: |
+        cd backend
+        npm run format:check
+
+  type-check:
+    name: TypeScript Type Check
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.backend == 'true'
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Type check frontend
+      if: needs.changes.outputs.frontend == 'true'
+      run: npm run typecheck
+
+    - name: Type check backend
+      if: needs.changes.outputs.backend == 'true'
+      run: |
+        cd backend
+        npm ci
+        npm run typecheck
+
+  security-check:
+    name: Security Check
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.backend == 'true'
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Security audit frontend
+      if: needs.changes.outputs.frontend == 'true'
+      run: npm audit --audit-level=moderate
+
+    - name: Security audit backend
+      if: needs.changes.outputs.backend == 'true'
+      run: |
+        cd backend
+        npm ci
+        npm audit --audit-level=moderate
+
+    - name: Run CodeQL Analysis
+      uses: github/codeql-action/init@v3
+      with:
+        languages: javascript, typescript
+
+    - name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@v3
+
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.backend == 'true'
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: test_db
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Frontend unit tests
+      if: needs.changes.outputs.frontend == 'true'
+      run: npm run test -- --coverage --watchAll=false
+
+    - name: Backend unit tests
+      if: needs.changes.outputs.backend == 'true'
+      env:
+        NODE_ENV: test
+        DB_HOST: localhost
+        DB_PORT: 5432
+        DB_USERNAME: postgres
+        DB_PASSWORD: postgres
+        DB_NAME: test_db
+        REDIS_HOST: localhost
+        REDIS_PORT: 6379
+      run: |
+        cd backend
+        npm ci
+        npm run test -- --coverage
+
+    - name: Upload frontend coverage
+      if: needs.changes.outputs.frontend == 'true'
+      uses: codecov/codecov-action@v4
+      with:
+        file: coverage/lcov.info
+        flags: frontend,pr
+        name: frontend-pr-coverage
+
+    - name: Upload backend coverage
+      if: needs.changes.outputs.backend == 'true'
+      uses: codecov/codecov-action@v4
+      with:
+        file: backend/coverage/lcov.info
+        flags: backend,pr
+        name: backend-pr-coverage
+
+  build-test:
+    name: Build Test
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.backend == 'true'
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Build frontend
+      if: needs.changes.outputs.frontend == 'true'
+      run: npm run build
+
+    - name: Build backend
+      if: needs.changes.outputs.backend == 'true'
+      run: |
+        cd backend
+        npm ci
+        npm run build
+
+    - name: Check build size
+      if: needs.changes.outputs.frontend == 'true'
+      run: |
+        if [ -d "dist" ]; then
+          BUILD_SIZE=$(du -sh dist | cut -f1)
+          echo "Frontend build size: $BUILD_SIZE"
+          echo "build_size=$BUILD_SIZE" >> $GITHUB_OUTPUT
+        fi
+
+  e2e-critical:
+    name: Critical E2E Tests
+    runs-on: ubuntu-latest
+    needs: [changes, build-test]
+    if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.backend == 'true' || needs.changes.outputs.tests == 'true'
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: crm_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: |
+        npm ci
+        cd backend && npm ci
+
+    - name: Install Playwright Browsers
+      run: npx playwright install --with-deps chromium
+
+    - name: Setup test environment
+      run: |
+        cd backend
+        cp .env.example .env.test
+
+    - name: Start backend server
+      run: |
+        cd backend
+        npm run start:test &
+        sleep 10
+      env:
+        NODE_ENV: test
+        DB_HOST: localhost
+        DB_PORT: 5432
+        DB_USERNAME: postgres
+        DB_PASSWORD: postgres
+        DB_NAME: crm_test
+        REDIS_HOST: localhost
+        REDIS_PORT: 6379
+
+    - name: Start frontend server
+      run: |
+        npm run build
+        npm run preview &
+        sleep 5
+      env:
+        VITE_API_URL: http://localhost:3001
+
+    - name: Run critical E2E tests
+      run: npx playwright test --grep="@critical"
+      env:
+        TEST_BASE_URL: http://localhost:3002
+
+    - name: Upload E2E results
+      uses: actions/upload-artifact@v4
+      if: failure()
+      with:
+        name: e2e-critical-results
+        path: test-results/
+        retention-days: 7
+
+  pr-size-check:
+    name: PR Size Check
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/github-script@v7
+      with:
+        script: |
+          const pr = context.payload.pull_request;
+          const changedFiles = pr.changed_files;
+          const additions = pr.additions;
+          const deletions = pr.deletions;
+          const totalChanges = additions + deletions;
+
+          console.log(`Files changed: ${changedFiles}`);
+          console.log(`Lines changed: ${totalChanges} (${additions} additions, ${deletions} deletions)`);
+
+          let status = '✅';
+          let message = 'PR size is reasonable';
+
+          if (changedFiles > 50 || totalChanges > 1000) {
+            status = '⚠️';
+            message = 'Large PR - consider breaking into smaller changes';
+          }
+
+          if (changedFiles > 100 || totalChanges > 2000) {
+            status = '❌';
+            message = 'Very large PR - strongly consider breaking into smaller changes';
+          }
+
+          await github.rest.issues.createComment({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: pr.number,
+            body: `## PR Size Analysis ${status}
+
+            **Files changed:** ${changedFiles}
+            **Lines changed:** ${totalChanges} (+${additions}, -${deletions})
+
+            ${message}
+
+            ### Guidelines:
+            - ✅ Small PR: < 20 files, < 400 lines
+            - ⚠️ Medium PR: < 50 files, < 1000 lines
+            - ❌ Large PR: > 50 files, > 1000 lines
+
+            Large PRs are harder to review and more likely to contain bugs.`
+          });
+
+  documentation-check:
+    name: Documentation Check
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.docs == 'true'
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Check for broken links
+      uses: gaurav-nelson/github-action-markdown-link-check@v1
+      with:
+        use-quiet-mode: 'yes'
+        use-verbose-mode: 'yes'
+        config-file: '.github/markdown-link-check-config.json'
+
+    - name: Lint markdown files
+      uses: DavidAnson/markdownlint-cli2-action@v11
+      with:
+        globs: '**/*.md'
+
+  workflow-validation:
+    name: Workflow Validation
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.workflows == 'true'
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Validate workflow syntax
+      run: |
+        for workflow in .github/workflows/*.yml .github/workflows/*.yaml; do
+          if [ -f "$workflow" ]; then
+            echo "Validating $workflow"
+            # Basic YAML syntax check
+            python -c "import yaml; yaml.safe_load(open('$workflow'))"
+          fi
+        done
+
+  pr-summary:
+    name: PR Summary
+    runs-on: ubuntu-latest
+    needs: [lint-and-format, type-check, security-check, unit-tests, build-test, e2e-critical]
+    if: always()
+
+    steps:
+    - name: Create PR summary comment
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const needs = ${{ toJSON(needs) }};
+          const pr = context.payload.pull_request;
+
+          let summary = `## 🔍 PR Validation Summary\n\n`;
+
+          const jobs = [
+            { name: 'Lint & Format', status: needs['lint-and-format']?.result || 'skipped' },
+            { name: 'Type Check', status: needs['type-check']?.result || 'skipped' },
+            { name: 'Security Check', status: needs['security-check']?.result || 'skipped' },
+            { name: 'Unit Tests', status: needs['unit-tests']?.result || 'skipped' },
+            { name: 'Build Test', status: needs['build-test']?.result || 'skipped' },
+            { name: 'Critical E2E', status: needs['e2e-critical']?.result || 'skipped' }
+          ];
+
+          for (const job of jobs) {
+            const emoji = job.status === 'success' ? '✅' :
+                         job.status === 'failure' ? '❌' :
+                         job.status === 'skipped' ? '⏭️' : '⏳';
+            summary += `${emoji} **${job.name}**: ${job.status}\n`;
+          }
+
+          const allPassed = jobs.every(job => job.status === 'success' || job.status === 'skipped');
+
+          summary += `\n### Overall Status: ${allPassed ? '✅ Ready for Review' : '❌ Issues Found'}\n`;
+
+          if (!allPassed) {
+            summary += `\n⚠️ Please address the failing checks before merging.\n`;
+          }
+
+          summary += `\n🔗 [View detailed results](${context.payload.pull_request.html_url}/checks)`;
+
+          await github.rest.issues.createComment({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: pr.number,
+            body: summary
+          });

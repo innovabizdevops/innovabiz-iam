@@ -1,0 +1,638 @@
+# INNOVABIZ CRM - Pipeline CI/CD Completo Enterprise
+# 
+# @description Pipeline completo para build, test, security, quality e deploy
+# @author INNOVABIZ DevOps Team - innovabizdevops@gmail.com
+# @version 2.0.0
+# @date 2025-01-08
+# 
+# @features
+# - Build multi-stage otimizado
+# - Testes unitários, integração e E2E
+# - Security scanning (SAST, DAST, dependency check)
+
+name: InnovaBiz CRM Core - Enterprise CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop, feature/*, release/*]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'development'
+        type: choice
+        options:
+        - development
+        - staging
+        - production
+      deploy_backend:
+        description: 'Deploy Backend'
+        required: false
+        default: true
+        type: boolean
+      deploy_frontend:
+        description: 'Deploy Frontend'
+        required: false
+        default: true
+        type: boolean
+
+env:
+  NODE_VERSION: '18.x'
+  DOCKER_REGISTRY: 'ghcr.io'
+  IMAGE_NAME: 'innovabiz/crm-core'
+  SONAR_PROJECT_KEY: 'innovabiz-crm-core'
+  ARTIFACT_RETENTION_DAYS: 30
+  SONAR_PROJECT_KEY: innovabiz_crm_core
+
+jobs:
+  # ============================================================================
+  # STAGE 1: CODE QUALITY & SECURITY ANALYSIS
+  # ============================================================================
+  code-analysis:
+    name: 'Code Quality & Security Analysis'
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: |
+          npm ci
+          cd frontend && npm ci
+          cd ../backend && npm ci
+
+      - name: ESLint Analysis
+        run: |
+          npm run lint:backend
+          npm run lint:frontend
+        continue-on-error: true
+
+      - name: TypeScript Check
+        run: |
+          cd backend && npm run type-check
+          cd ../frontend && npm run type-check
+
+      - name: Security Audit
+        run: |
+          npm audit --audit-level high
+          cd backend && npm audit --audit-level high
+          cd ../frontend && npm audit --audit-level high
+
+      - name: Dependency Check
+        uses: dependency-check/Dependency-Check_Action@main
+        with:
+          project: 'InnovaBiz-CRM'
+          path: '.'
+          format: 'ALL'
+
+      - name: Upload Dependency Check Results
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: reports/dependency-check-report.sarif
+
+      - name: SonarQube Scan
+        uses: sonarqube-quality-gate-action@master
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        with:
+          scanMetadataReportFile: target/sonar/report-task.txt
+
+  # ============================================================================
+  # STAGE 2: UNIT & INTEGRATION TESTS
+  # ============================================================================
+  test-backend:
+    name: 'Backend Tests'
+    runs-on: ubuntu-latest
+    needs: code-analysis
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: crm_test
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      
+      redis:
+        image: redis:7
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install Backend Dependencies
+        run: cd backend && npm ci
+
+      - name: Run Database Migrations
+        run: cd backend && npm run migration:run
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/crm_test
+          REDIS_URL: redis://localhost:6379
+
+      - name: Run Unit Tests
+        run: cd backend && npm run test:unit
+        env:
+          NODE_ENV: test
+          DATABASE_URL: postgresql://test:test@localhost:5432/crm_test
+          REDIS_URL: redis://localhost:6379
+
+      - name: Run Integration Tests
+        run: cd backend && npm run test:integration
+        env:
+          NODE_ENV: test
+          DATABASE_URL: postgresql://test:test@localhost:5432/crm_test
+          REDIS_URL: redis://localhost:6379
+
+      - name: Generate Coverage Report
+        run: cd backend && npm run test:coverage
+
+      - name: Upload Coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          directory: ./backend/coverage
+          flags: backend
+
+  test-frontend:
+    name: 'Frontend Tests'
+    runs-on: ubuntu-latest
+    needs: code-analysis
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install Frontend Dependencies
+        run: cd frontend && npm ci
+
+      - name: Run Unit Tests
+        run: cd frontend && npm run test:unit
+
+      - name: Run Component Tests
+        run: cd frontend && npm run test:components
+
+      - name: Generate Coverage Report
+        run: cd frontend && npm run test:coverage
+
+      - name: Upload Coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          directory: ./frontend/coverage
+          flags: frontend
+
+  # ============================================================================
+  # STAGE 3: END-TO-END TESTS
+  # ============================================================================
+  test-e2e:
+    name: 'E2E Tests'
+    runs-on: ubuntu-latest
+    needs: [test-backend, test-frontend]
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Start Application Stack
+        run: |
+          docker-compose -f docker-compose.test.yml up -d
+          sleep 30 # Wait for services to be ready
+
+      - name: Wait for Application Ready
+        run: |
+          npx wait-on http://localhost:3000 --timeout 60000
+          npx wait-on http://localhost:4000/health --timeout 60000
+
+      - name: Install Playwright Browsers
+        run: npx playwright install --with-deps
+
+      - name: Run E2E Tests
+        run: npm run test:e2e
+        env:
+          E2E_BASE_URL: http://localhost:3000
+
+      - name: Upload E2E Test Results
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: e2e-results
+          path: tests/e2e/results
+
+      - name: Upload Screenshots
+        uses: actions/upload-artifact@v3
+        if: failure()
+        with:
+          name: e2e-screenshots
+          path: tests/e2e/screenshots
+
+  # ============================================================================
+  # STAGE 4: PERFORMANCE TESTS
+  # ============================================================================
+  test-performance:
+    name: 'Performance Tests'
+    runs-on: ubuntu-latest
+    needs: test-e2e
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install k6
+        run: |
+          sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update
+          sudo apt-get install k6
+
+      - name: Start Application Stack
+        run: |
+          docker-compose -f docker-compose.test.yml up -d
+          sleep 30
+
+      - name: Run Load Tests
+        run: k6 run tests/performance/load-test.js
+
+      - name: Run Stress Tests
+        run: k6 run tests/performance/stress-test.js
+
+      - name: Upload Performance Results
+        uses: actions/upload-artifact@v3
+        with:
+          name: performance-results
+          path: tests/performance/results
+
+  # ============================================================================
+  # STAGE 5: SECURITY SCANNING
+  # ============================================================================
+  security-scan:
+    name: 'Security Scanning'
+    runs-on: ubuntu-latest
+    needs: code-analysis
+    permissions:
+      security-events: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy Vulnerability Scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy Results
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+      - name: OWASP ZAP Baseline Scan
+        uses: zaproxy/action-baseline@v0.7.0
+        with:
+          target: 'http://localhost:3000'
+          rules_file_name: '.zap/rules.tsv'
+          cmd_options: '-a'
+
+  # ============================================================================
+  # STAGE 6: BUILD & CONTAINERIZE
+  # ============================================================================
+  build:
+    name: 'Build & Containerize'
+    runs-on: ubuntu-latest
+    needs: [test-e2e, test-performance, security-scan]
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+      image-digest: ${{ steps.build.outputs.digest }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix={{branch}}-
+            type=semver,pattern={{version}}
+
+      - name: Build and Push Docker Image
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.production
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Generate SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ steps.meta.outputs.tags }}
+          format: spdx-json
+          output-file: ./sbom.spdx.json
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v3
+        with:
+          name: sbom
+          path: ./sbom.spdx.json
+
+  # ============================================================================
+  # STAGE 7: DEPLOYMENT TO STAGING
+  # ============================================================================
+  deploy-staging:
+    name: 'Deploy to Staging'
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/develop'
+    environment: staging
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'v1.28.0'
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Update Kubeconfig
+        run: aws eks update-kubeconfig --region us-east-1 --name innovabiz-staging
+
+      - name: Deploy to Kubernetes
+        run: |
+          envsubst < k8s/staging/deployment.yaml | kubectl apply -f -
+          kubectl rollout status deployment/crm-backend -n staging
+          kubectl rollout status deployment/crm-frontend -n staging
+        env:
+          IMAGE_TAG: ${{ needs.build.outputs.image-tag }}
+
+      - name: Run Smoke Tests
+        run: |
+          kubectl wait --for=condition=ready pod -l app=crm-backend -n staging --timeout=300s
+          npm run test:smoke -- --base-url https://staging.innovabiz.com
+
+      - name: Send Deployment Notification
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          text: 'CRM deployed to staging environment'
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  # ============================================================================
+  # STAGE 8: DEPLOYMENT TO PRODUCTION
+  # ============================================================================
+  deploy-production:
+    name: 'Deploy to Production'
+    runs-on: ubuntu-latest
+    needs: [build, deploy-staging]
+    if: github.ref == 'refs/heads/main'
+    environment: production
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'v1.28.0'
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_PROD }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_PROD }}
+          aws-region: us-east-1
+
+      - name: Update Kubeconfig
+        run: aws eks update-kubeconfig --region us-east-1 --name innovabiz-production
+
+      - name: Backup Current Deployment
+        run: |
+          kubectl get deployment crm-backend -n production -o yaml > backup-backend.yaml
+          kubectl get deployment crm-frontend -n production -o yaml > backup-frontend.yaml
+
+      - name: Deploy to Production (Blue-Green)
+        run: |
+          # Deploy to green environment
+          envsubst < k8s/production/deployment-green.yaml | kubectl apply -f -
+          kubectl rollout status deployment/crm-backend-green -n production
+          kubectl rollout status deployment/crm-frontend-green -n production
+
+      - name: Run Production Health Checks
+        run: |
+          npm run test:health -- --base-url https://green.innovabiz.com
+          npm run test:smoke -- --base-url https://green.innovabiz.com
+
+      - name: Switch Traffic (Blue-Green)
+        run: |
+          kubectl patch service crm-backend -n production -p '{"spec":{"selector":{"version":"green"}}}'
+          kubectl patch service crm-frontend -n production -p '{"spec":{"selector":{"version":"green"}}}'
+
+      - name: Final Health Check
+        run: |
+          sleep 60 # Wait for traffic switch
+          npm run test:health -- --base-url https://innovabiz.com
+
+      - name: Cleanup Old Deployment
+        run: |
+          kubectl delete deployment crm-backend-blue -n production --ignore-not-found
+          kubectl delete deployment crm-frontend-blue -n production --ignore-not-found
+
+      - name: Send Success Notification
+        uses: 8398a7/action-slack@v3
+        with:
+          status: success
+          text: '🚀 CRM successfully deployed to production!'
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  # ============================================================================
+  # STAGE 9: POST-DEPLOYMENT MONITORING
+  # ============================================================================
+  post-deployment-monitoring:
+    name: 'Post-Deployment Monitoring'
+    runs-on: ubuntu-latest
+    needs: deploy-production
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Setup monitoring
+        run: |
+          # Wait for metrics to stabilize
+          sleep 300
+
+      - name: Check Application Metrics
+        run: |
+          # Check error rates, response times, throughput
+          curl -s "${{ secrets.PROMETHEUS_URL }}/api/v1/query?query=rate(http_requests_total{job='crm-backend',status=~'5..'}[5m])" \
+            | jq '.data.result[0].value[1] | tonumber < 0.01' || exit 1
+
+      - name: Synthetic Transaction Tests
+        run: |
+          npm run test:synthetic -- --base-url https://innovabiz.com
+
+      - name: Create Deployment Record
+        run: |
+          curl -X POST "${{ secrets.DEPLOYMENT_API_URL }}/deployments" \
+            -H "Authorization: Bearer ${{ secrets.DEPLOYMENT_API_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "application": "crm",
+              "version": "${{ github.sha }}",
+              "environment": "production",
+              "deployed_at": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'",
+              "deployed_by": "${{ github.actor }}"
+            }'
+
+  # ============================================================================
+  # ROLLBACK STRATEGY
+  # ============================================================================
+  rollback:
+    name: 'Rollback Production'
+    runs-on: ubuntu-latest
+    if: failure() && github.ref == 'refs/heads/main'
+    needs: [deploy-production, post-deployment-monitoring]
+
+    steps:
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_PROD }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_PROD }}
+          aws-region: us-east-1
+
+      - name: Update Kubeconfig
+        run: aws eks update-kubeconfig --region us-east-1 --name innovabiz-production
+
+      - name: Rollback to Previous Version
+        run: |
+          kubectl rollout undo deployment/crm-backend -n production
+          kubectl rollout undo deployment/crm-frontend -n production
+          kubectl rollout status deployment/crm-backend -n production
+          kubectl rollout status deployment/crm-frontend -n production
+
+      - name: Verify Rollback
+        run: |
+          npm run test:health -- --base-url https://innovabiz.com
+
+      - name: Send Rollback Notification
+        uses: 8398a7/action-slack@v3
+        with:
+          status: failure
+          text: '⚠️ Production deployment rolled back due to issues'
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  # ============================================================================
+  # CLEANUP
+  # ============================================================================
+  cleanup:
+    name: 'Cleanup Resources'
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [deploy-production, post-deployment-monitoring]
+
+    steps:
+      - name: Cleanup Test Environments
+        run: |
+          docker-compose -f docker-compose.test.yml down --volumes --remove-orphans || true
+
+      - name: Prune Docker Images
+        run: |
+          docker system prune -f
+
+      - name: Archive Logs
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: deployment-logs
+          path: |
+            *.log
+            logs/
+          retention-days: 30

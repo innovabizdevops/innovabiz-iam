@@ -1,0 +1,407 @@
+"""
+Schema GraphQL para Bureau de Créditos
+Este schema define os tipos e operações disponíveis para integração
+com o serviço de Bureau de Créditos através da API GraphQL.
+"""
+
+# Enums
+
+"""
+Tipos de transações financeiras
+"""
+enum FinancialTransactionType {
+  PAYMENT
+  TRANSFER
+  WITHDRAWAL
+  DEPOSIT
+  LOAN_REQUEST
+  CREDIT_CARD_PURCHASE
+  MOBILE_MONEY_TRANSFER
+  EXCHANGE
+  INVESTMENT
+  RECURRING_PAYMENT
+  BILL_PAYMENT
+}
+
+"""
+Níveis de risco
+"""
+enum RiskLevel {
+  VERY_LOW
+  LOW
+  MEDIUM
+  HIGH
+  VERY_HIGH
+  CRITICAL
+}
+
+"""
+Ações recomendadas baseadas na avaliação de risco
+"""
+enum RiskAction {
+  APPROVE
+  REVIEW
+  ADDITIONAL_VERIFICATION
+  STEP_UP_AUTH
+  BLOCK
+  REPORT
+}
+
+"""
+Tipos de provedores de dados de crédito
+"""
+enum CreditDataProviderType {
+  BUREAU_CREDITO
+  CENTRAL_BANCO
+  SERASA
+  SCPC
+  EXPERIAN
+  TRANSUNION
+  EQUIFAX
+  CREDIT_INFO
+  CUSTOM
+}
+
+"""
+Níveis de verificação de identidade
+"""
+enum IdentityVerificationLevel {
+  NONE
+  BASIC
+  MEDIUM
+  STRONG
+  VERY_STRONG
+}
+
+"""
+Tipos de detecção de fraude
+"""
+enum FraudDetectionType {
+  VELOCITY_CHECK
+  AMOUNT_ANOMALY
+  LOCATION_MISMATCH
+  DEVICE_ANOMALY
+  PATTERN_RECOGNITION
+  NETWORK_ANALYSIS
+  TIME_ANOMALY
+  BEHAVIORAL_ANALYSIS
+  ACCOUNT_TAKEOVER
+  SYNTHETIC_IDENTITY
+}
+
+"""
+Níveis de confiança na detecção de fraude
+"""
+enum FraudConfidenceLevel {
+  VERY_LOW
+  LOW
+  MEDIUM
+  HIGH
+  VERY_HIGH
+}
+
+# Input Types
+
+"""
+Parâmetros para avaliação de transação financeira
+"""
+input TransactionEvaluationInput {
+  # Campos obrigatórios
+  transactionId: ID!
+  userId: ID!
+  tenantId: ID!
+  documentType: String!
+  documentNumber: String!
+  transactionType: FinancialTransactionType!
+  amount: Float!
+  currency: String!
+  
+  # Campos opcionais
+  channel: String
+  deviceId: String
+  deviceFingerprint: String
+  ipAddress: String
+  countryCode: String
+  location: LocationInput
+  timestamp: DateTime
+  userAgent: String
+  userMetadata: JSON
+  transactionMetadata: JSON
+  
+  # Opções de avaliação
+  options: TransactionEvaluationOptionsInput
+}
+
+"""
+Opções para avaliação de transação
+"""
+input TransactionEvaluationOptionsInput {
+  performRiskAssessment: Boolean
+  performFraudDetection: Boolean
+  fetchCreditData: Boolean
+  creditProviderType: CreditDataProviderType
+  includeRawData: Boolean
+}
+
+"""
+Entrada para localização geográfica
+"""
+input LocationInput {
+  latitude: Float!
+  longitude: Float!
+  accuracy: Float
+}
+
+"""
+Parâmetros para consulta de dados de crédito
+"""
+input CreditDataQueryInput {
+  userId: ID!
+  tenantId: ID!
+  documentType: String!
+  documentNumber: String!
+  name: String
+  birthDate: DateTime
+  requestReason: String
+  includeRawData: Boolean
+  providerType: CreditDataProviderType
+}
+
+# Object Types
+
+"""
+Informações de localização geográfica
+"""
+type Location {
+  latitude: Float!
+  longitude: Float!
+  accuracy: Float
+}
+
+"""
+Resultado detalhado da avaliação de risco
+"""
+type RiskAssessmentDetails {
+  overallScore: Float!
+  riskLevel: RiskLevel!
+  recommendedActions: [RiskAction!]!
+  evaluationDetails: [RiskRuleEvaluationResult!]!
+  dataQuality: DataQualityInfo!
+  thresholds: RiskThresholds!
+  decisionTime: Int!
+  requiresManualReview: Boolean!
+}
+
+"""
+Resultado da avaliação de uma regra de risco
+"""
+type RiskRuleEvaluationResult {
+  ruleId: ID!
+  ruleName: String!
+  category: String!
+  score: Float!
+  details: String!
+  triggered: Boolean!
+}
+
+"""
+Informações sobre a qualidade dos dados
+"""
+type DataQualityInfo {
+  completeness: Float!
+  reliability: Float!
+  missingFields: [String!]!
+}
+
+"""
+Limites de pontuação para níveis de risco
+"""
+type RiskThresholds {
+  low: Float!
+  medium: Float!
+  high: Float!
+  veryHigh: Float!
+  critical: Float!
+}
+
+"""
+Resultado da detecção de fraude
+"""
+type FraudDetectionDetails {
+  fraudDetected: Boolean!
+  overallConfidenceLevel: FraudConfidenceLevel!
+  overallScore: Float!
+  triggeredRules: [FraudRuleResult!]!
+  evaluatedRuleCount: Int!
+  processingTimeMs: Int!
+  suggestedActions: [String!]!
+  requiresManualReview: Boolean!
+  fraudTypes: [FraudDetectionType!]!
+}
+
+"""
+Resultado da avaliação de uma regra de fraude
+"""
+type FraudRuleResult {
+  ruleId: ID!
+  triggered: Boolean!
+  confidenceLevel: FraudConfidenceLevel!
+  score: Float!
+  reason: String!
+  suggestedActions: [String!]!
+}
+
+"""
+Resultado de uma consulta de dados de crédito
+"""
+type CreditDataResult {
+  requestId: ID!
+  providerType: CreditDataProviderType!
+  responseStatus: String!
+  creditScore: Float
+  creditScoreScale: CreditScoreScale
+  riskCategory: String
+  activeCreditAccounts: Int
+  totalCreditLimit: Float
+  totalBalance: Float
+  creditUtilizationRate: Float
+  paymentDefaults: [PaymentDefault!]
+  identityVerification: VerificationResult
+  addressVerification: VerificationResult
+  dataCompleteness: Float
+  dataFreshness: DateTime
+  processingTimeMs: Int!
+  errors: [CreditDataError!]
+}
+
+"""
+Escala de pontuação de crédito
+"""
+type CreditScoreScale {
+  min: Float!
+  max: Float!
+  provider: String!
+  category: String
+}
+
+"""
+Informação sobre pagamentos em atraso
+"""
+type PaymentDefault {
+  creditor: String!
+  amount: Float!
+  currency: String!
+  daysOverdue: Int!
+  date: DateTime!
+}
+
+"""
+Resultado de verificação (identidade, endereço, etc)
+"""
+type VerificationResult {
+  verified: Boolean!
+  score: Float!
+  details: String
+}
+
+"""
+Erro em consulta de dados de crédito
+"""
+type CreditDataError {
+  code: String!
+  message: String!
+  field: String
+}
+
+"""
+Resultado completo da avaliação de transação
+"""
+type TransactionEvaluationResult {
+  evaluationId: ID!
+  transactionId: ID!
+  userId: ID!
+  timestamp: DateTime!
+  approved: Boolean!
+  requiresReview: Boolean!
+  requiresAdditionalVerification: Boolean!
+  recommendedActions: [String!]!
+  overallRiskLevel: RiskLevel!
+  overallRiskScore: Float!
+  identityVerificationLevel: IdentityVerificationLevel!
+  processingTimeMs: Int!
+  riskAssessment: RiskAssessmentDetails
+  fraudDetection: FraudDetectionDetails
+  creditData: CreditDataResult
+  errors: [EvaluationError!]
+}
+
+"""
+Erro na avaliação de transação
+"""
+type EvaluationError {
+  component: String!
+  code: String!
+  message: String!
+}
+
+"""
+Resultado de uma verificação de saúde do serviço
+"""
+type HealthCheckResult {
+  status: String!
+  version: String!
+  components: [ComponentStatus!]!
+  timestamp: DateTime!
+}
+
+"""
+Status de um componente do serviço
+"""
+type ComponentStatus {
+  name: String!
+  status: String!
+  details: String
+  latencyMs: Int
+}
+
+# Queries e Mutations
+
+"""
+Tipo raiz para queries
+"""
+type Query {
+  """
+  Consulta dados de crédito de um usuário/entidade
+  """
+  creditData(input: CreditDataQueryInput!): CreditDataResult!
+  
+  """
+  Verifica a saúde do serviço de Bureau de Créditos e seus componentes
+  """
+  healthCheck: HealthCheckResult!
+  
+  """
+  Retorna os tipos de provedores de crédito disponíveis e seu status
+  """
+  availableCreditProviders: [ComponentStatus!]!
+}
+
+"""
+Tipo raiz para mutations
+"""
+type Mutation {
+  """
+  Avalia uma transação financeira para determinar risco, fraude e crédito
+  """
+  evaluateTransaction(input: TransactionEvaluationInput!): TransactionEvaluationResult!
+}
+
+"""
+Escalar para representar datas e horas
+"""
+scalar DateTime
+
+"""
+Escalar para representar dados JSON arbitrários
+"""
+scalar JSON

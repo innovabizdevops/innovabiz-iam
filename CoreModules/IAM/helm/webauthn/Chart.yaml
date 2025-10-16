@@ -1,0 +1,49 @@
+# INNOVABIZ IAM WebAuthn Helm Chart
+# Chart para deploy Kubernetes seguindo padrões INNOVABIZ
+
+apiVersion: v2
+name: webauthn
+description: INNOVABIZ IAM WebAuthn/FIDO2 Authentication Service
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+
+keywords:
+  - webauthn
+  - fido2
+  - authentication
+  - iam
+  - security
+  - innovabiz
+
+home: https://innovabiz.com
+sources:
+  - https://github.com/innovabiz/iam-webauthn
+
+maintainers:
+  - name: INNOVABIZ DevOps Team
+    email: devops@innovabiz.com
+    url: https://innovabiz.com
+
+annotations:
+  category: Security
+  licenses: Proprietary
+  images: |
+    - name: webauthn
+      image: ghcr.io/innovabiz/iam-webauthn:1.0.0
+
+dependencies:
+  - name: postgresql
+    version: "12.x.x"
+    repository: https://charts.bitnami.com/bitnami
+    condition: postgresql.enabled
+    
+  - name: redis
+    version: "17.x.x"
+    repository: https://charts.bitnami.com/bitnami
+    condition: redis.enabled
+    
+  - name: kafka
+    version: "22.x.x"
+    repository: https://charts.bitnami.com/bitnami
+    condition: kafka.enabled

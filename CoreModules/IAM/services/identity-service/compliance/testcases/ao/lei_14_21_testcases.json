@@ -1,0 +1,266 @@
+{
+  "framework_id": "lei-14-21",
+  "region": "AO",
+  "version": "1.0.0",
+  "description": "Casos de teste para verificação de conformidade com a Lei de Prevenção e Combate ao Branqueamento de Capitais e Financiamento do Terrorismo (Lei nº 14/21)",
+  "testcases": [
+    {
+      "id": "tc-lei-14-21-r01-01",
+      "requirement_id": "lei-14-21-r01",
+      "name": "Verificação de Identidade - Onboarding Sem KYC",
+      "description": "Verifica se a política bloqueia o acesso a serviços sem verificação de identidade completa",
+      "policy_file": "account_access.rego",
+      "input": {
+        "user": {
+          "id": "new_user123",
+          "tenant_id": "tenant_ao_1",
+          "region": "AO",
+          "kyc_status": "incomplete",
+          "identity_verified": false
+        },
+        "action": "access_full_services",
+        "resource": "financial_services",
+        "service_type": "credit"
+      },
+      "expected_decision": {
+        "allow": false,
+        "reasons": ["incomplete_kyc"]
+      },
+      "tags": ["kyc", "verificacao_identidade", "alta_prioridade"]
+    },
+    {
+      "id": "tc-lei-14-21-r01-02",
+      "requirement_id": "lei-14-21-r01",
+      "name": "Acesso com Verificação de Identidade Completa",
+      "description": "Verifica se a política permite acesso a serviços após verificação de identidade",
+      "policy_file": "account_access.rego",
+      "input": {
+        "user": {
+          "id": "verified_user456",
+          "tenant_id": "tenant_ao_1",
+          "region": "AO",
+          "kyc_status": "complete",
+          "identity_verified": true,
+          "verification_date": "2023-05-01T10:30:00Z"
+        },
+        "action": "access_full_services",
+        "resource": "financial_services",
+        "service_type": "credit"
+      },
+      "expected_decision": {
+        "allow": true
+      },
+      "tags": ["kyc", "verificacao_identidade"]
+    },
+    {
+      "id": "tc-lei-14-21-r02-01",
+      "requirement_id": "lei-14-21-r02",
+      "name": "Detecção de Transação Suspeita",
+      "description": "Verifica se a política identifica e sinaliza padrões de transação suspeitos",
+      "policy_file": "transaction_monitoring.rego",
+      "input": {
+        "user": {
+          "id": "user789",
+          "tenant_id": "tenant_ao_1",
+          "region": "AO",
+          "risk_score": "medium",
+          "account_age_days": 30
+        },
+        "action": "transfer",
+        "resource": "funds",
+        "amount": 200000,
+        "currency": "AOA",
+        "destination": {
+          "bank": "banco_externo",
+          "account": "dest12345",
+          "beneficiary": "unknown_entity",
+          "country": "XX"
+        },
+        "transaction_pattern": {
+          "unusual_amount": true,
+          "unusual_destination": true,
+          "different_from_history": true
+        }
+      },
+      "expected_decision": {
+        "allow_transaction": false,
+        "flag_suspicious": true,
+        "reasons": ["unusual_pattern", "high_amount"]
+      },
+      "tags": ["monitoramento", "transacoes_suspeitas", "alta_prioridade"]
+    },
+    {
+      "id": "tc-lei-14-21-r03-01",
+      "requirement_id": "lei-14-21-r03",
+      "name": "Comunicação de Operação Suspeita",
+      "description": "Verifica se a política exige comunicação de operação suspeita à UIF",
+      "policy_file": "suspicious_activity.rego",
+      "input": {
+        "user": {
+          "id": "system_user",
+          "tenant_id": "tenant_ao_1",
+          "region": "AO",
+          "roles": ["compliance_officer"]
+        },
+        "action": "process",
+        "resource": "flagged_transaction",
+        "transaction_id": "tx12345",
+        "suspicious_factors": [
+          "structured_deposits",
+          "unusual_pattern",
+          "high_risk_jurisdiction"
+        ],
+        "risk_score": 85,
+        "manual_review_performed": true
+      },
+      "expected_decision": {
+        "report_to_uif": true,
+        "restrict_account": true
+      },
+      "tags": ["comunicacao", "uif", "operacoes_suspeitas"]
+    },
+    {
+      "id": "tc-lei-14-21-r04-01",
+      "requirement_id": "lei-14-21-r04",
+      "name": "Verificação de Cliente PEP - Sem Aprovação",
+      "description": "Verifica se a política exige aprovações adicionais para operações de clientes PEP",
+      "policy_file": "account_operation.rego",
+      "input": {
+        "user": {
+          "id": "pep_user123",
+          "tenant_id": "tenant_ao_1",
+          "region": "AO",
+          "is_pep": true,
+          "pep_type": "domestic",
+          "risk_level": "high"
+        },
+        "action": "withdraw",
+        "resource": "account_funds",
+        "operation_id": "op12345",
+        "operation_type": "large_withdrawal",
+        "amount": 75000,
+        "currency": "AOA",
+        "approval_level": 1
+      },
+      "expected_decision": {
+        "allow_account_operation": false,
+        "reasons": ["insufficient_pep_approval"]
+      },
+      "tags": ["pep", "medidas_reforcadas", "alta_prioridade"]
+    },
+    {
+      "id": "tc-lei-14-21-r04-02",
+      "requirement_id": "lei-14-21-r04",
+      "name": "Verificação de Cliente PEP - Com Aprovação",
+      "description": "Verifica se a política permite operações de clientes PEP com aprovação adequada",
+      "policy_file": "account_operation.rego",
+      "input": {
+        "user": {
+          "id": "pep_user123",
+          "tenant_id": "tenant_ao_1",
+          "region": "AO",
+          "is_pep": true,
+          "related_pep": false,
+          "pep_type": "domestic",
+          "risk_level": "high"
+        },
+        "action": "withdraw",
+        "resource": "account_funds",
+        "operation_id": "op12345",
+        "operation_type": "large_withdrawal",
+        "amount": 75000,
+        "currency": "AOA",
+        "approval_level": 3
+      },
+      "expected_decision": {
+        "allow_account_operation": true
+      },
+      "tags": ["pep", "medidas_reforcadas"]
+    },
+    {
+      "id": "tc-lei-14-21-r05-01",
+      "requirement_id": "lei-14-21-r05",
+      "name": "Acesso a Registros Históricos",
+      "description": "Verifica se a política permite acesso a registros históricos para fins regulatórios",
+      "policy_file": "record_keeping.rego",
+      "input": {
+        "user": {
+          "id": "regulator_user",
+          "tenant_id": "tenant_ao_1",
+          "region": "AO",
+          "roles": ["regulator"]
+        },
+        "action": "view",
+        "resource": "transaction_history",
+        "customer_id": "customer123",
+        "transaction_date": "2018-07-15",
+        "request_type": "regulatory_inquiry",
+        "request_id": "req12345"
+      },
+      "expected_decision": {
+        "allow_access": true,
+        "log_access": true
+      },
+      "tags": ["registros", "documentacao"]
+    },
+    {
+      "id": "tc-lei-14-21-r06-01",
+      "requirement_id": "lei-14-21-r06",
+      "name": "Limite de Transação em Dinheiro Excedido",
+      "description": "Verifica se a política restringe transações em dinheiro acima do limite legal",
+      "policy_file": "cash_transaction.rego",
+      "input": {
+        "user": {
+          "id": "teller123",
+          "tenant_id": "tenant_ao_1",
+          "region": "AO",
+          "roles": ["bank_teller"]
+        },
+        "action": "process",
+        "resource": "cash_deposit",
+        "customer_id": "customer456",
+        "amount": 1500000,
+        "currency": "AOA",
+        "transaction_type": "cash_deposit",
+        "verification_documents": [],
+        "source_of_funds_declared": false
+      },
+      "expected_decision": {
+        "allow_transaction": false,
+        "require_additional_verification": true,
+        "reasons": ["exceeds_cash_limit", "requires_source_of_funds"]
+      },
+      "tags": ["limite_transacao", "dinheiro"]
+    },
+    {
+      "id": "tc-lei-14-21-r06-02",
+      "requirement_id": "lei-14-21-r06",
+      "name": "Transação em Dinheiro com Verificação Adequada",
+      "description": "Verifica se a política permite transações em dinheiro com verificações adicionais",
+      "policy_file": "cash_transaction.rego",
+      "input": {
+        "user": {
+          "id": "teller123",
+          "tenant_id": "tenant_ao_1",
+          "region": "AO",
+          "roles": ["bank_teller"]
+        },
+        "action": "process",
+        "resource": "cash_deposit",
+        "customer_id": "customer456",
+        "amount": 1500000,
+        "currency": "AOA",
+        "transaction_type": "cash_deposit",
+        "verification_documents": ["id_verification", "source_of_funds_form"],
+        "source_of_funds_declared": true,
+        "enhanced_due_diligence_performed": true,
+        "manager_approval": true
+      },
+      "expected_decision": {
+        "allow_transaction": true,
+        "log_high_value_transaction": true
+      },
+      "tags": ["limite_transacao", "dinheiro", "verificacao_aprofundada"]
+    }
+  ]
+}

@@ -1,0 +1,406 @@
+---
+# INNOVABIZ IAM Audit Service - Elasticsearch Deployment
+# Versão: 1.0.0
+# Ano: 2025
+# Ambiente: Multi-plataforma, Multi-dimensional e Multi-Contexto
+# Alinhado com: ISO 20000, ITIL v4, ISO 27001, NIST SP 800-53, PCI DSS 4.0
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: elasticsearch-config
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: elasticsearch
+    app.kubernetes.io/part-of: innovabiz-observability
+    app.kubernetes.io/component: logging
+    innovabiz.com/module: iam-audit
+    innovabiz.com/tier: observability
+data:
+  elasticsearch.yml: |
+    cluster.name: innovabiz-iam-audit
+    node.name: ${NODE_NAME}
+    
+    # Rede e segurança
+    network.host: 0.0.0.0
+    discovery.type: single-node
+    xpack.security.enabled: true
+    xpack.security.transport.ssl.enabled: true
+    xpack.security.transport.ssl.verification_mode: certificate
+    xpack.security.transport.ssl.keystore.path: /usr/share/elasticsearch/config/certs/elastic-certificates.p12
+    xpack.security.transport.ssl.truststore.path: /usr/share/elasticsearch/config/certs/elastic-certificates.p12
+    
+    # Configurações de memória e desempenho
+    bootstrap.memory_lock: true
+    
+    # Auditoria e conformidade
+    xpack.security.audit.enabled: true
+    xpack.security.audit.logfile.events.include: ["authentication_success", "authentication_failed", "access_denied", "connection_denied", "tampered_request"]
+    
+    # ILM (Index Lifecycle Management)
+    xpack.ilm.enabled: true
+    
+    # Multi-tenant e multi-região
+    xpack.monitoring.collection.enabled: true
+    
+    # Configurações de monitoramento
+    action.destructive_requires_name: true
+    
+    # Observabilidade
+    path.logs: /usr/share/elasticsearch/logs
+    
+    # Melhorias de desempenho
+    thread_pool.write.queue_size: 1000
+    thread_pool.search.queue_size: 1000
+    indices.query.bool.max_clause_count: 2048
+    indices.memory.index_buffer_size: 30%
+    indices.fielddata.cache.size: 20%
+    indices.requests.cache.size: 2%
+
+  jvm.options: |
+    -Xms1g
+    -Xmx1g
+    -XX:+UseG1GC
+    -XX:G1ReservePercent=25
+    -XX:InitiatingHeapOccupancyPercent=30
+    -XX:+HeapDumpOnOutOfMemoryError
+    -XX:HeapDumpPath=/usr/share/elasticsearch/logs/
+    -XX:ErrorFile=/usr/share/elasticsearch/logs/hs_err_pid%p.log
+    -Xlog:gc*,gc+age=trace,safepoint:file=/usr/share/elasticsearch/logs/gc.log:utctime,pid,tags:filecount=5,filesize=64m
+    -Djava.security.manager=allow
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: elasticsearch
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: elasticsearch
+    app.kubernetes.io/part-of: innovabiz-observability
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: elasticsearch
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: elasticsearch
+    app.kubernetes.io/part-of: innovabiz-observability
+rules:
+- apiGroups: [""]
+  resources: ["pods", "pods/exec"]
+  verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: elasticsearch
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: elasticsearch
+    app.kubernetes.io/part-of: innovabiz-observability
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: elasticsearch
+subjects:
+- kind: ServiceAccount
+  name: elasticsearch
+  namespace: iam-system
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: elasticsearch-credentials
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: elasticsearch
+    app.kubernetes.io/part-of: innovabiz-observability
+type: Opaque
+data:
+  elastic-username: ${ELASTIC_USERNAME_BASE64}
+  elastic-password: ${ELASTIC_PASSWORD_BASE64}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: elasticsearch
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: elasticsearch
+    app.kubernetes.io/part-of: innovabiz-observability
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9200"
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 9200
+    protocol: TCP
+    targetPort: http
+  - name: transport
+    port: 9300
+    protocol: TCP
+    targetPort: transport
+  selector:
+    app.kubernetes.io/name: elasticsearch
+    app.kubernetes.io/part-of: innovabiz-observability
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: elasticsearch
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: elasticsearch
+    app.kubernetes.io/part-of: innovabiz-observability
+    app.kubernetes.io/component: logging
+    innovabiz.com/module: iam-audit
+    innovabiz.com/tier: observability
+spec:
+  serviceName: elasticsearch
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: elasticsearch
+      app.kubernetes.io/part-of: innovabiz-observability
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: elasticsearch
+        app.kubernetes.io/part-of: innovabiz-observability
+        app.kubernetes.io/component: logging
+        innovabiz.com/module: iam-audit
+        innovabiz.com/tier: observability
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9200"
+    spec:
+      serviceAccountName: elasticsearch
+      securityContext:
+        fsGroup: 1000
+      terminationGracePeriodSeconds: 120
+      initContainers:
+      - name: fix-permissions
+        image: docker.io/busybox:1.35.0
+        imagePullPolicy: IfNotPresent
+        command: ["sh", "-c", "chown -R 1000:1000 /usr/share/elasticsearch/data"]
+        securityContext:
+          runAsUser: 0
+        volumeMounts:
+        - name: data
+          mountPath: /usr/share/elasticsearch/data
+      - name: increase-vm-max-map
+        image: docker.io/busybox:1.35.0
+        imagePullPolicy: IfNotPresent
+        command: ["sysctl", "-w", "vm.max_map_count=262144"]
+        securityContext:
+          privileged: true
+      - name: increase-fd-ulimit
+        image: docker.io/busybox:1.35.0
+        imagePullPolicy: IfNotPresent
+        command: ["sh", "-c", "ulimit -n 65536"]
+        securityContext:
+          privileged: true
+      containers:
+      - name: elasticsearch
+        image: docker.elastic.co/elasticsearch/elasticsearch:8.11.1
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: ELASTIC_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: elasticsearch-credentials
+              key: elastic-username
+        - name: ELASTIC_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: elasticsearch-credentials
+              key: elastic-password
+        - name: ES_JAVA_OPTS
+          value: "-Xms1g -Xmx1g"
+        - name: xpack.security.enabled
+          value: "true"
+        - name: discovery.type
+          value: "single-node"
+        - name: INNOVABIZ_TENANT_CONTEXT
+          value: "${TENANT_CONTEXT}"
+        - name: INNOVABIZ_REGION_CONTEXT
+          value: "${REGION_CONTEXT}"
+        - name: bootstrap.memory_lock
+          value: "true"
+        - name: cluster.name
+          value: innovabiz-iam-audit
+        ports:
+        - name: http
+          containerPort: 9200
+          protocol: TCP
+        - name: transport
+          containerPort: 9300
+          protocol: TCP
+        securityContext:
+          capabilities:
+            add:
+            - IPC_LOCK
+            - SYS_RESOURCE
+          runAsUser: 1000
+        readinessProbe:
+          httpGet:
+            path: /_cluster/health
+            port: http
+            httpHeaders:
+            - name: Authorization
+              value: Basic ${ELASTIC_AUTH_BASE64}
+          initialDelaySeconds: 30
+          timeoutSeconds: 10
+          periodSeconds: 10
+          failureThreshold: 5
+        livenessProbe:
+          tcpSocket:
+            port: http
+          initialDelaySeconds: 60
+          timeoutSeconds: 10
+          periodSeconds: 10
+          failureThreshold: 5
+        startupProbe:
+          httpGet:
+            path: /_cluster/health
+            port: http
+            httpHeaders:
+            - name: Authorization
+              value: Basic ${ELASTIC_AUTH_BASE64}
+          initialDelaySeconds: 120
+          timeoutSeconds: 5
+          periodSeconds: 10
+          failureThreshold: 30
+        resources:
+          limits:
+            cpu: 2000m
+            memory: 2Gi
+          requests:
+            cpu: 500m
+            memory: 1Gi
+        volumeMounts:
+        - name: data
+          mountPath: /usr/share/elasticsearch/data
+        - name: elasticsearch-config
+          mountPath: /usr/share/elasticsearch/config/elasticsearch.yml
+          subPath: elasticsearch.yml
+        - name: elasticsearch-config
+          mountPath: /usr/share/elasticsearch/config/jvm.options.d/jvm.options
+          subPath: jvm.options
+        - name: temp
+          mountPath: /tmp
+      volumes:
+      - name: elasticsearch-config
+        configMap:
+          name: elasticsearch-config
+          defaultMode: 0644
+      - name: temp
+        emptyDir: {}
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      storageClassName: managed-premium
+      resources:
+        requests:
+          storage: 100Gi
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: elasticsearch
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: elasticsearch
+    app.kubernetes.io/part-of: innovabiz-observability
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/auth-type: "basic"
+    nginx.ingress.kubernetes.io/auth-secret: "elasticsearch-auth"
+    nginx.ingress.kubernetes.io/auth-realm: "Authentication Required"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  tls:
+  - hosts:
+    - ${ELASTICSEARCH_HOST}
+    secretName: elasticsearch-tls
+  rules:
+  - host: ${ELASTICSEARCH_HOST}
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: elasticsearch
+            port:
+              name: http
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: elasticsearch-auth
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: elasticsearch
+    app.kubernetes.io/part-of: innovabiz-observability
+type: Opaque
+data:
+  auth: ${ELASTICSEARCH_AUTH_HASH}  # htpasswd -nb admin <password> | base64
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: elasticsearch
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: elasticsearch
+    app.kubernetes.io/part-of: innovabiz-observability
+    release: prometheus-operator
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: elasticsearch
+      app.kubernetes.io/part-of: innovabiz-observability
+  namespaceSelector:
+    matchNames:
+      - iam-system
+  endpoints:
+  - port: http
+    interval: 30s
+    scheme: https
+    tlsConfig:
+      insecureSkipVerify: true
+    basicAuth:
+      username:
+        name: elasticsearch-credentials
+        key: elastic-username
+      password:
+        name: elasticsearch-credentials
+        key: elastic-password
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: elasticsearch
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: elasticsearch
+    app.kubernetes.io/part-of: innovabiz-observability
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: elasticsearch
+      app.kubernetes.io/part-of: innovabiz-observability

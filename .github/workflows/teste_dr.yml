@@ -1,0 +1,40 @@
+name: Teste DR Automatizado
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 3 1 * *'  # Executa mensalmente no dia 1 às 03:00 UTC
+
+jobs:
+  dr-resilience-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Executar backup completo
+        shell: pwsh
+        run: |
+          powershell -ExecutionPolicy Bypass -File scripts/backup_volumes.ps1
+
+      - name: Restaurar backup em sandbox
+        shell: pwsh
+        run: |
+          powershell -ExecutionPolicy Bypass -File scripts/restore_volumes.ps1
+
+      - name: Healthcheck pós-restore
+        shell: pwsh
+        run: |
+          powershell -ExecutionPolicy Bypass -File scripts/healthcheck.ps1
+
+      - name: Gerar relatório do teste de DR
+        run: |
+          echo "Teste de DR executado em $(date)" > dr_report_$(date +%Y%m%d).txt
+          echo "Backup, restore e healthcheck realizados com sucesso." >> dr_report_$(date +%Y%m%d).txt
+        shell: bash
+
+      - name: Upload do relatório
+        uses: actions/upload-artifact@v4
+        with:
+          name: dr_report
+          path: dr_report_*.txt

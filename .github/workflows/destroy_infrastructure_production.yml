@@ -1,0 +1,59 @@
+name: Destroy Infrastructure (Production)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  destroy:
+    runs-on: windows-latest
+    env:
+      POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+      VAULT_TOKEN: ${{ secrets.VAULT_TOKEN }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set execution policy
+        run: |
+          Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+        shell: pwsh
+
+      - name: Run Terraform Destroy Script (Production)
+        run: |
+          .\infrastructure\dev\scripts\install_and_apply_terraform_production.ps1 -destroy
+        shell: pwsh
+
+      - name: Run Compliance Check (Destroy)
+        run: |
+          python scripts/check_compliance.py --destroy
+        shell: pwsh
+
+      - name: Upload Compliance Report (Destroy)
+        uses: actions/upload-artifact@v4
+        with:
+          name: compliance-report-destroy
+          path: reports/security_report.json
+
+      - name: Upload Terraform logs (artifact)
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-logs
+          path: |
+            infrastructure/environments/production/terraform.log
+            infrastructure/dev/scripts/*.log
+
+      - name: Notify Slack (destroy success)
+        if: success()
+        uses: slackapi/slack-github-action@v1.25.0
+        with:
+          payload: '{"text": "Destruição do ambiente production finalizada com sucesso!"}'
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      - name: Notify Slack (destroy failure)
+        if: failure()
+        uses: slackapi/slack-github-action@v1.25.0
+        with:
+          payload: '{"text": "Destruição do ambiente production falhou! Verifique os logs."}'
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

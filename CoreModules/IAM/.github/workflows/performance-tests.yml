@@ -1,0 +1,244 @@
+name: Testes de Carga e Performance
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Ambiente para executar os testes'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+        - staging
+        - qa
+      test_duration:
+        description: 'Duração dos testes em minutos'
+        required: true
+        default: '5'
+        type: number
+      virtual_users:
+        description: 'Número máximo de usuários virtuais'
+        required: true
+        default: '200'
+        type: number
+  schedule:
+    # Executa semanalmente às 01:00 de domingo
+    - cron: '0 1 * * 0'
+  pull_request:
+    types: [labeled]
+    branches: [main, develop]
+
+jobs:
+  k6-load-test:
+    name: Executar testes K6
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'performance-test')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repositório
+        uses: actions/checkout@v3
+
+      - name: Determinar ambiente e parâmetros
+        id: params
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "ENVIRONMENT=${{ github.event.inputs.environment }}" >> $GITHUB_ENV
+            echo "TEST_DURATION=${{ github.event.inputs.test_duration }}" >> $GITHUB_ENV
+            echo "VIRTUAL_USERS=${{ github.event.inputs.virtual_users }}" >> $GITHUB_ENV
+          elif [[ "${{ github.event_name }}" == "schedule" ]]; then
+            echo "ENVIRONMENT=staging" >> $GITHUB_ENV
+            echo "TEST_DURATION=15" >> $GITHUB_ENV
+            echo "VIRTUAL_USERS=300" >> $GITHUB_ENV
+          else
+            echo "ENVIRONMENT=staging" >> $GITHUB_ENV
+            echo "TEST_DURATION=3" >> $GITHUB_ENV
+            echo "VIRTUAL_USERS=50" >> $GITHUB_ENV
+          fi
+          
+          if [[ "${{ env.ENVIRONMENT }}" == "staging" ]]; then
+            echo "API_BASE_URL=https://staging-api.innovabiz.dev" >> $GITHUB_ENV
+          elif [[ "${{ env.ENVIRONMENT }}" == "qa" ]]; then
+            echo "API_BASE_URL=https://qa-api.innovabiz.dev" >> $GITHUB_ENV
+          fi
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Instalar K6
+        run: |
+          curl https://github.com/grafana/k6/releases/download/v0.44.0/k6-v0.44.0-linux-amd64.tar.gz -L | tar xvz --strip-components=1
+          sudo cp k6 /usr/local/bin
+
+      - name: Executar teste de carga para APIs REST
+        run: |
+          k6 run \
+            -e API_BASE_URL=${{ env.API_BASE_URL }} \
+            -e DURATION=${{ env.TEST_DURATION }}m \
+            -e VUS=${{ env.VIRTUAL_USERS }} \
+            ./tests/performance/rest-api-load-test.js
+
+      - name: Executar teste de carga para GraphQL
+        run: |
+          k6 run \
+            -e API_BASE_URL=${{ env.API_BASE_URL }} \
+            -e DURATION=${{ env.TEST_DURATION }}m \
+            -e VUS=${{ env.VIRTUAL_USERS }} \
+            ./tests/performance/graphql-load-test.js
+
+      - name: Executar teste de carga para validadores de conformidade
+        run: |
+          k6 run \
+            -e API_BASE_URL=${{ env.API_BASE_URL }} \
+            -e DURATION=${{ env.TEST_DURATION }}m \
+            -e VUS=${{ env.VIRTUAL_USERS }} \
+            ./tests/performance/compliance-validators-load-test.js
+
+      - name: Executar teste de carga para Bureau de Créditos
+        run: |
+          k6 run \
+            -e API_BASE_URL=${{ env.API_BASE_URL }} \
+            -e DURATION=${{ env.TEST_DURATION }}m \
+            -e VUS=${{ env.VIRTUAL_USERS }} \
+            ./tests/performance/bureau-credito-load-test.js
+
+      - name: Gerar relatório consolidado
+        run: |
+          npm install -g junit-report-merger
+          junit-merge -d ./tests/performance/results -o ./tests/performance/consolidated-report.xml
+
+      - name: Upload relatório consolidado
+        uses: actions/upload-artifact@v3
+        with:
+          name: consolidated-load-test-report
+          path: ./tests/performance/consolidated-report.xml
+
+  jmeter-stress-test:
+    name: Executar testes JMeter
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repositório
+        uses: actions/checkout@v3
+
+      - name: Determinar ambiente e parâmetros
+        id: params
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "ENVIRONMENT=${{ github.event.inputs.environment }}" >> $GITHUB_ENV
+            echo "TEST_DURATION=${{ github.event.inputs.test_duration }}" >> $GITHUB_ENV
+            echo "VIRTUAL_USERS=${{ github.event.inputs.virtual_users }}" >> $GITHUB_ENV
+          else
+            echo "ENVIRONMENT=staging" >> $GITHUB_ENV
+            echo "TEST_DURATION=15" >> $GITHUB_ENV
+            echo "VIRTUAL_USERS=300" >> $GITHUB_ENV
+          fi
+          
+          if [[ "${{ env.ENVIRONMENT }}" == "staging" ]]; then
+            echo "API_BASE_URL=https://staging-api.innovabiz.dev" >> $GITHUB_ENV
+          elif [[ "${{ env.ENVIRONMENT }}" == "qa" ]]; then
+            echo "API_BASE_URL=https://qa-api.innovabiz.dev" >> $GITHUB_ENV
+          fi
+
+      - name: Configurar Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Instalar JMeter
+        run: |
+          wget https://dlcdn.apache.org//jmeter/binaries/apache-jmeter-5.5.tgz
+          tar -xzf apache-jmeter-5.5.tgz
+          echo "JMETER_HOME=$PWD/apache-jmeter-5.5" >> $GITHUB_ENV
+          echo "$PWD/apache-jmeter-5.5/bin" >> $GITHUB_PATH
+
+      - name: Atualizar parâmetros de teste JMeter
+        run: |
+          sed -i "s|__API_BASE_URL__|${{ env.API_BASE_URL }}|g" ./tests/performance/jmeter/compliance-stress-test.jmx
+          sed -i "s|__DURATION__|${{ env.TEST_DURATION }}|g" ./tests/performance/jmeter/compliance-stress-test.jmx
+          sed -i "s|__THREADS__|${{ env.VIRTUAL_USERS }}|g" ./tests/performance/jmeter/compliance-stress-test.jmx
+
+      - name: Executar teste de stress com JMeter
+        run: |
+          mkdir -p ./tests/performance/jmeter/results
+          jmeter -n -t ./tests/performance/jmeter/compliance-stress-test.jmx \
+                 -l ./tests/performance/jmeter/results/result.jtl \
+                 -e -o ./tests/performance/jmeter/results/dashboard
+
+      - name: Upload relatório JMeter
+        uses: actions/upload-artifact@v3
+        with:
+          name: jmeter-stress-test-report
+          path: ./tests/performance/jmeter/results/dashboard
+
+  analyze-results:
+    name: Analisar resultados dos testes
+    needs: [k6-load-test, jmeter-stress-test]
+    if: always() && (needs.k6-load-test.result == 'success' || needs.jmeter-stress-test.result == 'success')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repositório
+        uses: actions/checkout@v3
+
+      - name: Download artefatos de teste
+        uses: actions/download-artifact@v3
+        with:
+          path: ./performance-reports
+
+      - name: Configurar Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Instalar dependências
+        run: |
+          python -m pip install pandas matplotlib seaborn jupyter nbconvert
+
+      - name: Analisar resultados e gerar relatório
+        run: |
+          python ./tests/performance/scripts/analyze_results.py \
+            --k6-report ./performance-reports/consolidated-load-test-report/consolidated-report.xml \
+            --jmeter-report ./performance-reports/jmeter-stress-test-report \
+            --output ./performance-reports/analysis
+
+      - name: Upload análise final
+        uses: actions/upload-artifact@v3
+        with:
+          name: performance-analysis-report
+          path: ./performance-reports/analysis
+
+      - name: Verificar KPIs de performance
+        id: verify-kpis
+        run: |
+          PASSED=$(python ./tests/performance/scripts/verify_kpis.py \
+            --report ./performance-reports/analysis/summary.json \
+            --thresholds ./tests/performance/thresholds.json)
+          
+          echo "KPI_CHECK=$PASSED" >> $GITHUB_ENV
+          
+          if [[ "$PASSED" == "false" ]]; then
+            echo "::error::Testes de performance não atendem aos KPIs definidos"
+            exit 1
+          fi
+
+  notify-performance-results:
+    name: Notificar resultados de performance
+    needs: [analyze-results]
+    if: always() && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download relatório de análise
+        uses: actions/download-artifact@v3
+        with:
+          name: performance-analysis-report
+          path: ./performance-analysis
+
+      - name: Enviar notificação
+        uses: rtCamp/action-slack-notify@v2
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_PERFORMANCE_WEBHOOK }}
+          SLACK_COLOR: ${{ needs.analyze-results.result == 'success' && 'good' || 'danger' }}
+          SLACK_TITLE: "Relatório de Performance: Bureau de Créditos e Validadores de Conformidade"
+          SLACK_MESSAGE: "O teste de carga e performance foi concluído. Consulte o relatório anexado para detalhes."
+          SLACK_FOOTER: "INNOVABIZ IAM | Módulo Bureau de Créditos | Validadores de Conformidade"

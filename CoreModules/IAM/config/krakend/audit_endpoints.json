@@ -1,0 +1,166 @@
+{
+  "endpoints": [
+    {
+      "endpoint": "/api/v1/audit/events",
+      "method": "POST",
+      "output_encoding": "json",
+      "backend": [
+        {
+          "url_pattern": "/audit/events",
+          "encoding": "json",
+          "method": "POST",
+          "host": ["http://iam-service:8000"],
+          "disable_host_sanitize": false
+        }
+      ],
+      "input_headers": [
+        "Authorization",
+        "Content-Type",
+        "X-Tenant-ID",
+        "X-Regional-Context",
+        "X-Correlation-ID",
+        "X-Request-ID"
+      ],
+      "input_query_strings": ["*"],
+      "extra_config": {
+        "auth/validator": {
+          "alg": "RS256",
+          "jwk_url": "http://keycloak:8080/auth/realms/innovabiz/protocol/openid-connect/certs",
+          "cache": true,
+          "cache_duration": 3600,
+          "audience": ["innovabiz-platform"],
+          "roles_key": "realm_access.roles",
+          "roles": ["audit:write"],
+          "propagate_claims": [
+            ["sub", "x-user-id"],
+            ["name", "x-user-name"],
+            ["email", "x-user-email"]
+          ]
+        },
+        "qos/ratelimit/router": {
+          "max_rate": 100,
+          "strategy": "ip"
+        },
+        "security/cors": {
+          "allow_origins": ["*"],
+          "allow_methods": ["POST", "GET"],
+          "allow_headers": ["Origin", "Authorization", "Content-Type"],
+          "expose_headers": ["Content-Length"],
+          "max_age": 3600
+        }
+      }
+    },
+    {
+      "endpoint": "/api/v1/audit/events",
+      "method": "GET",
+      "output_encoding": "json",
+      "backend": [
+        {
+          "url_pattern": "/audit/events",
+          "encoding": "json",
+          "method": "GET",
+          "host": ["http://iam-service:8000"],
+          "disable_host_sanitize": false
+        }
+      ],
+      "input_headers": [
+        "Authorization",
+        "Content-Type",
+        "X-Tenant-ID",
+        "X-Regional-Context",
+        "X-Correlation-ID",
+        "X-Request-ID"
+      ],
+      "input_query_strings": ["*"],
+      "querystring_params": [
+        "category",
+        "start_date",
+        "end_date",
+        "resource_id",
+        "resource_type",
+        "user_id",
+        "success",
+        "severity",
+        "correlation_id",
+        "limit",
+        "offset"
+      ],
+      "extra_config": {
+        "auth/validator": {
+          "alg": "RS256",
+          "jwk_url": "http://keycloak:8080/auth/realms/innovabiz/protocol/openid-connect/certs",
+          "cache": true,
+          "cache_duration": 3600,
+          "audience": ["innovabiz-platform"],
+          "roles_key": "realm_access.roles",
+          "roles": ["audit:read"],
+          "propagate_claims": [
+            ["sub", "x-user-id"],
+            ["name", "x-user-name"],
+            ["email", "x-user-email"]
+          ]
+        },
+        "qos/ratelimit/router": {
+          "max_rate": 300,
+          "strategy": "ip"
+        },
+        "security/cors": {
+          "allow_origins": ["*"],
+          "allow_methods": ["POST", "GET"],
+          "allow_headers": ["Origin", "Authorization", "Content-Type"],
+          "expose_headers": ["Content-Length"],
+          "max_age": 3600
+        }
+      }
+    },
+    {
+      "endpoint": "/api/v1/audit/events/{event_id}",
+      "method": "GET",
+      "output_encoding": "json",
+      "backend": [
+        {
+          "url_pattern": "/audit/events/{event_id}",
+          "encoding": "json",
+          "method": "GET",
+          "host": ["http://iam-service:8000"],
+          "disable_host_sanitize": false
+        }
+      ],
+      "input_headers": [
+        "Authorization",
+        "Content-Type",
+        "X-Tenant-ID",
+        "X-Regional-Context",
+        "X-Correlation-ID",
+        "X-Request-ID"
+      ],
+      "extra_config": {
+        "auth/validator": {
+          "alg": "RS256",
+          "jwk_url": "http://keycloak:8080/auth/realms/innovabiz/protocol/openid-connect/certs",
+          "cache": true,
+          "cache_duration": 3600,
+          "audience": ["innovabiz-platform"],
+          "roles_key": "realm_access.roles",
+          "roles": ["audit:read"],
+          "propagate_claims": [
+            ["sub", "x-user-id"],
+            ["name", "x-user-name"],
+            ["email", "x-user-email"]
+          ]
+        },
+        "qos/ratelimit/router": {
+          "max_rate": 150,
+          "strategy": "ip"
+        },
+        "security/cors": {
+          "allow_origins": ["*"],
+          "allow_methods": ["GET"],
+          "allow_headers": ["Origin", "Authorization", "Content-Type"],
+          "expose_headers": ["Content-Length"],
+          "max_age": 3600
+        }
+      }
+    }
+  ]
+}

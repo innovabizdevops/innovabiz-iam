@@ -1,0 +1,49 @@
+repos:
+- repo: https://github.com/antonbabenko/pre-commit-terraform
+  rev: v1.81.0
+  hooks:
+    - id: terraform_fmt
+    - id: terraform_validate
+    - id: terraform_docs
+    - id: terraform_tflint
+      args:
+        - --args=--config=infrastructure/dev/terraform/modules/kafka/.tflint.hcl
+    - id: terraform_tfsec
+    - id: terraform_checkov
+
+- repo: https://github.com/pre-commit/pre-commit-hooks
+  rev: v4.4.0
+  hooks:
+    - id: check-yaml
+    - id: end-of-file-fixer
+    - id: trailing-whitespace
+    - id: check-merge-conflict
+    - id: check-added-large-files
+    - id: detect-aws-credentials
+    - id: detect-private-key
+
+- repo: https://github.com/gruntwork-io/terratest
+  rev: v0.43.12
+  hooks:
+    - id: terratest_log_parser
+      name: terratest_log_parser
+      description: Parse terratest logs and show summary of test results
+      entry: scripts/terratest-log-parser.sh
+      language: script
+      always_run: true
+      pass_filenames: false
+      verbose: true
+
+- repo: https://github.com/terraform-linters/tflint
+  rev: v0.48.0
+  hooks:
+    - id: tflint
+      args:
+        - --config=infrastructure/dev/terraform/modules/kafka/.tflint.hcl
+
+- repo: https://github.com/terraform-docs/terraform-docs
+  rev: v0.16.0
+  hooks:
+    - id: terraform-docs-go
+      args: [--config=.terraform-docs.yml]
+      exclude: ^infrastructure/dev/terraform/modules/kafka/examples/

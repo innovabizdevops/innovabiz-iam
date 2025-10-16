@@ -1,0 +1,661 @@
+name: CI/CD Pipeline para IAM
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+  pull_request:
+    branches: [ main, develop ]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Ambiente para deploy'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+        - staging
+        - production
+
+env:
+  NODE_VERSION: '18'
+  PYTHON_VERSION: '3.10'
+  GO_VERSION: '1.19'
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/iam
+
+jobs:
+  build:
+    name: Build e Testes
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v3
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Configurar Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Configurar Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Instalar dependências Node.js
+        run: npm ci
+        working-directory: ./backend
+
+      - name: Instalar dependências Python
+        run: pip install -r requirements.txt
+        working-directory: ./src
+
+      - name: Lint e formatação
+        run: |
+          npm run lint
+          npm run format:check
+        working-directory: ./backend
+
+      - name: Executar testes unitários Node.js
+        run: npm test
+        working-directory: ./backend
+
+      - name: Executar testes unitários Python
+        run: pytest src/tests/unit
+        working-directory: ./
+
+      - name: Executar testes unitários Go
+        run: go test ./...
+        working-directory: ./
+
+      - name: Gerar código coverage
+        run: npm run coverage
+        working-directory: ./backend
+
+      - name: Upload relatório de coverage
+        uses: actions/upload-artifact@v3
+        with:
+          name: coverage-report
+          path: ./backend/coverage
+
+      - name: Build da aplicação
+        run: npm run build
+        working-directory: ./backend
+
+      - name: Build de container Docker
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: false
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Export Docker image
+        run: |
+          mkdir -p /tmp/images
+          docker save ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} -o /tmp/images/iam-image.tar
+
+      - name: Upload Docker image
+        uses: actions/upload-artifact@v3
+        with:
+          name: iam-image
+          path: /tmp/images/iam-image.tar
+
+  integration-tests:
+    name: Testes de Integração
+    needs: build
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:14
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: iam_test
+        ports:
+          - 5432:5432
+        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+
+      redis:
+        image: redis:6
+        ports:
+          - 6379:6379
+        options: --health-cmd "redis-cli ping" --health-interval 10s --health-timeout 5s --health-retries 5
+
+      kafka:
+        image: wurstmeister/kafka:2.13-2.8.1
+        env:
+          KAFKA_ADVERTISED_HOST_NAME: localhost
+          KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+          KAFKA_CREATE_TOPICS: "iam-compliance-events:1:1"
+        ports:
+          - 9092:9092
+
+      zookeeper:
+        image: wurstmeister/zookeeper:3.4.6
+        ports:
+          - 2181:2181
+    
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v3
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Configurar Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Instalar dependências
+        run: |
+          npm ci
+          pip install -r requirements.txt
+        working-directory: ./backend
+
+      - name: Executar migrações do banco
+        run: npm run migrate:test
+        working-directory: ./backend
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/iam_test
+
+      - name: Preparar dados de teste
+        run: npm run seed:test
+        working-directory: ./backend
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/iam_test
+          REDIS_URL: redis://localhost:6379/0
+          KAFKA_BROKERS: localhost:9092
+
+      - name: Executar testes de integração
+        run: npm run test:integration
+        working-directory: ./backend
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/iam_test
+          REDIS_URL: redis://localhost:6379/0
+          KAFKA_BROKERS: localhost:9092
+          NODE_ENV: test
+
+      - name: Executar testes E2E
+        run: npm run test:e2e
+        working-directory: ./backend
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/iam_test
+          REDIS_URL: redis://localhost:6379/0
+          KAFKA_BROKERS: localhost:9092
+          NODE_ENV: test
+
+  security-scan:
+    name: Verificações de Segurança
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v3
+
+      - name: Download artefato da imagem Docker
+        uses: actions/download-artifact@v3
+        with:
+          name: iam-image
+          path: /tmp/images
+
+      - name: Carregar imagem Docker
+        run: docker load -i /tmp/images/iam-image.tar
+
+      - name: Executar Trivy scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '1'
+          ignore-unfixed: true
+
+      - name: Upload resultados Trivy
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+          category: 'container-vulnerability'
+
+      - name: Executar verificações SAST
+        uses: github/codeql-action/analyze@v2
+        with:
+          languages: javascript, python, go
+
+  staging-deploy:
+    name: Deploy em Staging
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/develop') || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging')
+    needs: [integration-tests, security-scan]
+    runs-on: ubuntu-latest
+    environment: staging
+    outputs:
+      deployment_id: ${{ steps.deploy.outputs.deployment_id }}
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v3
+
+      - name: Configurar Kubernetes
+        uses: azure/k8s-set-context@v1
+        with:
+          kubeconfig: ${{ secrets.KUBE_CONFIG_STAGING }}
+
+      - name: Download artefato da imagem Docker
+        uses: actions/download-artifact@v3
+        with:
+          name: iam-image
+          path: /tmp/images
+
+      - name: Carregar imagem Docker
+        run: docker load -i /tmp/images/iam-image.tar
+
+      - name: Login no Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push da imagem Docker para o Registry
+        run: |
+          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:staging
+          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:staging
+
+      - name: Configurar Helm
+        uses: azure/setup-helm@v1
+        with:
+          version: 'v3.10.0'
+
+      - name: Deploy com Helm
+        id: deploy
+        run: |
+          # Obter ID do deployment atual para possível rollback
+          CURRENT_REVISION=$(helm ls -n innovabiz-iam -o json | jq -r '.[] | select(.name == "innovabiz-iam") | .revision')
+          echo "CURRENT_REVISION=$CURRENT_REVISION" >> $GITHUB_ENV
+          
+          # Deploy com Helm
+          helm upgrade --install innovabiz-iam ./helm/webauthn \
+            --namespace innovabiz-iam \
+            --create-namespace \
+            --set image.repository=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }} \
+            --set image.tag=${{ github.sha }} \
+            --values ./helm/values-staging.yaml \
+            --atomic \
+            --timeout 5m \
+            --wait
+
+          # Salvar ID do deployment para output
+          DEPLOYMENT_ID=$(helm ls -n innovabiz-iam -o json | jq -r '.[] | select(.name == "innovabiz-iam") | .revision')
+          echo "deployment_id=$DEPLOYMENT_ID" >> $GITHUB_OUTPUT
+
+      - name: Verificar health check
+        run: |
+          # Esperar pelo deployment
+          kubectl rollout status deployment/innovabiz-iam -n innovabiz-iam --timeout=300s
+          
+          # Verificar health check
+          ATTEMPTS=0
+          MAX_ATTEMPTS=10
+          SUCCESS=false
+          
+          while [ $ATTEMPTS -lt $MAX_ATTEMPTS ]; do
+            HEALTH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://staging-api.innovabiz.dev/health)
+            
+            if [ "$HEALTH_STATUS" == "200" ]; then
+              SUCCESS=true
+              break
+            fi
+            
+            echo "Tentativa $((ATTEMPTS+1))/$MAX_ATTEMPTS - Health check não passou (status: $HEALTH_STATUS)"
+            sleep 10
+            ATTEMPTS=$((ATTEMPTS+1))
+          done
+          
+          if [ "$SUCCESS" != "true" ]; then
+            echo "::error::Health check falhou após $MAX_ATTEMPTS tentativas. Iniciando rollback..."
+            # Fazer rollback
+            helm rollback innovabiz-iam ${{ env.CURRENT_REVISION }} -n innovabiz-iam
+            exit 1
+          fi
+          
+          echo "Health check passou com sucesso!"
+      
+      - name: Registrar deploy no Rollbar
+        uses: rollbar/github-deploy-action@2.0.0
+        with:
+          environment: 'staging'
+          version: ${{ github.sha }}
+          access_token: ${{ secrets.ROLLBAR_ACCESS_TOKEN }}
+
+  smoketest:
+    name: Testes de Smoke
+    needs: [staging-deploy]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v3
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Instalar dependências
+        run: npm ci
+        working-directory: ./tests
+
+      - name: Executar testes de smoke
+        id: smoketest
+        run: npm run test:smoke
+        working-directory: ./tests
+        env:
+          API_URL: https://staging-api.innovabiz.dev
+
+      - name: Verificar resultado e iniciar rollback se necessário
+        if: ${{ failure() && needs.staging-deploy.outputs.deployment_id != '' }}
+        run: |
+          echo "::error::Testes de smoke falharam. Iniciando rollback automático..."
+          
+          # Configurar kubectl
+          echo "${{ secrets.KUBE_CONFIG_STAGING }}" > kubeconfig
+          export KUBECONFIG=./kubeconfig
+          
+          # Executar rollback
+          helm rollback innovabiz-iam $((${{ needs.staging-deploy.outputs.deployment_id }}-1)) -n innovabiz-iam
+          
+          # Atualizar status no Rollbar
+          curl -X POST \
+            -H "Content-Type: application/json" \
+            -H "X-Rollbar-Access-Token: ${{ secrets.ROLLBAR_ACCESS_TOKEN }}" \
+            -d '{"environment": "staging", "revision": "${{ github.sha }}", "status": "failed", "comment": "Rollback automático devido a falha nos testes de smoke"}' \
+            https://api.rollbar.com/api/1/deploy
+          
+          # Notificar equipe
+          curl -X POST -H 'Content-type: application/json' \
+            --data '{"text":"[ALERTA] Rollback automático do IAM em staging realizado após falha nos testes de smoke"}' \
+            ${{ secrets.SLACK_WEBHOOK_URL }}
+          
+          exit 1
+
+  production-deploy:
+    name: Deploy em Produção
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production')
+    needs: [integration-tests, security-scan]
+    runs-on: ubuntu-latest
+    environment: production
+    outputs:
+      deployment_id: ${{ steps.deploy.outputs.deployment_id }}
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v3
+
+      - name: Configurar Kubernetes
+        uses: azure/k8s-set-context@v1
+        with:
+          kubeconfig: ${{ secrets.KUBE_CONFIG_PRODUCTION }}
+
+      - name: Download artefato da imagem Docker
+        uses: actions/download-artifact@v3
+        with:
+          name: iam-image
+          path: /tmp/images
+
+      - name: Carregar imagem Docker
+        run: docker load -i /tmp/images/iam-image.tar
+
+      - name: Login no Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push da imagem Docker para o Registry
+        run: |
+          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:production
+          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:production
+          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+
+      - name: Configurar Helm
+        uses: azure/setup-helm@v1
+        with:
+          version: 'v3.10.0'
+      
+      # Deploy Canário: primeiro 10% do tráfego
+      - name: Deploy Canário
+        id: canary-deploy
+        run: |
+          # Registrar versão anterior para possível rollback
+          CURRENT_REVISION=$(helm ls -n innovabiz-iam -o json | jq -r '.[] | select(.name == "innovabiz-iam") | .revision')
+          echo "CURRENT_REVISION=$CURRENT_REVISION" >> $GITHUB_ENV
+
+          # Deploy canário com 10% do tráfego
+          helm upgrade --install innovabiz-iam ./helm/webauthn \
+            --namespace innovabiz-iam \
+            --create-namespace \
+            --set image.repository=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }} \
+            --set image.tag=${{ github.sha }} \
+            --set canary.enabled=true \
+            --set canary.weight=10 \
+            --values ./helm/values-production.yaml \
+            --atomic \
+            --timeout 5m \
+            --wait
+
+      - name: Verificar métricas do canário
+        id: canary-metrics
+        run: |
+          # Esperar pelo deployment canário
+          kubectl rollout status deployment/innovabiz-iam-canary -n innovabiz-iam --timeout=300s
+          
+          # Verificar métricas por 5 minutos
+          echo "Monitorando métricas do canário por 5 minutos..."
+          sleep 300
+          
+          # Obter métricas de erro do Prometheus
+          ERROR_RATE=$(curl -s "https://prometheus.innovabiz.dev/api/v1/query" \
+            --data-urlencode 'query=sum(rate(http_server_requests_total{status=~"5..",service="innovabiz-iam-canary"}[5m])) / sum(rate(http_server_requests_total{service="innovabiz-iam-canary"}[5m])) * 100' \
+            | jq -r '.data.result[0].value[1]')
+          
+          # Verificar se a taxa de erro está abaixo do limite (5%)
+          if (( $(echo "$ERROR_RATE > 5" | bc -l) )); then
+            echo "::error::Taxa de erro do canário ($ERROR_RATE%) acima do limite de 5%. Iniciando rollback..."
+            helm rollback innovabiz-iam ${{ env.CURRENT_REVISION }} -n innovabiz-iam
+            exit 1
+          fi
+          
+          echo "Taxa de erro do canário: $ERROR_RATE% (abaixo do limite de 5%)"
+          echo "Monitoramento do canário concluído com sucesso"
+
+      # Deploy completo após validação do canário
+      - name: Deploy Completo em Produção
+        id: deploy
+        if: ${{ success() }}
+        run: |
+          # Deploy completo
+          helm upgrade --install innovabiz-iam ./helm/webauthn \
+            --namespace innovabiz-iam \
+            --create-namespace \
+            --set image.repository=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }} \
+            --set image.tag=${{ github.sha }} \
+            --set canary.enabled=false \
+            --values ./helm/values-production.yaml \
+            --atomic \
+            --timeout 5m \
+            --wait
+          
+          # Salvar ID do deployment para output
+          DEPLOYMENT_ID=$(helm ls -n innovabiz-iam -o json | jq -r '.[] | select(.name == "innovabiz-iam") | .revision')
+          echo "deployment_id=$DEPLOYMENT_ID" >> $GITHUB_OUTPUT
+
+      - name: Verificar health check
+        run: |
+          # Esperar pelo deployment
+          kubectl rollout status deployment/innovabiz-iam -n innovabiz-iam --timeout=300s
+          
+          # Verificar health check
+          ATTEMPTS=0
+          MAX_ATTEMPTS=10
+          SUCCESS=false
+          
+          while [ $ATTEMPTS -lt $MAX_ATTEMPTS ]; do
+            HEALTH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://api.innovabiz.dev/health)
+            
+            if [ "$HEALTH_STATUS" == "200" ]; then
+              SUCCESS=true
+              break
+            fi
+            
+            echo "Tentativa $((ATTEMPTS+1))/$MAX_ATTEMPTS - Health check não passou (status: $HEALTH_STATUS)"
+            sleep 10
+            ATTEMPTS=$((ATTEMPTS+1))
+          done
+          
+          if [ "$SUCCESS" != "true" ]; then
+            echo "::error::Health check falhou após $MAX_ATTEMPTS tentativas. Iniciando rollback..."
+            helm rollback innovabiz-iam ${{ env.CURRENT_REVISION }} -n innovabiz-iam
+            exit 1
+          fi
+          
+          echo "Health check passou com sucesso!"
+
+      - name: Registrar deploy no Rollbar
+        uses: rollbar/github-deploy-action@2.0.0
+        with:
+          environment: 'production'
+          version: ${{ github.sha }}
+          access_token: ${{ secrets.ROLLBAR_ACCESS_TOKEN }}
+
+  prod-smoketest:
+    name: Testes de Smoke em Produção
+    needs: [production-deploy]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v3
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Instalar dependências
+        run: npm ci
+        working-directory: ./tests
+
+      - name: Executar testes de smoke
+        id: smoketest
+        run: npm run test:smoke
+        working-directory: ./tests
+        env:
+          API_URL: https://api.innovabiz.dev
+
+      - name: Verificar resultado e iniciar rollback se necessário
+        if: ${{ failure() && needs.production-deploy.outputs.deployment_id != '' }}
+        run: |
+          echo "::error::Testes de smoke falharam. Iniciando rollback automático..."
+          
+          # Configurar kubectl
+          echo "${{ secrets.KUBE_CONFIG_PRODUCTION }}" > kubeconfig
+          export KUBECONFIG=./kubeconfig
+          
+          # Executar rollback
+          helm rollback innovabiz-iam $((${{ needs.production-deploy.outputs.deployment_id }}-1)) -n innovabiz-iam
+          
+          # Atualizar status no Rollbar
+          curl -X POST \
+            -H "Content-Type: application/json" \
+            -H "X-Rollbar-Access-Token: ${{ secrets.ROLLBAR_ACCESS_TOKEN }}" \
+            -d '{"environment": "production", "revision": "${{ github.sha }}", "status": "failed", "comment": "Rollback automático devido a falha nos testes de smoke em produção"}' \
+            https://api.rollbar.com/api/1/deploy
+          
+          # Notificar equipe
+          curl -X POST -H 'Content-type: application/json' \
+            --data '{"text":"[ALERTA CRÍTICO] Rollback automático do IAM em produção realizado após falha nos testes de smoke. Necessária intervenção da equipe!"}' \
+            ${{ secrets.SLACK_WEBHOOK_URL }}
+          
+          exit 1
+
+      - name: Monitorar métricas pós-deploy
+        run: |
+          echo "Monitorando métricas em produção por 10 minutos..."
+          
+          # Monitoramento por 10 minutos após o deploy
+          for i in {1..10}; do
+            echo "Verificação $i/10..."
+            
+            # Verificar taxas de erro
+            ERROR_RATE=$(curl -s "https://prometheus.innovabiz.dev/api/v1/query" \
+              --data-urlencode 'query=sum(rate(http_server_requests_total{status=~"5..",service="innovabiz-iam"}[1m])) / sum(rate(http_server_requests_total{service="innovabiz-iam"}[1m])) * 100' \
+              | jq -r '.data.result[0].value[1]' || echo "0")
+            
+            # Verificar tempo de resposta
+            RESPONSE_TIME=$(curl -s "https://prometheus.innovabiz.dev/api/v1/query" \
+              --data-urlencode 'query=histogram_quantile(0.95, sum(rate(http_server_request_duration_seconds_bucket{service="innovabiz-iam"}[1m])) by (le))' \
+              | jq -r '.data.result[0].value[1]' || echo "0")
+            
+            echo "Taxa de erro: $ERROR_RATE%, Tempo de resposta P95: ${RESPONSE_TIME}s"
+            
+            # Verificar limites
+            if (( $(echo "$ERROR_RATE > 5" | bc -l) )); then
+              echo "::warning::Taxa de erro acima do limite! Verificar sistema."
+            fi
+            
+            if (( $(echo "$RESPONSE_TIME > 2" | bc -l) )); then
+              echo "::warning::Tempo de resposta acima do limite! Verificar sistema."
+            fi
+            
+            sleep 60
+          done
+          
+          echo "Monitoramento pós-deploy concluído com sucesso!"
+
+  notify-deploy-success:
+    name: Notificar Sucesso do Deployment
+    needs: [staging-deploy, smoketest, production-deploy, prod-smoketest]
+    if: ${{ success() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Determinar ambiente
+        id: env
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/main" || "${{ github.event.inputs.environment }}" == "production" ]]; then
+            echo "ENVIRONMENT=production" >> $GITHUB_ENV
+          else
+            echo "ENVIRONMENT=staging" >> $GITHUB_ENV
+          fi
+
+      - name: Enviar notificação de sucesso
+        uses: rtCamp/action-slack-notify@v2
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_COLOR: good
+          SLACK_TITLE: "✅ Deploy concluído com sucesso - IAM Bureau Créditos e Validadores de Conformidade"
+          SLACK_MESSAGE: "O deploy da versão ${{ github.sha }} no ambiente ${{ env.ENVIRONMENT }} foi concluído com sucesso!"
+          SLACK_FOOTER: "INNOVABIZ IAM | Módulo Bureau de Créditos | Validadores de Conformidade"

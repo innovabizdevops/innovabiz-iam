@@ -1,0 +1,385 @@
+{
+  "$schema": "https://www.krakend.io/schema/v3.json",
+  "version": 3,
+  "name": "Bureau Créditos Gateway API",
+  "port": 8080,
+  "timeout": "3s",
+  "cache_ttl": "300s",
+  "output_encoding": "json",
+  "debug_endpoint": false,
+  "endpoints": [
+    {
+      "endpoint": "/api/v1/bureau-credito/identities",
+      "method": "GET",
+      "extra_config": {
+        "auth/validator": {
+          "alg": "RS256",
+          "jwk_url": "http://iam-auth-service:8080/.well-known/jwks.json",
+          "disable_jwk_security": false,
+          "cache": true,
+          "audience": ["innovabiz-api"],
+          "roles_key": "roles",
+          "roles": ["bureau_credito:list"],
+          "propagate_claims": [
+            ["sub", "x-user-id"],
+            ["tenant", "x-tenant-id"]
+          ]
+        },
+        "qos/ratelimit/router": {
+          "max_rate": 100,
+          "client_max_rate": 10,
+          "strategy": "ip"
+        },
+        "security/cors": {
+          "allow_origins": ["*"],
+          "allow_methods": ["GET", "POST", "PUT", "DELETE"],
+          "allow_headers": ["Origin", "Authorization", "Content-Type"],
+          "expose_headers": ["Content-Length"],
+          "max_age": "12h"
+        }
+      },
+      "input_query_strings": ["tenant_id", "status", "tipo_vinculo"],
+      "input_headers": ["Authorization", "X-Tenant-ID", "X-Request-ID"],
+      "backend": [
+        {
+          "url_pattern": "/graphql",
+          "encoding": "json",
+          "sd": "static",
+          "method": "POST",
+          "host": ["http://iam-graphql-service:4000"],
+          "extra_config": {
+            "modifier/martian": {
+              "header.Modifier": {
+                "scope": ["request"],
+                "name": "Content-Type",
+                "value": "application/json"
+              },
+              "body.Modifier": {
+                "scope": ["request"],
+                "contentType": "application/json",
+                "body": "{\"query\": \"query GetBureauIdentities($tenantId: String, $status: BureauVinculoStatus, $tipoVinculo: BureauVinculoTipo) { bureauCredito { bureauIdentitiesByTenant(tenantId: $tenantId) { id usuarioId tenantId externalId tipoVinculo nivelAcesso status dataCriacao dataAtualizacao } } }\", \"variables\": {\"tenantId\": \"{{.request.query.tenant_id}}\", \"status\": \"{{.request.query.status}}\", \"tipoVinculo\": \"{{.request.query.tipo_vinculo}}\"}}"
+              }
+            },
+            "backend/http": {
+              "return_error_details": "backend_bureau_error"
+            }
+          },
+          "deny": [
+            "Authorization"
+          ],
+          "group": "bureau_credito"
+        }
+      ]
+    },
+    {
+      "endpoint": "/api/v1/bureau-credito/identities/{id}",
+      "method": "GET",
+      "extra_config": {
+        "auth/validator": {
+          "alg": "RS256",
+          "jwk_url": "http://iam-auth-service:8080/.well-known/jwks.json",
+          "disable_jwk_security": false,
+          "cache": true,
+          "audience": ["innovabiz-api"],
+          "roles_key": "roles",
+          "roles": ["bureau_credito:read"],
+          "propagate_claims": [
+            ["sub", "x-user-id"],
+            ["tenant", "x-tenant-id"]
+          ]
+        },
+        "qos/ratelimit/router": {
+          "max_rate": 100,
+          "client_max_rate": 10,
+          "strategy": "ip"
+        },
+        "security/cors": {
+          "allow_origins": ["*"],
+          "allow_methods": ["GET", "POST", "PUT", "DELETE"],
+          "allow_headers": ["Origin", "Authorization", "Content-Type"],
+          "expose_headers": ["Content-Length"],
+          "max_age": "12h"
+        }
+      },
+      "input_headers": ["Authorization", "X-Tenant-ID", "X-Request-ID"],
+      "backend": [
+        {
+          "url_pattern": "/graphql",
+          "encoding": "json",
+          "sd": "static",
+          "method": "POST",
+          "host": ["http://iam-graphql-service:4000"],
+          "extra_config": {
+            "modifier/martian": {
+              "header.Modifier": {
+                "scope": ["request"],
+                "name": "Content-Type",
+                "value": "application/json"
+              },
+              "body.Modifier": {
+                "scope": ["request"],
+                "contentType": "application/json",
+                "body": "{\"query\": \"query GetBureauIdentity($id: ID!) { bureauCredito { bureauIdentity(id: $id) { id usuarioId tenantId externalId externalTenantId tipoVinculo nivelAcesso status dataCriacao dataAtualizacao motivoStatus detalhes } } }\", \"variables\": {\"id\": \"{{.request.path.id}}\"}}"
+              }
+            },
+            "backend/http": {
+              "return_error_details": "backend_bureau_error"
+            }
+          },
+          "deny": [
+            "Authorization"
+          ],
+          "group": "bureau_credito"
+        }
+      ]
+    },
+    {
+      "endpoint": "/api/v1/bureau-credito/identities",
+      "method": "POST",
+      "extra_config": {
+        "auth/validator": {
+          "alg": "RS256",
+          "jwk_url": "http://iam-auth-service:8080/.well-known/jwks.json",
+          "disable_jwk_security": false,
+          "cache": true,
+          "audience": ["innovabiz-api"],
+          "roles_key": "roles",
+          "roles": ["bureau_credito:create_vinculo"],
+          "propagate_claims": [
+            ["sub", "x-user-id"],
+            ["tenant", "x-tenant-id"]
+          ]
+        },
+        "qos/ratelimit/router": {
+          "max_rate": 50,
+          "client_max_rate": 5,
+          "strategy": "ip"
+        },
+        "security/cors": {
+          "allow_origins": ["*"],
+          "allow_methods": ["GET", "POST", "PUT", "DELETE"],
+          "allow_headers": ["Origin", "Authorization", "Content-Type"],
+          "expose_headers": ["Content-Length"],
+          "max_age": "12h"
+        }
+      },
+      "input_headers": ["Authorization", "X-Tenant-ID", "X-Request-ID", "Content-Type"],
+      "backend": [
+        {
+          "url_pattern": "/graphql",
+          "encoding": "json",
+          "sd": "static",
+          "method": "POST",
+          "host": ["http://iam-graphql-service:4000"],
+          "extra_config": {
+            "modifier/martian": {
+              "header.Modifier": {
+                "scope": ["request"],
+                "name": "Content-Type",
+                "value": "application/json"
+              },
+              "body.Modifier": {
+                "scope": ["request"],
+                "contentType": "application/json",
+                "body": "{\"query\": \"mutation CreateBureauIdentity($input: CriarVinculoBureauInput!) { bureauCredito { criarVinculoBureau(input: $input) { id usuarioId tenantId externalId tipoVinculo nivelAcesso status dataCriacao } } }\", \"variables\": {\"input\": {{marshal .request.body }} }}"
+              }
+            },
+            "backend/http": {
+              "return_error_details": "backend_bureau_error"
+            }
+          },
+          "deny": [
+            "Authorization"
+          ],
+          "group": "bureau_credito"
+        }
+      ]
+    },
+    {
+      "endpoint": "/api/v1/bureau-credito/autorizacoes",
+      "method": "POST",
+      "extra_config": {
+        "auth/validator": {
+          "alg": "RS256",
+          "jwk_url": "http://iam-auth-service:8080/.well-known/jwks.json",
+          "disable_jwk_security": false,
+          "cache": true,
+          "audience": ["innovabiz-api"],
+          "roles_key": "roles",
+          "roles": ["bureau_credito:create_autorizacao"],
+          "propagate_claims": [
+            ["sub", "x-user-id"],
+            ["tenant", "x-tenant-id"]
+          ]
+        },
+        "qos/ratelimit/router": {
+          "max_rate": 50,
+          "client_max_rate": 5,
+          "strategy": "ip"
+        },
+        "security/cors": {
+          "allow_origins": ["*"],
+          "allow_methods": ["GET", "POST", "PUT", "DELETE"],
+          "allow_headers": ["Origin", "Authorization", "Content-Type"],
+          "expose_headers": ["Content-Length"],
+          "max_age": "12h"
+        }
+      },
+      "input_headers": ["Authorization", "X-Tenant-ID", "X-Request-ID", "Content-Type"],
+      "backend": [
+        {
+          "url_pattern": "/graphql",
+          "encoding": "json",
+          "sd": "static",
+          "method": "POST",
+          "host": ["http://iam-graphql-service:4000"],
+          "extra_config": {
+            "modifier/martian": {
+              "header.Modifier": {
+                "scope": ["request"],
+                "name": "Content-Type",
+                "value": "application/json"
+              },
+              "body.Modifier": {
+                "scope": ["request"],
+                "contentType": "application/json",
+                "body": "{\"query\": \"mutation CreateBureauAutorizacao($input: CriarAutorizacaoBureauInput!) { bureauCredito { criarAutorizacaoBureau(input: $input) { id identityId tipoConsulta finalidade justificativa dataAutorizacao dataValidade status autorizadoPor } } }\", \"variables\": {\"input\": {{marshal .request.body }} }}"
+              }
+            },
+            "backend/http": {
+              "return_error_details": "backend_bureau_error"
+            }
+          },
+          "deny": [
+            "Authorization"
+          ],
+          "group": "bureau_credito"
+        }
+      ]
+    },
+    {
+      "endpoint": "/api/v1/bureau-credito/tokens",
+      "method": "POST",
+      "extra_config": {
+        "auth/validator": {
+          "alg": "RS256",
+          "jwk_url": "http://iam-auth-service:8080/.well-known/jwks.json",
+          "disable_jwk_security": false,
+          "cache": true,
+          "audience": ["innovabiz-api"],
+          "roles_key": "roles",
+          "roles": ["bureau_credito:generate_token"],
+          "propagate_claims": [
+            ["sub", "x-user-id"],
+            ["tenant", "x-tenant-id"]
+          ]
+        },
+        "qos/ratelimit/router": {
+          "max_rate": 50,
+          "client_max_rate": 5,
+          "strategy": "ip"
+        },
+        "security/cors": {
+          "allow_origins": ["*"],
+          "allow_methods": ["GET", "POST", "PUT", "DELETE"],
+          "allow_headers": ["Origin", "Authorization", "Content-Type"],
+          "expose_headers": ["Content-Length"],
+          "max_age": "12h"
+        }
+      },
+      "input_headers": ["Authorization", "X-Tenant-ID", "X-Request-ID", "Content-Type"],
+      "backend": [
+        {
+          "url_pattern": "/graphql",
+          "encoding": "json",
+          "sd": "static",
+          "method": "POST",
+          "host": ["http://iam-graphql-service:4000"],
+          "extra_config": {
+            "modifier/martian": {
+              "header.Modifier": {
+                "scope": ["request"],
+                "name": "Content-Type",
+                "value": "application/json"
+              },
+              "body.Modifier": {
+                "scope": ["request"],
+                "contentType": "application/json",
+                "body": "{\"query\": \"mutation GenerateBureauToken($input: GerarTokenBureauInput!) { bureauCredito { gerarTokenBureau(input: $input) { token type expiresAt refreshToken identityId escopos finalidade } } }\", \"variables\": {\"input\": {{marshal .request.body }} }}"
+              }
+            },
+            "backend/http": {
+              "return_error_details": "backend_bureau_error"
+            }
+          },
+          "deny": [
+            "Authorization"
+          ],
+          "group": "bureau_credito"
+        }
+      ]
+    },
+    {
+      "endpoint": "/api/v1/bureau-credito/identities/{id}/revoke",
+      "method": "POST",
+      "extra_config": {
+        "auth/validator": {
+          "alg": "RS256",
+          "jwk_url": "http://iam-auth-service:8080/.well-known/jwks.json",
+          "disable_jwk_security": false,
+          "cache": true,
+          "audience": ["innovabiz-api"],
+          "roles_key": "roles",
+          "roles": ["bureau_credito:revoke_vinculo"],
+          "propagate_claims": [
+            ["sub", "x-user-id"],
+            ["tenant", "x-tenant-id"]
+          ]
+        },
+        "qos/ratelimit/router": {
+          "max_rate": 50,
+          "client_max_rate": 5,
+          "strategy": "ip"
+        },
+        "security/cors": {
+          "allow_origins": ["*"],
+          "allow_methods": ["GET", "POST", "PUT", "DELETE"],
+          "allow_headers": ["Origin", "Authorization", "Content-Type"],
+          "expose_headers": ["Content-Length"],
+          "max_age": "12h"
+        }
+      },
+      "input_headers": ["Authorization", "X-Tenant-ID", "X-Request-ID", "Content-Type"],
+      "backend": [
+        {
+          "url_pattern": "/graphql",
+          "encoding": "json",
+          "sd": "static",
+          "method": "POST",
+          "host": ["http://iam-graphql-service:4000"],
+          "extra_config": {
+            "modifier/martian": {
+              "header.Modifier": {
+                "scope": ["request"],
+                "name": "Content-Type",
+                "value": "application/json"
+              },
+              "body.Modifier": {
+                "scope": ["request"],
+                "contentType": "application/json",
+                "body": "{\"query\": \"mutation RevokeBureauVinculo($input: RevogarVinculoBureauInput!) { bureauCredito { revogarVinculoBureau(input: $input) } }\", \"variables\": {\"input\": {\"identityId\": \"{{.request.path.id}}\", \"motivo\": {{marshal .request.body.motivo}} }}}"
+              }
+            },
+            "backend/http": {
+              "return_error_details": "backend_bureau_error"
+            }
+          },
+          "deny": [
+            "Authorization"
+          ],
+          "group": "bureau_credito"
+        }
+      ]
+    }
+  ]
+}

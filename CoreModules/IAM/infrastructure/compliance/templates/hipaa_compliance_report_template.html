@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="{{ language }}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+    <style>
+        :root {
+            --primary-color: #0056b3;
+            --secondary-color: #6c757d;
+            --success-color: #28a745;
+            --warning-color: #ffc107;
+            --danger-color: #dc3545;
+            --info-color: #17a2b8;
+            --light-color: #f8f9fa;
+            --dark-color: #343a40;
+            --font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        body {
+            font-family: var(--font-family);
+            line-height: 1.6;
+            color: #333;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .header {
+            text-align: center;
+            padding: 20px 0;
+            border-bottom: 1px solid #eee;
+            margin-bottom: 30px;
+        }
+        
+        .logo {
+            max-width: 200px;
+            margin-bottom: 20px;
+        }
+        
+        h1, h2, h3, h4 {
+            color: var(--primary-color);
+        }
+        
+        .summary {
+            background-color: #f7f7f7;
+            padding: 20px;
+            border-radius: 5px;
+            margin-bottom: 30px;
+        }
+        
+        .summary-title {
+            font-size: 1.5em;
+            margin-bottom: 15px;
+        }
+        
+        .score-container {
+            display: flex;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+        
+        .score-card {
+            flex: 1;
+            min-width: 200px;
+            padding: 15px;
+            margin: 10px;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        
+        .score-value {
+            font-size: 2.5em;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        
+        .score-label {
+            font-size: 0.9em;
+            text-transform: uppercase;
+            color: var(--secondary-color);
+        }
+        
+        .score-high {
+            background-color: #e8f5e9;
+            color: var(--success-color);
+        }
+        
+        .score-medium {
+            background-color: #fff3e0;
+            color: var(--warning-color);
+        }
+        
+        .score-low {
+            background-color: #ffebee;
+            color: var(--danger-color);
+        }
+        
+        .category-section {
+            margin-bottom: 30px;
+        }
+        
+        .requirements-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+        
+        .requirements-table th,
+        .requirements-table td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .requirements-table th {
+            background-color: var(--primary-color);
+            color: white;
+            font-weight: 500;
+        }
+        
+        .requirements-table tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        
+        .requirements-table tr:hover {
+            background-color: #f1f1f1;
+        }
+        
+        .status-compliant {
+            color: var(--success-color);
+            font-weight: bold;
+        }
+        
+        .status-partially {
+            color: var(--warning-color);
+            font-weight: bold;
+        }
+        
+        .status-non-compliant {
+            color: var(--danger-color);
+            font-weight: bold;
+        }
+        
+        .status-na {
+            color: var(--secondary-color);
+            font-style: italic;
+        }
+        
+        .ar-section {
+            background-color: #e3f2fd;
+            padding: 20px;
+            border-radius: 5px;
+            margin-top: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .recommendation {
+            background-color: #fff;
+            border-left: 4px solid var(--info-color);
+            padding: 15px;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        }
+        
+        .recommendation-high {
+            border-left-color: var(--danger-color);
+        }
+        
+        .recommendation-medium {
+            border-left-color: var(--warning-color);
+        }
+        
+        .recommendation-low {
+            border-left-color: var(--success-color);
+        }
+        
+        .recommendation-title {
+            font-weight: bold;
+            display: block;
+            margin-bottom: 5px;
+        }
+        
+        .recommendation-priority {
+            display: inline-block;
+            padding: 3px 8px;
+            font-size: 0.75em;
+            border-radius: 3px;
+            margin-right: 10px;
+        }
+        
+        .priority-high {
+            background-color: var(--danger-color);
+            color: white;
+        }
+        
+        .priority-medium {
+            background-color: var(--warning-color);
+            color: #333;
+        }
+        
+        .priority-low {
+            background-color: var(--success-color);
+            color: white;
+        }
+        
+        .chart-container {
+            margin: 30px 0;
+            height: 300px;
+        }
+        
+        .footer {
+            margin-top: 50px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+            text-align: center;
+            font-size: 0.9em;
+            color: var(--secondary-color);
+        }
+        
+        @media print {
+            body {
+                padding: 0;
+                font-size: 12pt;
+            }
+            
+            .no-print {
+                display: none;
+            }
+            
+            a {
+                text-decoration: none;
+                color: #000;
+            }
+            
+            .requirements-table th {
+                background-color: #eee !important;
+                color: #000;
+            }
+            
+            @page {
+                margin: 2cm;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <img src="data:image/png;base64,{{ logo_base64 }}" alt="INNOVABIZ Logo" class="logo">
+        <h1>{{ title }}</h1>
+        <p>{{ generation_date }}</p>
+        <p>{{ labels.tenant }}: {{ tenant_name }}</p>
+    </div>
+    
+    <div class="summary">
+        <h2 class="summary-title">{{ labels.summary }}</h2>
+        <p>{{ labels.report_description }}</p>
+        
+        <div class="score-container">
+            <div class="score-card {% if overall_score >= 80 %}score-high{% elif overall_score >= 60 %}score-medium{% else %}score-low{% endif %}">
+                <div class="score-label">{{ labels.overall_score }}</div>
+                <div class="score-value">{{ overall_score }}%</div>
+            </div>
+            
+            <div class="score-card">
+                <div class="score-label">{{ labels.compliant }}</div>
+                <div class="score-value">{{ stats.compliant }}</div>
+            </div>
+            
+            <div class="score-card">
+                <div class="score-label">{{ labels.partially_compliant }}</div>
+                <div class="score-value">{{ stats.partially_compliant }}</div>
+            </div>
+            
+            <div class="score-card">
+                <div class="score-label">{{ labels.non_compliant }}</div>
+                <div class="score-value">{{ stats.non_compliant }}</div>
+            </div>
+        </div>
+    </div>
+    
+    {% if has_healthcare_module %}
+    <div class="ar-section">
+        <h3>{{ labels.ar_authentication }}</h3>
+        <p>{{ labels.ar_description }}</p>
+        
+        <div class="score-container">
+            <div class="score-card {% if ar_stats.factor_count >= 2 %}score-high{% elif ar_stats.factor_count >= 1 %}score-medium{% else %}score-low{% endif %}">
+                <div class="score-label">{{ labels.ar_factor_count }}</div>
+                <div class="score-value">{{ ar_stats.factor_count }}</div>
+            </div>
+            
+            <div class="score-card {% if ar_stats.enhances_phi_security %}score-high{% else %}score-low{% endif %}">
+                <div class="score-label">{{ labels.enhances_phi_security }}</div>
+                <div class="score-value">{% if ar_stats.enhances_phi_security %}✓{% else %}✗{% endif %}</div>
+            </div>
+        </div>
+        
+        {% if ar_stats.enabled_factors %}
+        <h4>{{ labels.enabled_ar_factors }}</h4>
+        <ul>
+            {% for factor in ar_stats.enabled_factors %}
+            <li>{{ factor }}</li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+    </div>
+    {% endif %}
+    
+    <!-- Categories -->
+    {% for category in categories %}
+    <div class="category-section">
+        <h3>{{ category.name }}</h3>
+        <p>{{ category.description }}</p>
+        
+        <div class="score-container">
+            <div class="score-card {% if category.score >= 80 %}score-high{% elif category.score >= 60 %}score-medium{% else %}score-low{% endif %}">
+                <div class="score-label">{{ labels.category_score }}</div>
+                <div class="score-value">{{ category.score }}%</div>
+            </div>
+        </div>
+        
+        <h4>{{ labels.requirements }}</h4>
+        <table class="requirements-table">
+            <thead>
+                <tr>
+                    <th>{{ labels.requirement_id }}</th>
+                    <th>{{ labels.requirement }}</th>
+                    <th>{{ labels.status }}</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for req in category.requirements %}
+                <tr>
+                    <td>{{ req.id }}</td>
+                    <td>{{ req.description }}</td>
+                    <td class="status-{{ req.status_class }}">{{ req.status }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endfor %}
+    
+    <!-- Recommendations -->
+    <div class="recommendations-section">
+        <h3>{{ labels.recommendations }}</h3>
+        
+        {% for rec in recommendations %}
+        <div class="recommendation recommendation-{{ rec.priority_class }}">
+            <span class="recommendation-title">{{ rec.title }}</span>
+            <span class="recommendation-priority priority-{{ rec.priority_class }}">{{ rec.priority }}</span>
+            <p>{{ rec.description }}</p>
+            <small>{{ labels.reference }}: {{ rec.reference }}</small>
+        </div>
+        {% endfor %}
+    </div>
+    
+    <div class="footer">
+        <p>{{ labels.generated_by }} INNOVABIZ Compliance IAM</p>
+        <p>{{ labels.report_id }}: {{ report_id }}</p>
+        <p>{{ labels.timestamp }}: {{ timestamp }}</p>
+    </div>
+</body>
+</html>

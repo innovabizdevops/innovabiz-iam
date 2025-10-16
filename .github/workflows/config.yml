@@ -1,0 +1,76 @@
+version: 1.0
+
+# Configurações globais
+global:
+  region: ${REGION:-eu}
+  environment: ${ENVIRONMENT:-dev}
+  version: ${GITHUB_SHA}
+  build_number: ${GITHUB_RUN_NUMBER}
+  registry: ${REGISTRY:-docker.io}
+  namespace: ${NAMESPACE:-innovabiz}
+
+# Configurações de segurança
+security:
+  sonar_token: ${SONAR_TOKEN}
+  snyk_token: ${SNYK_TOKEN}
+  zap_api_key: ${ZAP_API_KEY}
+  grafana_password: ${GRAFANA_PASSWORD}
+
+# Configurações de Docker
+docker:
+  username: ${DOCKERHUB_USERNAME}
+  token: ${DOCKERHUB_TOKEN}
+  registry: ${REGISTRY:-docker.io}
+  namespace: ${NAMESPACE:-innovabiz}
+
+# Configurações de Kubernetes
+kubernetes:
+  namespace: ${NAMESPACE:-innovabiz}
+  context: ${KUBE_CONTEXT}
+
+# Configurações de IAM
+iam:
+  admin_password: ${IAM_ADMIN_PASSWORD}
+  jwt_key_path: ${JWT_KEY_PATH:-/app/jwks}
+  mfa_enabled: true
+  multi_tenant: true
+  multi_region: true
+
+# Configurações de KrakenD
+krakend:
+  config_path: /etc/krakend/krakend.json
+  mcp_enabled: true
+  graphql_enabled: true
+  monitoring_enabled: true
+
+# Configurações de MCP
+mcp:
+  core_enabled: true
+  integration_enabled: true
+  security_enabled: true
+
+# Configurações de GraphQL
+graphql:
+  federation_enabled: true
+  schema_path: /etc/graphql/schema.graphql
+  validation_enabled: true
+
+# Configurações de Observabilidade
+observability:
+  prometheus_enabled: true
+  grafana_enabled: true
+  alerting_enabled: true
+
+# Configurações de DevOps
+devops:
+  gitlab_enabled: true
+  jenkins_enabled: true
+  sonarqube_enabled: true
+  zap_enabled: true
+  snyk_enabled: true
+
+# Configurações de CI/CD
+ci_cd:
+  workflows_enabled: true
+  testing_enabled: true
+  documentation_enabled: true

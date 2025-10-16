@@ -1,0 +1,69 @@
+name: Security Analysis
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Run OWASP ZAP
+        uses: zaproxy/action-full-scan@latest
+        with:
+          target: ${{ secrets.TEST_URL }}
+          apikey: ${{ secrets.ZAP_API_KEY }}
+          additional-flags: --self-contained --spider-max-depth 5
+
+      - name: Run Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          ignore-unfixed: true
+          ignore-policy: .trivyignore
+
+      - name: Run Checkov
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: .
+          soft-fail: true
+          quiet: true
+
+      - name: Run Snyk
+        uses: snyk/actions/node@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --severity-threshold=high
+
+      - name: Run SonarQube
+        uses: SonarSource/sonarqube-scan-action@master
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+
+      - name: Validate IAM Security
+        run: |
+          docker-compose -f docker-compose.yml exec iam-auth-server /app/bin/validate-security.sh
+
+      - name: Validate KrakenD Security
+        run: |
+          docker-compose -f docker-compose.yml exec krakend /bin/validate-security.sh
+
+      - name: Validate MCP Integration Security
+        run: |
+          docker-compose -f docker-compose.yml exec krakend-integration-handler /bin/validate-mcp-security.sh
+
+      - name: Validate GraphQL Security
+        run: |
+          docker-compose -f docker-compose.yml exec graphql-federation /bin/validate-graphql-security.sh
+
+      - name: Generate Security Report
+        run: |
+          echo "Generating security report..."
+          docker-compose -f docker-compose.yml exec security-report-generator /bin/generate-report.sh

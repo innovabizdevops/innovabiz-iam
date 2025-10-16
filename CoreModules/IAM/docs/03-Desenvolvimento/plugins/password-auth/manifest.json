@@ -1,0 +1,284 @@
+{
+  "id": "password-auth",
+  "name": "Password Authentication",
+  "version": "1.0.0",
+  "description": "Traditional username/password authentication with advanced policy management, regional compliance, and security features",
+  "author": "INNOVABIZ",
+  "license": "Proprietary",
+  "main": "index.js",
+  "type": "authentication-provider",
+  "category": "knowledge",
+  "assuranceLevel": 1,
+  "capabilities": {
+    "supportsPasswordless": false,
+    "supportsFederatedLogin": false,
+    "supportsCrossPlatform": true,
+    "supportsOfflineMode": true,
+    "supportsSilentAuthentication": false,
+    "requiresUserInteraction": true,
+    "isPhishingResistant": false,
+    "supportsBruteForceProtection": true,
+    "supportsComplexityRules": true,
+    "supportsHistoryPolicies": true,
+    "supportsAgeRules": true,
+    "supportsAdaptiveThrottling": true
+  },
+  "compatibility": {
+    "apiVersion": "1.0",
+    "platforms": ["web", "android", "ios", "windows", "macos", "linux"],
+    "minPlatformVersions": {
+      "web": "1.0.0",
+      "android": "1.0.0",
+      "ios": "1.0.0",
+      "windows": "1.0.0",
+      "macos": "1.0.0",
+      "linux": "1.0.0"
+    },
+    "browsers": {
+      "chrome": ">=50",
+      "firefox": ">=50",
+      "safari": ">=10",
+      "edge": ">=12"
+    }
+  },
+  "dependencies": [
+    {
+      "id": "crypto-service",
+      "version": "^1.0.0"
+    },
+    {
+      "id": "session-manager",
+      "version": "^1.0.0"
+    },
+    {
+      "id": "audit-service",
+      "version": "^1.0.0"
+    }
+  ],
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "passwordPolicyId": {
+        "type": "string",
+        "description": "ID da política de senha a ser aplicada (se não especificado, usa a política padrão do tenant)",
+        "format": "uuid"
+      },
+      "authUiTemplate": {
+        "type": "string",
+        "description": "Template de interface para autenticação por senha",
+        "enum": ["standard", "compact", "corporate", "custom"],
+        "default": "standard"
+      },
+      "selfServiceEnabled": {
+        "type": "boolean",
+        "description": "Habilitar auto-serviço de senha (recuperação, alteração)",
+        "default": true
+      },
+      "hashingAlgorithm": {
+        "type": "string",
+        "description": "Algoritmo de hash para senhas",
+        "enum": ["bcrypt", "argon2id", "pbkdf2-sha256", "pbkdf2-sha512", "scrypt"],
+        "default": "argon2id"
+      },
+      "hashingOptions": {
+        "type": "object",
+        "description": "Opções para o algoritmo de hash",
+        "properties": {
+          "iterations": {
+            "type": "number",
+            "description": "Número de iterações (rounds)",
+            "minimum": 10,
+            "default": 12
+          },
+          "memoryCost": {
+            "type": "number",
+            "description": "Custo de memória (para Argon2)",
+            "default": 65536
+          },
+          "timeCost": {
+            "type": "number",
+            "description": "Custo de tempo (para Argon2)",
+            "default": 3
+          },
+          "parallelism": {
+            "type": "number",
+            "description": "Paralelismo (para Argon2)",
+            "default": 1
+          }
+        }
+      },
+      "lockoutOptions": {
+        "type": "object",
+        "description": "Opções para bloqueio de conta",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "default": true
+          },
+          "maxAttempts": {
+            "type": "number",
+            "default": 5,
+            "minimum": 1,
+            "maximum": 20
+          },
+          "lockoutDurationMinutes": {
+            "type": "number",
+            "default": 30,
+            "minimum": 1
+          },
+          "progressiveThrottling": {
+            "type": "boolean",
+            "default": true
+          }
+        }
+      },
+      "regionalSettings": {
+        "type": "object",
+        "description": "Configurações específicas por região",
+        "properties": {
+          "EU": {
+            "type": "object",
+            "properties": {
+              "passwordPolicyId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "complianceMode": {
+                "type": "string",
+                "enum": ["GDPR", "eIDAS", "both"],
+                "default": "both"
+              },
+              "passwordResetFrequencyDays": {
+                "type": "number",
+                "default": 90
+              }
+            }
+          },
+          "BR": {
+            "type": "object",
+            "properties": {
+              "passwordPolicyId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "complianceMode": {
+                "type": "string",
+                "enum": ["LGPD", "strict", "standard"],
+                "default": "LGPD"
+              },
+              "passwordResetFrequencyDays": {
+                "type": "number",
+                "default": 90
+              }
+            }
+          },
+          "AO": {
+            "type": "object",
+            "properties": {
+              "passwordPolicyId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "complianceMode": {
+                "type": "string",
+                "enum": ["PNDSB", "standard", "relaxed"],
+                "default": "standard"
+              },
+              "passwordResetFrequencyDays": {
+                "type": "number",
+                "default": 120
+              },
+              "offlineAuthEnabled": {
+                "type": "boolean",
+                "default": true
+              }
+            }
+          },
+          "US": {
+            "type": "object",
+            "properties": {
+              "passwordPolicyId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "complianceMode": {
+                "type": "string",
+                "enum": ["NIST-800-63B", "HIPAA", "PCI-DSS", "standard"],
+                "default": "NIST-800-63B"
+              },
+              "passwordResetFrequencyDays": {
+                "type": "number",
+                "default": null
+              }
+            }
+          }
+        }
+      },
+      "industrySettings": {
+        "type": "object",
+        "description": "Configurações específicas por indústria",
+        "properties": {
+          "healthcare": {
+            "type": "object",
+            "properties": {
+              "passwordPolicyId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "complianceMode": {
+                "type": "string",
+                "enum": ["HIPAA", "GDPR-Health", "LGPD-Health", "standard"],
+                "default": "standard"
+              },
+              "requiresMFA": {
+                "type": "boolean",
+                "default": true
+              }
+            }
+          },
+          "finance": {
+            "type": "object",
+            "properties": {
+              "passwordPolicyId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "complianceMode": {
+                "type": "string",
+                "enum": ["PCI-DSS", "SOX", "Basel", "standard"],
+                "default": "standard"
+              },
+              "requiresMFA": {
+                "type": "boolean",
+                "default": true
+              }
+            }
+          },
+          "government": {
+            "type": "object",
+            "properties": {
+              "passwordPolicyId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "complianceMode": {
+                "type": "string",
+                "enum": ["eIDAS-HIGH", "NIST-HIGH", "standard"],
+                "default": "standard"
+              },
+              "requiresMFA": {
+                "type": "boolean",
+                "default": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "required": []
+  },
+  "regions": ["EU", "BR", "AO", "US"],
+  "industries": ["healthcare", "finance", "government", "enterprise", "education", "retail", "general"],
+  "compliance": ["GDPR", "LGPD", "PNDSB", "HIPAA", "PCI-DSS", "eIDAS", "NIST-800-63B"],
+  "tags": ["password", "username", "traditional", "knowledge-factor", "basic"]
+}

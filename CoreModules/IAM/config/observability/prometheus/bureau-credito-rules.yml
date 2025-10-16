@@ -1,0 +1,81 @@
+groups:
+  - name: bureau_credito
+    rules:
+      # Regras para alertas de alta taxa de erros
+      - alert: BureauCreditoHighErrorRate
+        expr: sum(rate(bureau_credito_errors_total[5m])) / sum(rate(bureau_credito_requests_total[5m])) > 0.05
+        for: 2m
+        labels:
+          severity: warning
+          service: bureau-credito
+        annotations:
+          summary: "Alta taxa de erros no Bureau de Crédito"
+          description: "O serviço de Bureau de Crédito está apresentando uma taxa de erros superior a 5% nos últimos 5 minutos"
+
+      # Regras para alertas de latência elevada
+      - alert: BureauCreditoHighLatency
+        expr: histogram_quantile(0.95, sum(rate(bureau_credito_request_duration_seconds_bucket[5m])) by (le, operation)) > 2
+        for: 5m
+        labels:
+          severity: warning
+          service: bureau-credito
+        annotations:
+          summary: "Alta latência no Bureau de Crédito"
+          description: "O tempo de resposta P95 para {{ $labels.operation }} está acima de 2 segundos"
+
+      # Regras para detecção anômala de fraudes
+      - alert: BureauCreditoHighFraudDetection
+        expr: sum(increase(bureau_credito_fraud_detection_total{severity="high"}[10m])) > 5
+        for: 5m
+        labels:
+          severity: critical
+          service: bureau-credito
+        annotations:
+          summary: "Alta taxa de detecção de fraudes"
+          description: "Mais de 5 detecções de fraude de alta severidade nos últimos 10 minutos"
+
+  - name: iam_authentication
+    rules:
+      # Regras para alertas de falhas de autenticação
+      - alert: IAMHighAuthFailureRate
+        expr: sum(rate(iam_authentication_failures_total[5m])) / sum(rate(iam_authentication_attempts_total[5m])) > 0.1
+        for: 3m
+        labels:
+          severity: warning
+          service: iam-authentication
+        annotations:
+          summary: "Alta taxa de falhas de autenticação"
+          description: "O serviço de autenticação está apresentando uma taxa de falhas superior a 10% nos últimos 5 minutos"
+
+      # Regras para alertas de anomalias em sessões
+      - alert: IAMSessionAnomalyDetection
+        expr: sum(increase(iam_session_anomaly_detections_total[15m])) > 10
+        for: 5m
+        labels:
+          severity: critical
+          service: iam-authentication
+        annotations:
+          summary: "Detecção elevada de anomalias em sessões"
+          description: "Mais de 10 anomalias de sessão detectadas nos últimos 15 minutos"
+
+      # Regras para alerta de score de confiança baixo
+      - alert: IAMLowTrustScoreAverage
+        expr: avg(iam_trust_score_distribution_sum / iam_trust_score_distribution_count) * 100 < 60
+        for: 10m
+        labels:
+          severity: warning
+          service: iam-authentication
+        annotations:
+          summary: "Score médio de confiança baixo"
+          description: "O score médio de confiança está abaixo de 60% nos últimos 10 minutos"
+          
+      # Regras para alertas de latência de autenticação por método
+      - alert: IAMHighAuthLatencyByMethod
+        expr: histogram_quantile(0.95, sum(rate(iam_authentication_duration_seconds_bucket[5m])) by (le, auth_method)) > 1.5
+        for: 5m
+        labels:
+          severity: warning
+          service: iam-authentication
+        annotations:
+          summary: "Alta latência para método de autenticação"
+          description: "O tempo de resposta P95 para autenticação usando método {{ $labels.auth_method }} está acima de 1.5 segundos"

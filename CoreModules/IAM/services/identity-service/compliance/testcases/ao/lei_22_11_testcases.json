@@ -1,0 +1,238 @@
+{
+  "framework_id": "lei-22-11",
+  "region": "AO",
+  "version": "1.0.0",
+  "description": "Casos de teste para verificação de conformidade com a Lei de Proteção de Dados Pessoais de Angola (Lei nº 22/11)",
+  "testcases": [
+    {
+      "id": "tc-lei-22-11-r01-01",
+      "requirement_id": "lei-22-11-r01",
+      "name": "Verificação de Consentimento Explícito",
+      "description": "Verifica se a política exige consentimento explícito antes de processar dados pessoais",
+      "policy_file": "data_processing.rego",
+      "input": {
+        "user": {
+          "id": "user123",
+          "tenant_id": "tenant_ao_1",
+          "region": "AO"
+        },
+        "action": "process_data",
+        "resource": "personal_data",
+        "data_categories": ["email", "telefone", "endereco"],
+        "purpose": "marketing",
+        "has_consent": false
+      },
+      "expected_decision": {
+        "allow_data_use": false,
+        "reasons": ["consent_required"]
+      },
+      "tags": ["consentimento", "dados_pessoais", "alta_prioridade"]
+    },
+    {
+      "id": "tc-lei-22-11-r01-02",
+      "requirement_id": "lei-22-11-r01",
+      "name": "Processamento com Consentimento Válido",
+      "description": "Verifica se a política permite processamento quando há consentimento explícito",
+      "policy_file": "data_processing.rego",
+      "input": {
+        "user": {
+          "id": "user123",
+          "tenant_id": "tenant_ao_1",
+          "region": "AO"
+        },
+        "action": "process_data",
+        "resource": "personal_data",
+        "data_categories": ["email", "telefone", "endereco"],
+        "purpose": "marketing",
+        "has_consent": true,
+        "consent_date": "2023-05-01T10:30:00Z",
+        "consent_expiry": "2024-05-01T10:30:00Z"
+      },
+      "expected_decision": {
+        "allow_data_use": true
+      },
+      "tags": ["consentimento", "dados_pessoais"]
+    },
+    {
+      "id": "tc-lei-22-11-r02-01",
+      "requirement_id": "lei-22-11-r02",
+      "name": "Verificação de Finalidade Específica",
+      "description": "Verifica se a política restringe o uso de dados para finalidades não especificadas",
+      "policy_file": "data_processing.rego",
+      "input": {
+        "user": {
+          "id": "user456",
+          "tenant_id": "tenant_ao_1",
+          "region": "AO"
+        },
+        "action": "process_data",
+        "resource": "personal_data",
+        "data_categories": ["email", "telefone"],
+        "purpose": "analytics",
+        "has_consent": true,
+        "consent_purposes": ["marketing", "service_delivery"]
+      },
+      "expected_decision": {
+        "allow_data_use": false,
+        "reasons": ["purpose_not_consented"]
+      },
+      "tags": ["finalidade", "limitacao_proposito"]
+    },
+    {
+      "id": "tc-lei-22-11-r03-01",
+      "requirement_id": "lei-22-11-r03",
+      "name": "Direito de Acesso aos Dados",
+      "description": "Verifica se a política garante o direito de acesso do titular aos seus dados",
+      "policy_file": "data_access.rego",
+      "input": {
+        "user": {
+          "id": "user123",
+          "tenant_id": "tenant_ao_1",
+          "region": "AO",
+          "roles": ["user"]
+        },
+        "action": "view",
+        "resource": "personal_data",
+        "resource_owner_id": "user123",
+        "request_type": "data_subject_access"
+      },
+      "expected_decision": {
+        "allow": true
+      },
+      "tags": ["direitos_titular", "acesso_dados"]
+    },
+    {
+      "id": "tc-lei-22-11-r03-02",
+      "requirement_id": "lei-22-11-r03",
+      "name": "Direito de Eliminação dos Dados",
+      "description": "Verifica se a política garante o direito do titular de eliminar seus dados",
+      "policy_file": "data_deletion.rego",
+      "input": {
+        "user": {
+          "id": "user789",
+          "tenant_id": "tenant_ao_1",
+          "region": "AO",
+          "roles": ["user"]
+        },
+        "action": "delete",
+        "resource": "personal_data",
+        "resource_owner_id": "user789",
+        "request_type": "data_subject_erasure"
+      },
+      "expected_decision": {
+        "allow_deletion": true
+      },
+      "tags": ["direitos_titular", "eliminacao_dados"]
+    },
+    {
+      "id": "tc-lei-22-11-r04-01",
+      "requirement_id": "lei-22-11-r04",
+      "name": "Restrição de Acesso a Dados Pessoais",
+      "description": "Verifica se a política restringe adequadamente o acesso a dados pessoais",
+      "policy_file": "data_access.rego",
+      "input": {
+        "user": {
+          "id": "employee123",
+          "tenant_id": "tenant_ao_1",
+          "region": "AO",
+          "roles": ["support_agent"]
+        },
+        "action": "view",
+        "resource": "personal_data",
+        "resource_owner_id": "user456",
+        "data_fields": ["cpf", "endereco", "telefone"],
+        "reason": "general_check"
+      },
+      "expected_decision": {
+        "allow": false,
+        "reasons": ["insufficient_privileges", "no_business_need"]
+      },
+      "tags": ["seguranca", "protecao", "controle_acesso"]
+    },
+    {
+      "id": "tc-lei-22-11-r05-01",
+      "requirement_id": "lei-22-11-r05",
+      "name": "Verificação de Período de Retenção",
+      "description": "Verifica se a política impede o acesso a dados após o período de retenção",
+      "policy_file": "data_retention.rego",
+      "input": {
+        "user": {
+          "id": "employee123",
+          "tenant_id": "tenant_ao_1",
+          "region": "AO",
+          "roles": ["analyst"]
+        },
+        "action": "view",
+        "resource": "archived_data",
+        "data": {
+          "collection_timestamp": "2019-01-01T00:00:00Z",
+          "category": "customer_transaction"
+        },
+        "current_time": "2023-07-15T10:30:00Z",
+        "regulatory_exemption": false
+      },
+      "expected_decision": {
+        "allow_data_access": false,
+        "reasons": ["retention_period_exceeded"]
+      },
+      "tags": ["retencao", "armazenamento"]
+    },
+    {
+      "id": "tc-lei-22-11-r06-01",
+      "requirement_id": "lei-22-11-r06",
+      "name": "Transferência Internacional de Dados",
+      "description": "Verifica se a política controla adequadamente transferências internacionais de dados",
+      "policy_file": "data_transfer.rego",
+      "input": {
+        "user": {
+          "id": "employee456",
+          "tenant_id": "tenant_ao_1",
+          "region": "AO",
+          "roles": ["data_manager"]
+        },
+        "action": "transfer",
+        "resource": "customer_database",
+        "destination": {
+          "country": "US",
+          "organization": "partner_org",
+          "has_adequacy_decision": false,
+          "has_data_protection_agreement": false
+        },
+        "data_categories": ["nome", "email", "telefone", "historico_compras"]
+      },
+      "expected_decision": {
+        "allow_transfer": false,
+        "reasons": ["inadequate_protection_measures"]
+      },
+      "tags": ["transferencia", "internacional"]
+    },
+    {
+      "id": "tc-lei-22-11-r06-02",
+      "requirement_id": "lei-22-11-r06",
+      "name": "Transferência Internacional com Proteção Adequada",
+      "description": "Verifica se a política permite transferências quando há medidas de proteção adequadas",
+      "policy_file": "data_transfer.rego",
+      "input": {
+        "user": {
+          "id": "employee456",
+          "tenant_id": "tenant_ao_1",
+          "region": "AO",
+          "roles": ["data_manager"]
+        },
+        "action": "transfer",
+        "resource": "customer_database",
+        "destination": {
+          "country": "PT",
+          "organization": "partner_org",
+          "has_adequacy_decision": true,
+          "has_data_protection_agreement": true
+        },
+        "data_categories": ["nome", "email", "telefone", "historico_compras"]
+      },
+      "expected_decision": {
+        "allow_transfer": true
+      },
+      "tags": ["transferencia", "internacional"]
+    }
+  ]
+}

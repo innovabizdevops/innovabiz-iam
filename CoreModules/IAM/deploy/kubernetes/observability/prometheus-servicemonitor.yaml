@@ -1,0 +1,37 @@
+# IAM - ServiceMonitor para Prometheus
+# Este manifesto define o monitoramento do serviço IAM pelo Prometheus
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: iam-service-monitor
+  namespace: monitoring
+  labels:
+    app: iam-service
+    module: iam
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: iam-service
+  namespaceSelector:
+    matchNames:
+      - innovabiz-iam-staging
+      - innovabiz-iam-production
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 15s
+    scrapeTimeout: 10s
+    metricRelabelings:
+    - sourceLabels: [__name__]
+      regex: 'go_.*'
+      action: keep
+    - sourceLabels: [__name__]
+      regex: 'process_.*'
+      action: keep
+    - sourceLabels: [__name__]
+      regex: 'iam_.*'
+      action: keep
+    - sourceLabels: [__name__]
+      regex: 'http_.*'
+      action: keep

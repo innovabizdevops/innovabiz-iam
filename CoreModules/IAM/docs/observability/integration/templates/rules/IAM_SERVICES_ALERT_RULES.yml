@@ -1,0 +1,281 @@
+groups:
+- name: innovabiz_iam_services_alerts
+  rules:
+  # Alertas de Disponibilidade
+  - alert: IAMServiceDown
+    expr: up{job="iam-service"} == 0
+    for: 1m
+    labels:
+      severity: critical
+      service: iam
+      category: availability
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Serviço IAM Indisponível"
+      description: "Instância {{ $labels.instance }} do serviço IAM está offline há pelo menos 1 minuto. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/iam-service-down"
+      dashboard_url: "https://grafana.innovabiz.com/d/innovabiz-iam-services?var-tenant_id={{ $labels.tenant_id }}&var-region_id={{ $labels.region_id }}&var-environment={{ $labels.environment }}&var-instance={{ $labels.instance }}"
+
+  - alert: IAMHighAuthenticationFailures
+    expr: rate(iam_authentication_failures_total[5m]) > 10
+    for: 5m
+    labels:
+      severity: critical
+      service: iam
+      category: security
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Alta Taxa de Falhas de Autenticação"
+      description: "Mais de 10 falhas de autenticação por minuto nos últimos 5 minutos na instância {{ $labels.instance }}. Possível ataque de força bruta. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/iam-high-auth-failures"
+
+  - alert: IAMSuspiciousLoginActivity
+    expr: rate(iam_authentication_attempts_total[5m]) > 100
+    for: 10m
+    labels:
+      severity: warning
+      service: iam
+      category: security
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Atividade Suspeita de Login"
+      description: "Mais de 100 tentativas de autenticação por minuto por 10 minutos na instância {{ $labels.instance }}. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/iam-suspicious-login"
+
+  # Alertas de Autorização
+  - alert: IAMHighAuthorizationDenials
+    expr: rate(iam_authorization_denied_total[5m]) > 20
+    for: 5m
+    labels:
+      severity: warning
+      service: iam
+      category: security
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Alta Taxa de Negações de Autorização"
+      description: "Mais de 20 negações de autorização por minuto nos últimos 5 minutos na instância {{ $labels.instance }}. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/iam-high-auth-denials"
+
+  - alert: IAMPrivilegeEscalationAttempt
+    expr: increase(iam_privilege_escalation_attempts_total[5m]) > 0
+    for: 1m
+    labels:
+      severity: critical
+      service: iam
+      category: security
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Tentativa de Escalação de Privilégios"
+      description: "Detectada tentativa de escalação de privilégios na instância {{ $labels.instance }}. Usuário: {{ $labels.user }}, Recurso: {{ $labels.resource }}. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/iam-privilege-escalation"
+
+  # Alertas de Tokens JWT
+  - alert: IAMHighJWTTokenFailures
+    expr: rate(iam_jwt_validation_failures_total[5m]) > 5
+    for: 5m
+    labels:
+      severity: warning
+      service: iam
+      category: security
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Alta Taxa de Falhas de Validação JWT"
+      description: "Mais de 5 falhas de validação JWT por minuto nos últimos 5 minutos na instância {{ $labels.instance }}. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/iam-jwt-validation-failures"
+
+  - alert: IAMJWTTokensNearExpiry
+    expr: iam_jwt_tokens_expiring_soon_total > 1000
+    for: 15m
+    labels:
+      severity: info
+      service: iam
+      category: maintenance
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Muitos Tokens JWT Próximos do Vencimento"
+      description: "Mais de 1000 tokens JWT expirarão em breve na instância {{ $labels.instance }}. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/iam-jwt-near-expiry"
+
+  - alert: IAMJWTSigningKeyRotationNeeded
+    expr: time() - iam_jwt_signing_key_last_rotation_timestamp > 2592000
+    for: 1h
+    labels:
+      severity: warning
+      service: iam
+      category: security
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Rotação de Chave JWT Necessária"
+      description: "Chave de assinatura JWT não foi rotacionada há mais de 30 dias na instância {{ $labels.instance }}. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/iam-jwt-key-rotation"
+
+  # Alertas de Performance
+  - alert: IAMHighLatency
+    expr: histogram_quantile(0.95, sum(rate(iam_operation_duration_seconds_bucket[5m])) by (le)) > 1
+    for: 10m
+    labels:
+      severity: warning
+      service: iam
+      category: performance
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Alta Latência em Operações IAM"
+      description: "Latência P95 de operações IAM acima de 1 segundo por 10 minutos. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/iam-high-latency"
+
+  - alert: IAMHighOperationRate
+    expr: sum(rate(iam_operations_total[5m])) > 10000
+    for: 15m
+    labels:
+      severity: info
+      service: iam
+      category: performance
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Alta Taxa de Operações IAM"
+      description: "Mais de 10.000 operações IAM por segundo por 15 minutos. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/iam-high-operation-rate"
+
+  # Alertas de Sessões
+  - alert: IAMTooManyActiveSessions
+    expr: iam_active_sessions_total > 50000
+    for: 10m
+    labels:
+      severity: warning
+      service: iam
+      category: resource
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Muitas Sessões Ativas"
+      description: "Mais de 50.000 sessões ativas na instância {{ $labels.instance }}. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/iam-too-many-sessions"
+
+  - alert: IAMSessionLeakage
+    expr: increase(iam_active_sessions_total[1h]) > increase(iam_session_terminations_total[1h]) * 1.2
+    for: 30m
+    labels:
+      severity: warning
+      service: iam
+      category: resource
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Possível Vazamento de Sessões"
+      description: "Sessões criadas excedem terminações em mais de 20% na última hora na instância {{ $labels.instance }}. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/iam-session-leakage"
+
+  # Alertas de Compliance e Auditoria
+  - alert: IAMAuditLogFailure
+    expr: increase(iam_audit_log_failures_total[5m]) > 0
+    for: 1m
+    labels:
+      severity: critical
+      service: iam
+      category: compliance
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Falha no Log de Auditoria IAM"
+      description: "Falhas detectadas no sistema de auditoria IAM na instância {{ $labels.instance }}. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/iam-audit-log-failure"
+
+  - alert: IAMUnauthorizedAdminAccess
+    expr: increase(iam_admin_operations_unauthorized_total[5m]) > 0
+    for: 1m
+    labels:
+      severity: critical
+      service: iam
+      category: security
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Tentativa de Acesso Admin Não Autorizado"
+      description: "Detectada tentativa de acesso administrativo não autorizado na instância {{ $labels.instance }}. Usuário: {{ $labels.user }}. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/iam-unauthorized-admin-access"
+
+  # Alertas de SLA/SLO
+  - alert: IAMAvailabilitySLOViolation
+    expr: avg_over_time(up{job="iam-service"}[5m]) < 0.9999
+    for: 10m
+    labels:
+      severity: warning
+      service: iam
+      category: slo
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Violação de SLO de Disponibilidade IAM"
+      description: "SLO de disponibilidade IAM violado - disponibilidade < 99.99% nos últimos 10 minutos. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/iam-availability-slo-violation"
+
+  - alert: IAMAuthenticationSLOViolation
+    expr: sum(rate(iam_authentication_success_total[5m])) / sum(rate(iam_authentication_attempts_total[5m])) < 0.999
+    for: 15m
+    labels:
+      severity: warning
+      service: iam
+      category: slo
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Violação de SLO de Autenticação"
+      description: "SLO de autenticação violado - taxa de sucesso < 99.9% por mais de 15 minutos. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/iam-authentication-slo-violation"
+
+  # Alertas de Recursos
+  - alert: IAMHighCPUUsage
+    expr: 100 * (1 - avg by(instance, tenant_id, region_id, environment) (irate(node_cpu_seconds_total{mode="idle", job="node"}[5m]))) > 80
+    for: 15m
+    labels:
+      severity: warning
+      service: iam
+      category: resource
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Alto Uso de CPU no Serviço IAM"
+      description: "Uso de CPU acima de 80% por 15 minutos na instância {{ $labels.instance }}. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/iam-high-cpu"
+
+  - alert: IAMHighMemoryUsage
+    expr: 100 * (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) > 85
+    for: 15m
+    labels:
+      severity: warning
+      service: iam
+      category: resource
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Alto Uso de Memória no Serviço IAM"
+      description: "Uso de memória acima de 85% por 15 minutos na instância {{ $labels.instance }}. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/iam-high-memory"

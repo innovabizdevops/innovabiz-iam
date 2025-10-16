@@ -1,0 +1,532 @@
+# Validação de Performance de Animações - InnovaBiz CRM
+#
+# Pipeline automatizado para validação de performance das animações
+# com testes de regressão, benchmarks e métricas de qualidade.
+#
+# @version 1.0.0
+# @since 2025-09-24
+
+name: Animation Performance Validation
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'src/components/animations/**'
+      - 'src/components/mobile/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/animation-performance-validation.yml'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'src/components/animations/**'
+      - 'src/components/mobile/**'
+  schedule:
+    # Execução diária às 02:00 UTC para monitoramento contínuo
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      test_type:
+        description: 'Tipo de teste de performance'
+        required: true
+        default: 'full'
+        type: choice
+        options:
+          - full
+          - regression
+          - benchmark
+          - mobile
+      browser:
+        description: 'Navegador para testes'
+        required: false
+        default: 'chromium'
+        type: choice
+        options:
+          - chromium
+          - firefox
+          - webkit
+          - all
+
+env:
+  NODE_VERSION: '18'
+  PERFORMANCE_THRESHOLD_FPS: 45
+  PERFORMANCE_THRESHOLD_MEMORY: 100
+  PERFORMANCE_THRESHOLD_LOAD_TIME: 3000
+  REGRESSION_THRESHOLD: 10 # 10% de regressão máxima aceitável
+
+jobs:
+  # Job 1: Setup e Preparação
+  setup:
+    name: 🔧 Setup Environment
+    runs-on: ubuntu-latest
+    outputs:
+      test-type: ${{ steps.determine-test-type.outputs.test-type }}
+      browsers: ${{ steps.determine-browsers.outputs.browsers }}
+      cache-key: ${{ steps.cache-setup.outputs.cache-key }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2 # Para comparação de regressão
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Determine Test Type
+        id: determine-test-type
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "test-type=${{ github.event.inputs.test_type }}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.event_name }}" == "schedule" ]]; then
+            echo "test-type=full" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "test-type=regression" >> $GITHUB_OUTPUT
+          else
+            echo "test-type=benchmark" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Determine Browsers
+        id: determine-browsers
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ github.event.inputs.browser }}" == "all" ]]; then
+            echo "browsers=[\"chromium\", \"firefox\", \"webkit\"]" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "browsers=[\"${{ github.event.inputs.browser }}\"]" >> $GITHUB_OUTPUT
+          else
+            echo "browsers=[\"chromium\"]" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Setup Cache Key
+        id: cache-setup
+        run: |
+          HASH=$(cat package-lock.json | sha256sum | cut -d' ' -f1)
+          echo "cache-key=performance-cache-${{ runner.os }}-${{ env.NODE_VERSION }}-${HASH}" >> $GITHUB_OUTPUT
+
+      - name: Install Dependencies
+        run: |
+          npm ci
+          npx playwright install --with-deps
+
+      - name: Cache Setup
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.npm
+            ~/.cache/ms-playwright
+            node_modules
+          key: ${{ steps.cache-setup.outputs.cache-key }}
+
+  # Job 2: Testes de Performance Core
+  performance-tests:
+    name: 🚀 Performance Tests
+    runs-on: ubuntu-latest
+    needs: setup
+    strategy:
+      matrix:
+        browser: ${{ fromJson(needs.setup.outputs.browsers) }}
+        viewport:
+          - { name: 'desktop', width: 1920, height: 1080 }
+          - { name: 'tablet', width: 768, height: 1024 }
+          - { name: 'mobile', width: 375, height: 667 }
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Restore Cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.npm
+            ~/.cache/ms-playwright
+            node_modules
+          key: ${{ needs.setup.outputs.cache-key }}
+
+      - name: Install Dependencies (if needed)
+        run: |
+          if [ ! -d "node_modules" ]; then
+            npm ci
+            npx playwright install --with-deps
+          fi
+
+      - name: Build Application
+        run: |
+          npm run build
+          npm run build:storybook
+
+      - name: Start Development Servers
+        run: |
+          npm run dev &
+          npm run storybook &
+          sleep 30 # Aguardar inicialização
+
+      - name: Run Performance Tests
+        run: |
+          npx playwright test tests/performance/animation-performance.spec.ts \
+            --project=${{ matrix.browser }} \
+            --reporter=html,json,junit \
+            --output-dir=performance-results/${{ matrix.browser }}-${{ matrix.viewport.name }}
+        env:
+          VIEWPORT_WIDTH: ${{ matrix.viewport.width }}
+          VIEWPORT_HEIGHT: ${{ matrix.viewport.height }}
+          VIEWPORT_NAME: ${{ matrix.viewport.name }}
+          PERFORMANCE_THRESHOLD_FPS: ${{ env.PERFORMANCE_THRESHOLD_FPS }}
+          PERFORMANCE_THRESHOLD_MEMORY: ${{ env.PERFORMANCE_THRESHOLD_MEMORY }}
+          TEST_TYPE: ${{ needs.setup.outputs.test-type }}
+
+      - name: Generate Performance Report
+        if: always()
+        run: |
+          node scripts/performance/generate-report.js \
+            --input performance-results/${{ matrix.browser }}-${{ matrix.viewport.name }} \
+            --output performance-reports/${{ matrix.browser }}-${{ matrix.viewport.name }}.json \
+            --browser ${{ matrix.browser }} \
+            --viewport ${{ matrix.viewport.name }}
+
+      - name: Upload Performance Artifacts
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: performance-results-${{ matrix.browser }}-${{ matrix.viewport.name }}
+          path: |
+            performance-results/${{ matrix.browser }}-${{ matrix.viewport.name }}
+            performance-reports/${{ matrix.browser }}-${{ matrix.viewport.name }}.json
+          retention-days: 30
+
+  # Job 3: Testes de Regressão
+  regression-tests:
+    name: 📊 Regression Analysis
+    runs-on: ubuntu-latest
+    needs: [setup, performance-tests]
+    if: ${{ needs.setup.outputs.test-type == 'full' || needs.setup.outputs.test-type == 'regression' }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 100 # Histórico para análise de regressão
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Download Performance Results
+        uses: actions/download-artifact@v3
+        with:
+          path: performance-results
+
+      - name: Setup Regression Analysis
+        run: |
+          npm install -g @performance/regression-analyzer
+          mkdir -p regression-analysis
+
+      - name: Fetch Historical Data
+        run: |
+          # Buscar dados históricos dos últimos 10 commits
+          node scripts/performance/fetch-historical-data.js \
+            --commits 10 \
+            --output regression-analysis/historical.json
+
+      - name: Analyze Regression
+        run: |
+          node scripts/performance/analyze-regression.js \
+            --current performance-results \
+            --historical regression-analysis/historical.json \
+            --threshold ${{ env.REGRESSION_THRESHOLD }} \
+            --output regression-analysis/report.json
+
+      - name: Generate Regression Report
+        run: |
+          node scripts/performance/generate-regression-report.js \
+            --input regression-analysis/report.json \
+            --output regression-analysis/regression-report.html
+
+      - name: Check Regression Threshold
+        run: |
+          node scripts/performance/check-regression-threshold.js \
+            --input regression-analysis/report.json \
+            --threshold ${{ env.REGRESSION_THRESHOLD }}
+
+      - name: Upload Regression Analysis
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: regression-analysis
+          path: regression-analysis/
+          retention-days: 90
+
+  # Job 4: Benchmarks Especializados
+  specialized-benchmarks:
+    name: 🎯 Specialized Benchmarks
+    runs-on: ubuntu-latest
+    needs: setup
+    if: ${{ needs.setup.outputs.test-type == 'full' || needs.setup.outputs.test-type == 'benchmark' }}
+    strategy:
+      matrix:
+        benchmark:
+          - name: 'mobile-gestures'
+            description: 'Benchmark de gestos mobile'
+          - name: 'responsive-layouts'
+            description: 'Benchmark de layouts responsivos'
+          - name: 'animation-complexity'
+            description: 'Benchmark de complexidade de animações'
+          - name: 'memory-optimization'
+            description: 'Benchmark de otimização de memória'
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Restore Cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.npm
+            ~/.cache/ms-playwright
+            node_modules
+          key: ${{ needs.setup.outputs.cache-key }}
+
+      - name: Run Specialized Benchmark - ${{ matrix.benchmark.name }}
+        run: |
+          node scripts/benchmarks/${{ matrix.benchmark.name }}.js \
+            --output benchmarks/${{ matrix.benchmark.name }}.json \
+            --runs 5 \
+            --warmup 2
+
+      - name: Generate Benchmark Report
+        run: |
+          node scripts/performance/generate-benchmark-report.js \
+            --input benchmarks/${{ matrix.benchmark.name }}.json \
+            --name "${{ matrix.benchmark.name }}" \
+            --description "${{ matrix.benchmark.description }}" \
+            --output benchmarks/${{ matrix.benchmark.name }}-report.html
+
+      - name: Upload Benchmark Results
+        uses: actions/upload-artifact@v3
+        with:
+          name: benchmark-${{ matrix.benchmark.name }}
+          path: benchmarks/
+          retention-days: 30
+
+  # Job 5: Análise de Qualidade
+  quality-analysis:
+    name: 🔍 Quality Analysis
+    runs-on: ubuntu-latest
+    needs: [performance-tests, regression-tests, specialized-benchmarks]
+    if: always()
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: analysis-input
+
+      - name: Install Analysis Tools
+        run: |
+          npm install -g @performance/quality-analyzer
+          npm install -g lighthouse
+
+      - name: Comprehensive Quality Analysis
+        run: |
+          node scripts/quality/comprehensive-analysis.js \
+            --input analysis-input \
+            --output quality-analysis \
+            --thresholds scripts/quality/thresholds.json
+
+      - name: Generate Quality Score
+        run: |
+          node scripts/quality/calculate-quality-score.js \
+            --input quality-analysis \
+            --output quality-analysis/score.json
+
+      - name: Generate Final Report
+        run: |
+          node scripts/quality/generate-final-report.js \
+            --input quality-analysis \
+            --output quality-analysis/final-report.html \
+            --format html,pdf,json
+
+      - name: Upload Quality Analysis
+        uses: actions/upload-artifact@v3
+        with:
+          name: quality-analysis
+          path: quality-analysis/
+          retention-days: 90
+
+  # Job 6: Notificações e Resultados
+  results:
+    name: 📈 Results & Notifications
+    runs-on: ubuntu-latest
+    needs: [setup, performance-tests, regression-tests, specialized-benchmarks, quality-analysis]
+    if: always()
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Download Quality Analysis
+        uses: actions/download-artifact@v3
+        with:
+          name: quality-analysis
+          path: quality-analysis
+
+      - name: Parse Results
+        id: results
+        run: |
+          QUALITY_SCORE=$(jq -r '.overallScore' quality-analysis/score.json)
+          PERFORMANCE_GRADE=$(jq -r '.grades.performance' quality-analysis/score.json)
+          REGRESSION_STATUS=$(jq -r '.regression.status' quality-analysis/score.json)
+
+          echo "quality-score=${QUALITY_SCORE}" >> $GITHUB_OUTPUT
+          echo "performance-grade=${PERFORMANCE_GRADE}" >> $GITHUB_OUTPUT
+          echo "regression-status=${REGRESSION_STATUS}" >> $GITHUB_OUTPUT
+
+      - name: Update Performance Badge
+        if: github.ref == 'refs/heads/main'
+        run: |
+          GRADE="${{ steps.results.outputs.performance-grade }}"
+          COLOR="red"
+
+          case $GRADE in
+            A) COLOR="brightgreen" ;;
+            B) COLOR="green" ;;
+            C) COLOR="yellow" ;;
+            D) COLOR="orange" ;;
+            F) COLOR="red" ;;
+          esac
+
+          curl -X POST "https://img.shields.io/badge/Performance-${GRADE}-${COLOR}" \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}"
+
+      - name: Comment on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const qualityScore = '${{ steps.results.outputs.quality-score }}';
+            const performanceGrade = '${{ steps.results.outputs.performance-grade }}';
+            const regressionStatus = '${{ steps.results.outputs.regression-status }}';
+
+            const comment = `## 🚀 Animation Performance Report
+
+            ### Overall Results
+            - **Quality Score**: ${qualityScore}/100
+            - **Performance Grade**: ${performanceGrade}
+            - **Regression Status**: ${regressionStatus}
+
+            ### Detailed Analysis
+            📊 [View Full Report](${context.payload.pull_request.html_url}/checks)
+
+            ${regressionStatus === 'FAILED' ? '⚠️ **Performance regression detected!**' : '✅ No performance regression detected'}
+
+            ---
+            *Automated by InnovaBiz CRM Animation Performance Pipeline*`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+
+      - name: Slack Notification
+        if: failure() || (github.ref == 'refs/heads/main' && steps.results.outputs.regression-status == 'FAILED')
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          channel: '#dev-alerts'
+          text: |
+            🚨 Animation Performance Alert - InnovaBiz CRM
+
+            Quality Score: ${{ steps.results.outputs.quality-score }}/100
+            Performance Grade: ${{ steps.results.outputs.performance-grade }}
+            Regression Status: ${{ steps.results.outputs.regression-status }}
+
+            Branch: ${{ github.ref }}
+            Commit: ${{ github.sha }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      - name: Store Results in Database
+        if: github.ref == 'refs/heads/main'
+        run: |
+          node scripts/performance/store-results.js \
+            --input quality-analysis \
+            --commit ${{ github.sha }} \
+            --branch ${{ github.ref }} \
+            --timestamp $(date -u +%Y-%m-%dT%H:%M:%SZ)
+        env:
+          DATABASE_URL: ${{ secrets.PERFORMANCE_DATABASE_URL }}
+
+      - name: Set Job Status
+        run: |
+          if [[ "${{ steps.results.outputs.regression-status }}" == "FAILED" ]]; then
+            echo "❌ Performance regression detected - failing job"
+            exit 1
+          elif [[ "${{ steps.results.outputs.quality-score }}" < "70" ]]; then
+            echo "⚠️ Quality score below threshold - warning"
+            exit 0
+          else
+            echo "✅ All performance tests passed"
+            exit 0
+          fi
+
+  # Job 7: Cleanup
+  cleanup:
+    name: 🧹 Cleanup
+    runs-on: ubuntu-latest
+    needs: results
+    if: always()
+
+    steps:
+      - name: Clean Old Artifacts
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const artifacts = await github.rest.actions.listWorkflowRunArtifacts({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: context.runId
+            });
+
+            // Manter apenas os 50 artifacts mais recentes
+            const oldArtifacts = artifacts.data.artifacts
+              .filter(artifact => artifact.name.includes('performance-results'))
+              .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+              .slice(50);
+
+            for (const artifact of oldArtifacts) {
+              await github.rest.actions.deleteArtifact({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                artifact_id: artifact.id
+              });
+            }

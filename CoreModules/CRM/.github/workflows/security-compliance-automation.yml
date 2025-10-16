@@ -1,0 +1,677 @@
+name: InnovaBiz CRM - Security & Compliance Automation
+
+on:
+  schedule:
+    # Daily security scans at 2 AM UTC
+    - cron: '0 2 * * *'
+  push:
+    branches: [ main, master, develop ]
+    paths:
+      - '**/*.ts'
+      - '**/*.js'
+      - '**/*.json'
+      - '**/*.yaml'
+      - '**/*.yml'
+      - 'Dockerfile*'
+  pull_request:
+    branches: [ main, master, develop ]
+  workflow_dispatch:
+    inputs:
+      scan_type:
+        description: 'Type of security scan'
+        required: true
+        default: 'full'
+        type: choice
+        options:
+        - full
+        - dependency
+        - container
+        - code
+        - infrastructure
+
+env:
+  NODE_VERSION: '20'
+  SECURITY_BASELINE_VERSION: '6.0.0'
+
+jobs:
+  # ============================================================================
+  # DEPENDENCY SECURITY SCANNING
+  # ============================================================================
+
+  dependency-security:
+    name: 🔍 Dependency Security Scan
+    runs-on: ubuntu-latest
+    if: github.event.inputs.scan_type == 'dependency' || github.event.inputs.scan_type == 'full' || github.event.inputs.scan_type == ''
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+
+    # Frontend dependency scan
+    - name: Frontend Dependency Audit
+      run: |
+        echo "🔍 Scanning frontend dependencies..."
+        npm audit --audit-level=moderate --json > frontend-audit.json || true
+
+        # Extract high/critical vulnerabilities
+        HIGH_VULNS=$(cat frontend-audit.json | jq '.metadata.vulnerabilities.high // 0')
+        CRITICAL_VULNS=$(cat frontend-audit.json | jq '.metadata.vulnerabilities.critical // 0')
+
+        echo "High severity vulnerabilities: $HIGH_VULNS"
+        echo "Critical severity vulnerabilities: $CRITICAL_VULNS"
+
+        if [ "$CRITICAL_VULNS" -gt 0 ]; then
+          echo "❌ Critical vulnerabilities found in frontend dependencies"
+          exit 1
+        fi
+
+    # Backend dependency scan
+    - name: Backend Dependency Audit
+      run: |
+        echo "🔍 Scanning backend dependencies..."
+        cd backend
+        npm audit --audit-level=moderate --json > backend-audit.json || true
+
+        HIGH_VULNS=$(cat backend-audit.json | jq '.metadata.vulnerabilities.high // 0')
+        CRITICAL_VULNS=$(cat backend-audit.json | jq '.metadata.vulnerabilities.critical // 0')
+
+        echo "High severity vulnerabilities: $HIGH_VULNS"
+        echo "Critical severity vulnerabilities: $CRITICAL_VULNS"
+
+        if [ "$CRITICAL_VULNS" -gt 0 ]; then
+          echo "❌ Critical vulnerabilities found in backend dependencies"
+          exit 1
+        fi
+
+    # Snyk Security Scanning
+    - name: Snyk Security Scan
+      uses: snyk/actions/node@master
+      env:
+        SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+      with:
+        args: --severity-threshold=high --json > snyk-results.json
+
+    # OWASP Dependency Check
+    - name: OWASP Dependency Check
+      uses: dependency-check/Dependency-Check_Action@main
+      with:
+        project: 'InnovaBiz-CRM'
+        path: '.'
+        format: 'JSON'
+        out: 'dependency-check-report'
+        args: >
+          --enableRetired
+          --enableExperimental
+          --nodeAuditSkipDevDependencies
+
+    - name: Upload Security Reports
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: dependency-security-reports
+        path: |
+          frontend-audit.json
+          backend/backend-audit.json
+          snyk-results.json
+          dependency-check-report/
+        retention-days: 30
+
+  # ============================================================================
+  # CODE SECURITY SCANNING
+  # ============================================================================
+
+  code-security:
+    name: 🛡️ Code Security Analysis
+    runs-on: ubuntu-latest
+    if: github.event.inputs.scan_type == 'code' || github.event.inputs.scan_type == 'full' || github.event.inputs.scan_type == ''
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    # CodeQL Security Analysis
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@v3
+      with:
+        languages: javascript, typescript
+        config-file: ./.github/codeql/codeql-config.yml
+
+    - name: Autobuild
+      uses: github/codeql-action/autobuild@v3
+
+    - name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@v3
+      with:
+        category: "/language:javascript"
+
+    # Semgrep Security Scanning
+    - name: Semgrep Security Scan
+      uses: returntocorp/semgrep-action@v1
+      with:
+        config: |
+          p/security-audit
+          p/secrets
+          p/typescript
+          p/javascript
+          p/owasp-top-ten
+        generateSarif: "1"
+
+    # ESLint Security Rules
+    - name: ESLint Security Analysis
+      run: |
+        npm ci
+        cd backend && npm ci
+
+        # Frontend security linting
+        npx eslint . --ext .ts,.tsx,.js,.jsx --format json --output-file frontend-eslint-security.json || true
+
+        # Backend security linting
+        cd backend
+        npx eslint . --ext .ts,.js --format json --output-file backend-eslint-security.json || true
+
+    # Custom Security Checks
+    - name: Custom Security Validation
+      run: |
+        echo "🔐 Running custom security validations..."
+
+        # Check for hardcoded secrets
+        echo "Scanning for hardcoded secrets..."
+        SECRETS_FOUND=$(grep -r -i "password\|secret\|key\|token" --include="*.ts" --include="*.js" . | grep -v node_modules | grep -v ".git" | wc -l)
+        echo "Potential secrets found: $SECRETS_FOUND"
+
+        # Check for SQL injection vulnerabilities
+        echo "Scanning for SQL injection patterns..."
+        SQL_PATTERNS=$(grep -r "SELECT.*FROM.*WHERE.*=" --include="*.ts" --include="*.js" . | grep -v node_modules | wc -l)
+        echo "Potential SQL injection patterns: $SQL_PATTERNS"
+
+        # Check for XSS vulnerabilities
+        echo "Scanning for XSS vulnerabilities..."
+        XSS_PATTERNS=$(grep -r "innerHTML\|document.write\|eval(" --include="*.ts" --include="*.js" . | grep -v node_modules | wc -l)
+        echo "Potential XSS patterns: $XSS_PATTERNS"
+
+        # Check for insecure random number generation
+        echo "Scanning for insecure random number generation..."
+        RANDOM_PATTERNS=$(grep -r "Math.random" --include="*.ts" --include="*.js" . | grep -v node_modules | wc -l)
+        echo "Insecure random patterns: $RANDOM_PATTERNS"
+
+    - name: Upload Code Security Reports
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: code-security-reports
+        path: |
+          frontend-eslint-security.json
+          backend/backend-eslint-security.json
+          results.sarif
+        retention-days: 30
+
+  # ============================================================================
+  # CONTAINER SECURITY SCANNING
+  # ============================================================================
+
+  container-security:
+    name: 🐳 Container Security Scan
+    runs-on: ubuntu-latest
+    if: github.event.inputs.scan_type == 'container' || github.event.inputs.scan_type == 'full' || github.event.inputs.scan_type == ''
+
+    strategy:
+      matrix:
+        component: [backend, frontend]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    # Build container for scanning
+    - name: Build Container Image
+      run: |
+        docker build -t innovabiz-crm-${{ matrix.component }}:security-scan -f ${{ matrix.component }}/Dockerfile .
+
+    # Trivy Container Scan
+    - name: Run Trivy Container Scan
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: 'innovabiz-crm-${{ matrix.component }}:security-scan'
+        format: 'sarif'
+        output: 'trivy-${{ matrix.component }}-results.sarif'
+
+    # Anchore Syft SBOM Generation
+    - name: Generate SBOM with Syft
+      uses: anchore/sbom-action@v0
+      with:
+        image: 'innovabiz-crm-${{ matrix.component }}:security-scan'
+        format: spdx-json
+        output-file: 'sbom-${{ matrix.component }}.spdx.json'
+
+    # Grype Vulnerability Scan
+    - name: Run Grype Vulnerability Scan
+      uses: anchore/scan-action@v3
+      with:
+        image: 'innovabiz-crm-${{ matrix.component }}:security-scan'
+        fail-build: true
+        severity-cutoff: high
+
+    # Docker Bench Security
+    - name: Docker Bench Security
+      run: |
+        docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+          -v $(pwd):/host \
+          docker/docker-bench-security > docker-bench-${{ matrix.component }}.log || true
+
+    # Container Configuration Security Check
+    - name: Container Security Configuration Check
+      run: |
+        echo "🔍 Checking container security configurations..."
+
+        # Check Dockerfile security practices
+        echo "Analyzing Dockerfile for ${{ matrix.component }}..."
+
+        # Check for non-root user
+        if ! grep -q "USER " ${{ matrix.component }}/Dockerfile; then
+          echo "⚠️ No non-root user specified in Dockerfile"
+        fi
+
+        # Check for HEALTHCHECK
+        if ! grep -q "HEALTHCHECK" ${{ matrix.component }}/Dockerfile; then
+          echo "⚠️ No health check specified in Dockerfile"
+        fi
+
+        # Check for minimal base image
+        BASE_IMAGE=$(grep "FROM" ${{ matrix.component }}/Dockerfile | head -1 | awk '{print $2}')
+        echo "Base image: $BASE_IMAGE"
+
+        if [[ "$BASE_IMAGE" == *"latest"* ]]; then
+          echo "⚠️ Using 'latest' tag is not recommended"
+        fi
+
+    - name: Upload Container Security Reports
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: container-security-${{ matrix.component }}
+        path: |
+          trivy-${{ matrix.component }}-results.sarif
+          sbom-${{ matrix.component }}.spdx.json
+          docker-bench-${{ matrix.component }}.log
+        retention-days: 30
+
+  # ============================================================================
+  # INFRASTRUCTURE SECURITY SCANNING
+  # ============================================================================
+
+  infrastructure-security:
+    name: 🏗️ Infrastructure Security Scan
+    runs-on: ubuntu-latest
+    if: github.event.inputs.scan_type == 'infrastructure' || github.event.inputs.scan_type == 'full' || github.event.inputs.scan_type == ''
+
+    steps:
+    - uses: actions/checkout@v4
+
+    # Terraform Security Scanning
+    - name: TFSec Terraform Security Scan
+      uses: aquasecurity/tfsec-action@v1.0.3
+      with:
+        working_directory: infrastructure/terraform
+        format: sarif
+        sarif_file: tfsec-results.sarif
+
+    # Checkov Infrastructure Security
+    - name: Checkov Infrastructure Security Scan
+      uses: bridgecrewio/checkov-action@master
+      with:
+        directory: infrastructure/
+        framework: terraform,kubernetes,dockerfile
+        output_format: sarif
+        output_file_path: checkov-results.sarif
+
+    # Kubernetes Security Scanning
+    - name: Kubesec Security Scan
+      run: |
+        echo "🔍 Scanning Kubernetes manifests..."
+
+        # Install kubesec
+        curl -sSX GET "https://api.github.com/repos/controlplaneio/kubesec/releases/latest" \
+          | jq -r '.assets[] | select(.name | match("linux-amd64")) | .browser_download_url' \
+          | xargs curl -sSL -o kubesec
+        chmod +x kubesec
+
+        # Scan all Kubernetes YAML files
+        find infrastructure/kubernetes -name "*.yaml" -o -name "*.yml" | while read file; do
+          echo "Scanning: $file"
+          ./kubesec scan "$file" > "kubesec-$(basename $file).json" || true
+        done
+
+    # Kubernetes Network Policy Validation
+    - name: Network Policy Security Validation
+      run: |
+        echo "🔍 Validating Kubernetes network policies..."
+
+        # Check if network policies exist
+        NETWORK_POLICIES=$(find infrastructure/kubernetes -name "*network-policy*.yaml" -o -name "*netpol*.yaml" | wc -l)
+        echo "Network policies found: $NETWORK_POLICIES"
+
+        if [ "$NETWORK_POLICIES" -eq 0 ]; then
+          echo "⚠️ No network policies found - consider implementing network segmentation"
+        fi
+
+    # Helm Chart Security Scanning
+    - name: Helm Chart Security Scan
+      run: |
+        echo "🔍 Scanning Helm charts..."
+
+        # Install Helm
+        curl https://get.helm.sh/helm-v3.14.0-linux-amd64.tar.gz | tar xz
+        sudo mv linux-amd64/helm /usr/local/bin
+
+        # Lint Helm charts
+        if [ -d "infrastructure/helm" ]; then
+          helm lint infrastructure/helm/*/
+
+          # Template and scan
+          helm template infrastructure/helm/*/ > helm-templated.yaml
+          ./kubesec scan helm-templated.yaml > kubesec-helm.json || true
+        fi
+
+    - name: Upload Infrastructure Security Reports
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: infrastructure-security-reports
+        path: |
+          tfsec-results.sarif
+          checkov-results.sarif
+          kubesec-*.json
+        retention-days: 30
+
+  # ============================================================================
+  # COMPLIANCE VALIDATION
+  # ============================================================================
+
+  compliance-validation:
+    name: 📋 Compliance Validation (GDPR/LGPD/CCPA)
+    runs-on: ubuntu-latest
+    if: github.event.inputs.scan_type == 'full' || github.event.inputs.scan_type == ''
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: GDPR Compliance Check
+      run: |
+        echo "🇪🇺 Running GDPR compliance validation..."
+
+        # Check for data processing consent mechanisms
+        CONSENT_PATTERNS=$(grep -r "consent\|gdpr\|data.*processing" --include="*.ts" --include="*.js" . | grep -v node_modules | wc -l)
+        echo "GDPR consent patterns found: $CONSENT_PATTERNS"
+
+        # Check for data encryption
+        ENCRYPTION_PATTERNS=$(grep -r "encrypt\|crypto\|bcrypt\|argon2" --include="*.ts" --include="*.js" . | grep -v node_modules | wc -l)
+        echo "Encryption implementations found: $ENCRYPTION_PATTERNS"
+
+        # Check for data retention policies
+        RETENTION_PATTERNS=$(grep -r "retention\|delete.*data\|purge" --include="*.ts" --include="*.js" . | grep -v node_modules | wc -l)
+        echo "Data retention patterns found: $RETENTION_PATTERNS"
+
+        # Check for right to be forgotten implementation
+        FORGOTTEN_PATTERNS=$(grep -r "right.*forgotten\|delete.*user\|anonymize" --include="*.ts" --include="*.js" . | grep -v node_modules | wc -l)
+        echo "Right to be forgotten patterns found: $FORGOTTEN_PATTERNS"
+
+    - name: LGPD Compliance Check
+      run: |
+        echo "🇧🇷 Running LGPD compliance validation..."
+
+        # Check for LGPD specific implementations
+        LGPD_PATTERNS=$(grep -r "lgpd\|lei.*geral.*protecao\|dados.*pessoais" --include="*.ts" --include="*.js" . | grep -v node_modules | wc -l)
+        echo "LGPD specific patterns found: $LGPD_PATTERNS"
+
+        # Check for data controller identification
+        CONTROLLER_PATTERNS=$(grep -r "controller\|controlador\|dpo\|encarregado" --include="*.ts" --include="*.js" . | grep -v node_modules | wc -l)
+        echo "Data controller patterns found: $CONTROLLER_PATTERNS"
+
+    - name: CCPA Compliance Check
+      run: |
+        echo "🇺🇸 Running CCPA compliance validation..."
+
+        # Check for CCPA specific implementations
+        CCPA_PATTERNS=$(grep -r "ccpa\|california.*privacy\|do.*not.*sell" --include="*.ts" --include="*.js" . | grep -v node_modules | wc -l)
+        echo "CCPA specific patterns found: $CCPA_PATTERNS"
+
+        # Check for opt-out mechanisms
+        OPTOUT_PATTERNS=$(grep -r "opt.*out\|do.*not.*sell\|privacy.*choice" --include="*.ts" --include="*.js" . | grep -v node_modules | wc -l)
+        echo "Opt-out patterns found: $OPTOUT_PATTERNS"
+
+    - name: Privacy Impact Assessment
+      run: |
+        echo "🔒 Conducting automated Privacy Impact Assessment..."
+
+        # Check for PII handling
+        PII_PATTERNS=$(grep -r "email\|phone\|address\|ssn\|cpf\|cnpj" --include="*.ts" --include="*.js" . | grep -v node_modules | wc -l)
+        echo "PII handling patterns found: $PII_PATTERNS"
+
+        # Check for data sharing
+        SHARING_PATTERNS=$(grep -r "share.*data\|third.*party\|external.*api" --include="*.ts" --include="*.js" . | grep -v node_modules | wc -l)
+        echo "Data sharing patterns found: $SHARING_PATTERNS"
+
+        # Generate compliance score
+        TOTAL_COMPLIANCE_PATTERNS=$((CONSENT_PATTERNS + ENCRYPTION_PATTERNS + RETENTION_PATTERNS + FORGOTTEN_PATTERNS + CONTROLLER_PATTERNS + OPTOUT_PATTERNS))
+        echo "Total compliance patterns: $TOTAL_COMPLIANCE_PATTERNS"
+
+        if [ "$TOTAL_COMPLIANCE_PATTERNS" -lt 10 ]; then
+          echo "⚠️ Low compliance pattern coverage - consider enhancing privacy controls"
+        else
+          echo "✅ Good compliance pattern coverage detected"
+        fi
+
+    - name: Generate Compliance Report
+      run: |
+        cat > compliance-report.md << EOF
+        # Privacy & Compliance Report
+
+        ## GDPR Compliance
+        - Consent mechanisms: $CONSENT_PATTERNS implementations found
+        - Data encryption: $ENCRYPTION_PATTERNS implementations found
+        - Data retention: $RETENTION_PATTERNS implementations found
+        - Right to be forgotten: $FORGOTTEN_PATTERNS implementations found
+
+        ## LGPD Compliance
+        - LGPD specific implementations: $LGPD_PATTERNS found
+        - Data controller identification: $CONTROLLER_PATTERNS found
+
+        ## CCPA Compliance
+        - CCPA specific implementations: $CCPA_PATTERNS found
+        - Opt-out mechanisms: $OPTOUT_PATTERNS found
+
+        ## Overall Assessment
+        - Total compliance patterns: $TOTAL_COMPLIANCE_PATTERNS
+        - PII handling patterns: $PII_PATTERNS
+        - Data sharing patterns: $SHARING_PATTERNS
+
+        Generated on: $(date)
+        EOF
+
+    - name: Upload Compliance Reports
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: compliance-reports
+        path: compliance-report.md
+        retention-days: 90
+
+  # ============================================================================
+  # SECURITY METRICS & REPORTING
+  # ============================================================================
+
+  security-reporting:
+    name: 📊 Security Metrics & Reporting
+    runs-on: ubuntu-latest
+    needs: [dependency-security, code-security, container-security, infrastructure-security, compliance-validation]
+    if: always()
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Download All Security Reports
+      uses: actions/download-artifact@v4
+      with:
+        path: security-reports/
+
+    - name: Generate Security Dashboard
+      run: |
+        echo "📊 Generating comprehensive security dashboard..."
+
+        # Calculate security scores
+        DEPENDENCY_STATUS="${{ needs.dependency-security.result }}"
+        CODE_STATUS="${{ needs.code-security.result }}"
+        CONTAINER_STATUS="${{ needs.container-security.result }}"
+        INFRASTRUCTURE_STATUS="${{ needs.infrastructure-security.result }}"
+        COMPLIANCE_STATUS="${{ needs.compliance-validation.result }}"
+
+        # Calculate overall security score
+        PASSED_CHECKS=0
+        TOTAL_CHECKS=5
+
+        [ "$DEPENDENCY_STATUS" = "success" ] && PASSED_CHECKS=$((PASSED_CHECKS + 1))
+        [ "$CODE_STATUS" = "success" ] && PASSED_CHECKS=$((PASSED_CHECKS + 1))
+        [ "$CONTAINER_STATUS" = "success" ] && PASSED_CHECKS=$((PASSED_CHECKS + 1))
+        [ "$INFRASTRUCTURE_STATUS" = "success" ] && PASSED_CHECKS=$((PASSED_CHECKS + 1))
+        [ "$COMPLIANCE_STATUS" = "success" ] && PASSED_CHECKS=$((PASSED_CHECKS + 1))
+
+        SECURITY_SCORE=$((PASSED_CHECKS * 100 / TOTAL_CHECKS))
+
+        # Generate comprehensive report
+        cat > security-dashboard.md << EOF
+        # 🛡️ InnovaBiz CRM Security Dashboard
+
+        ## Overall Security Score: ${SECURITY_SCORE}%
+
+        ## Security Scan Results
+        | Category | Status | Details |
+        |----------|--------|---------|
+        | 🔍 Dependencies | ${DEPENDENCY_STATUS} | Vulnerability scan of npm dependencies |
+        | 🛡️ Code Security | ${CODE_STATUS} | Static code analysis for security issues |
+        | 🐳 Containers | ${CONTAINER_STATUS} | Container image security scanning |
+        | 🏗️ Infrastructure | ${INFRASTRUCTURE_STATUS} | IaC and K8s security validation |
+        | 📋 Compliance | ${COMPLIANCE_STATUS} | GDPR/LGPD/CCPA compliance check |
+
+        ## Security Recommendations
+        EOF
+
+        # Add recommendations based on failed checks
+        if [ "$DEPENDENCY_STATUS" != "success" ]; then
+          echo "- 🔍 **Dependencies**: Update vulnerable packages and review dependency management" >> security-dashboard.md
+        fi
+
+        if [ "$CODE_STATUS" != "success" ]; then
+          echo "- 🛡️ **Code Security**: Address static analysis findings and implement secure coding practices" >> security-dashboard.md
+        fi
+
+        if [ "$CONTAINER_STATUS" != "success" ]; then
+          echo "- 🐳 **Containers**: Update base images and review container configurations" >> security-dashboard.md
+        fi
+
+        if [ "$INFRASTRUCTURE_STATUS" != "success" ]; then
+          echo "- 🏗️ **Infrastructure**: Review IaC configurations and implement security policies" >> security-dashboard.md
+        fi
+
+        if [ "$COMPLIANCE_STATUS" != "success" ]; then
+          echo "- 📋 **Compliance**: Enhance privacy controls and data protection mechanisms" >> security-dashboard.md
+        fi
+
+        cat >> security-dashboard.md << EOF
+
+        ## Security Metrics
+        - **Scan Date**: $(date)
+        - **Repository**: ${{ github.repository }}
+        - **Branch**: ${{ github.ref_name }}
+        - **Commit**: ${{ github.sha }}
+
+        ## Next Actions
+        1. Review detailed scan results in artifacts
+        2. Address high and critical severity findings
+        3. Update security documentation
+        4. Schedule next security review
+
+        ---
+        *Generated by InnovaBiz Security Automation v6.0.0*
+        EOF
+
+    - name: Notify Security Team
+      uses: 8398a7/action-slack@v3
+      if: always()
+      with:
+        status: ${{ (needs.dependency-security.result == 'success' && needs.code-security.result == 'success' && needs.container-security.result == 'success' && needs.infrastructure-security.result == 'success' && needs.compliance-validation.result == 'success') && 'success' || 'failure' }}
+        text: |
+          🛡️ **InnovaBiz CRM Security Scan Complete**
+
+          **Overall Score**: ${SECURITY_SCORE}%
+
+          **Results Summary**:
+          • Dependencies: ${{ needs.dependency-security.result }}
+          • Code Security: ${{ needs.code-security.result }}
+          • Containers: ${{ needs.container-security.result }}
+          • Infrastructure: ${{ needs.infrastructure-security.result }}
+          • Compliance: ${{ needs.compliance-validation.result }}
+
+          🔗 [View Detailed Report](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+        channel: '#security'
+        webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+    - name: Upload Security Dashboard
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: security-dashboard
+        path: |
+          security-dashboard.md
+          security-reports/
+        retention-days: 90
+
+    - name: Create Security Issue on Critical Findings
+      if: failure()
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const title = `🚨 Critical Security Findings - ${new Date().toISOString().split('T')[0]}`;
+          const body = `
+          ## Critical Security Alert
+
+          The automated security scan has detected critical issues that require immediate attention.
+
+          **Scan Results:**
+          - Dependencies: ${{ needs.dependency-security.result }}
+          - Code Security: ${{ needs.code-security.result }}
+          - Container Security: ${{ needs.container-security.result }}
+          - Infrastructure Security: ${{ needs.infrastructure-security.result }}
+          - Compliance: ${{ needs.compliance-validation.result }}
+
+          ## Required Actions
+          1. Review all security scan artifacts
+          2. Address critical and high severity findings
+          3. Update security documentation
+          4. Re-run security scans after fixes
+
+          ## Resources
+          - [Security Scan Results](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          - [Security Documentation](./docs/security.md)
+          - [Compliance Guidelines](./docs/compliance.md)
+
+          ---
+          **Priority**: 🔴 CRITICAL
+          **Assignee**: Security Team
+          **Due Date**: Within 24 hours
+          `;
+
+          await github.rest.issues.create({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            title: title,
+            body: body,
+            labels: ['security', 'critical', 'automated'],
+            assignees: []
+          });

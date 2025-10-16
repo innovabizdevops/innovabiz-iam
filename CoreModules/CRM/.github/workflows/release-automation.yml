@@ -1,0 +1,518 @@
+name: Release Automation
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., 1.2.3)'
+        required: true
+        type: string
+      prerelease:
+        description: 'Mark as pre-release'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  NODE_VERSION: '20'
+
+jobs:
+  validate-release:
+    name: Validate Release
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      is_prerelease: ${{ steps.version.outputs.is_prerelease }}
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Determine version
+      id: version
+      run: |
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          VERSION="${{ github.event.inputs.version }}"
+          IS_PRERELEASE="${{ github.event.inputs.prerelease }}"
+        else
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          # Check if version contains alpha, beta, rc
+          if [[ "$VERSION" =~ (alpha|beta|rc) ]]; then
+            IS_PRERELEASE=true
+          else
+            IS_PRERELEASE=false
+          fi
+        fi
+
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "is_prerelease=$IS_PRERELEASE" >> $GITHUB_OUTPUT
+
+        echo "Release version: $VERSION"
+        echo "Is prerelease: $IS_PRERELEASE"
+
+    - name: Validate version format
+      run: |
+        VERSION="${{ steps.version.outputs.version }}"
+        if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?$ ]]; then
+          echo "Invalid version format: $VERSION"
+          echo "Expected format: X.Y.Z or X.Y.Z-suffix"
+          exit 1
+        fi
+
+    - name: Check if tag already exists
+      run: |
+        VERSION="${{ steps.version.outputs.version }}"
+        if git rev-parse "v$VERSION" >/dev/null 2>&1; then
+          echo "Tag v$VERSION already exists"
+          exit 1
+        fi
+
+  build-release:
+    name: Build Release Artifacts
+    runs-on: ubuntu-latest
+    needs: validate-release
+
+    strategy:
+      matrix:
+        component: [frontend, backend]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+
+    - name: Install dependencies and build
+      run: |
+        if [ "${{ matrix.component }}" = "frontend" ]; then
+          npm ci
+          npm run build
+          tar -czf frontend-build.tar.gz dist/
+        else
+          cd backend
+          npm ci
+          npm run build
+          tar -czf ../backend-build.tar.gz dist/
+        fi
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ matrix.component }}-build
+        path: ${{ matrix.component }}-build.tar.gz
+        retention-days: 90
+
+  test-release:
+    name: Test Release Build
+    runs-on: ubuntu-latest
+    needs: build-release
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: test_db
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+
+    - name: Download build artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: frontend-build
+
+    - name: Download backend build
+      uses: actions/download-artifact@v4
+      with:
+        name: backend-build
+
+    - name: Extract builds
+      run: |
+        tar -xzf frontend-build.tar.gz
+        tar -xzf backend-build.tar.gz
+
+    - name: Install dependencies
+      run: |
+        npm ci
+        cd backend && npm ci
+
+    - name: Install Playwright
+      run: npx playwright install --with-deps chromium
+
+    - name: Run release tests
+      env:
+        NODE_ENV: test
+        DB_HOST: localhost
+        DB_PORT: 5432
+        DB_USERNAME: postgres
+        DB_PASSWORD: postgres
+        DB_NAME: test_db
+        REDIS_HOST: localhost
+        REDIS_PORT: 6379
+      run: |
+        # Start backend with built files
+        cd backend
+        npm run start:prod &
+        BACKEND_PID=$!
+        sleep 10
+
+        # Start frontend with built files
+        cd ..
+        npm run preview &
+        FRONTEND_PID=$!
+        sleep 5
+
+        # Run smoke tests
+        npx playwright test --grep="@smoke"
+
+        # Cleanup
+        kill $BACKEND_PID $FRONTEND_PID || true
+
+  build-docker-images:
+    name: Build Docker Images
+    runs-on: ubuntu-latest
+    needs: [validate-release, test-release]
+
+    permissions:
+      contents: read
+      packages: write
+
+    strategy:
+      matrix:
+        component: [frontend, backend]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${{ matrix.component }}
+        tags: |
+          type=raw,value=v${{ needs.validate-release.outputs.version }}
+          type=raw,value=latest,enable={{is_default_branch}}
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ${{ matrix.component }}/Dockerfile
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        platforms: linux/amd64,linux/arm64
+
+  generate-changelog:
+    name: Generate Changelog
+    runs-on: ubuntu-latest
+    needs: validate-release
+    outputs:
+      changelog: ${{ steps.changelog.outputs.changelog }}
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Generate changelog
+      id: changelog
+      run: |
+        VERSION="${{ needs.validate-release.outputs.version }}"
+
+        # Get previous tag
+        PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+
+        if [ -z "$PREVIOUS_TAG" ]; then
+          echo "No previous tag found, generating changelog from first commit"
+          COMMIT_RANGE="$(git rev-list --max-parents=0 HEAD)..HEAD"
+        else
+          echo "Previous tag: $PREVIOUS_TAG"
+          COMMIT_RANGE="$PREVIOUS_TAG..HEAD"
+        fi
+
+        # Generate changelog
+        CHANGELOG="## Release v$VERSION\n\n"
+
+        # Features
+        FEATURES=$(git log $COMMIT_RANGE --pretty=format:"- %s" --grep="feat:" --grep="feature:" --grep="add:" -i | head -20)
+        if [ ! -z "$FEATURES" ]; then
+          CHANGELOG="$CHANGELOG### 🚀 Features\n$FEATURES\n\n"
+        fi
+
+        # Bug fixes
+        FIXES=$(git log $COMMIT_RANGE --pretty=format:"- %s" --grep="fix:" --grep="bug:" --grep="hotfix:" -i | head -20)
+        if [ ! -z "$FIXES" ]; then
+          CHANGELOG="$CHANGELOG### 🐛 Bug Fixes\n$FIXES\n\n"
+        fi
+
+        # Improvements
+        IMPROVEMENTS=$(git log $COMMIT_RANGE --pretty=format:"- %s" --grep="improve:" --grep="enhance:" --grep="update:" --grep="refactor:" -i | head -20)
+        if [ ! -z "$IMPROVEMENTS" ]; then
+          CHANGELOG="$CHANGELOG### 💡 Improvements\n$IMPROVEMENTS\n\n"
+        fi
+
+        # Documentation
+        DOCS=$(git log $COMMIT_RANGE --pretty=format:"- %s" --grep="docs:" --grep="doc:" -i | head -10)
+        if [ ! -z "$DOCS" ]; then
+          CHANGELOG="$CHANGELOG### 📚 Documentation\n$DOCS\n\n"
+        fi
+
+        # Tests
+        TESTS=$(git log $COMMIT_RANGE --pretty=format:"- %s" --grep="test:" --grep="tests:" -i | head -10)
+        if [ ! -z "$TESTS" ]; then
+          CHANGELOG="$CHANGELOG### 🧪 Tests\n$TESTS\n\n"
+        fi
+
+        # All commits if no categorized commits found
+        if [ -z "$FEATURES" ] && [ -z "$FIXES" ] && [ -z "$IMPROVEMENTS" ]; then
+          ALL_COMMITS=$(git log $COMMIT_RANGE --pretty=format:"- %s" | head -30)
+          CHANGELOG="$CHANGELOG### 📋 Changes\n$ALL_COMMITS\n\n"
+        fi
+
+        CHANGELOG="$CHANGELOG### 📊 Statistics\n"
+        CHANGELOG="$CHANGELOG- Total commits: $(git rev-list $COMMIT_RANGE --count)\n"
+        CHANGELOG="$CHANGELOG- Files changed: $(git diff --name-only $COMMIT_RANGE | wc -l)\n"
+
+        if [ ! -z "$PREVIOUS_TAG" ]; then
+          CHANGELOG="$CHANGELOG- Full Changelog: [\`$PREVIOUS_TAG...v$VERSION\`](https://github.com/${{ github.repository }}/compare/$PREVIOUS_TAG...v$VERSION)\n"
+        fi
+
+        # Save changelog
+        echo -e "$CHANGELOG" > changelog.md
+
+        # Output for GitHub
+        echo "changelog<<EOF" >> $GITHUB_OUTPUT
+        echo -e "$CHANGELOG" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+
+    - name: Upload changelog
+      uses: actions/upload-artifact@v4
+      with:
+        name: changelog
+        path: changelog.md
+
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [validate-release, build-docker-images, generate-changelog]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Download artifacts
+      uses: actions/download-artifact@v4
+
+    - name: Create release tag
+      run: |
+        VERSION="${{ needs.validate-release.outputs.version }}"
+        git config user.name "GitHub Actions"
+        git config user.email "actions@github.com"
+
+        if ! git rev-parse "v$VERSION" >/dev/null 2>&1; then
+          git tag -a "v$VERSION" -m "Release v$VERSION"
+          git push origin "v$VERSION"
+        fi
+
+    - name: Create GitHub Release
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          const version = '${{ needs.validate-release.outputs.version }}';
+          const isPrerelease = '${{ needs.validate-release.outputs.is_prerelease }}' === 'true';
+
+          let changelog = '';
+          try {
+            changelog = fs.readFileSync('changelog/changelog.md', 'utf8');
+          } catch (error) {
+            changelog = `Release v${version}`;
+          }
+
+          const release = await github.rest.repos.createRelease({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            tag_name: `v${version}`,
+            name: `Release v${version}`,
+            body: changelog,
+            draft: false,
+            prerelease: isPrerelease
+          });
+
+          // Upload build artifacts
+          const artifacts = [
+            { path: 'frontend-build/frontend-build.tar.gz', name: `frontend-v${version}.tar.gz` },
+            { path: 'backend-build/backend-build.tar.gz', name: `backend-v${version}.tar.gz` }
+          ];
+
+          for (const artifact of artifacts) {
+            try {
+              const data = fs.readFileSync(artifact.path);
+              await github.rest.repos.uploadReleaseAsset({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                release_id: release.data.id,
+                name: artifact.name,
+                data: data
+              });
+            } catch (error) {
+              console.log(`Failed to upload ${artifact.name}: ${error.message}`);
+            }
+          }
+
+          console.log(`Release created: ${release.data.html_url}`);
+
+  update-version:
+    name: Update Version Files
+    runs-on: ubuntu-latest
+    needs: [create-release, validate-release]
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+
+    - name: Update package.json versions
+      run: |
+        VERSION="${{ needs.validate-release.outputs.version }}"
+
+        # Update root package.json
+        npm version $VERSION --no-git-tag-version
+
+        # Update backend package.json
+        cd backend
+        npm version $VERSION --no-git-tag-version
+        cd ..
+
+    - name: Update version constants
+      run: |
+        VERSION="${{ needs.validate-release.outputs.version }}"
+
+        # Update version in source files
+        if [ -f "src/utils/version.ts" ]; then
+          sed -i "s/export const VERSION = .*/export const VERSION = '$VERSION';/" src/utils/version.ts
+        fi
+
+        if [ -f "backend/src/utils/version.ts" ]; then
+          sed -i "s/export const VERSION = .*/export const VERSION = '$VERSION';/" backend/src/utils/version.ts
+        fi
+
+    - name: Commit version updates
+      run: |
+        VERSION="${{ needs.validate-release.outputs.version }}"
+        git config user.name "GitHub Actions"
+        git config user.email "actions@github.com"
+        git add .
+        git commit -m "chore: bump version to v$VERSION" || echo "No changes to commit"
+        git push origin HEAD:main || git push origin HEAD:master
+
+  notify-release:
+    name: Notify Release
+    runs-on: ubuntu-latest
+    needs: [create-release, validate-release]
+    if: always()
+
+    steps:
+    - name: Notify Slack
+      uses: 8398a7/action-slack@v3
+      with:
+        status: ${{ job.status }}
+        text: |
+          🚀 InnovaBiz CRM Release v${{ needs.validate-release.outputs.version }}
+
+          Type: ${{ needs.validate-release.outputs.is_prerelease == 'true' && 'Pre-release' || 'Release' }}
+          Status: ${{ job.status == 'success' && '✅ Success' || '❌ Failed' }}
+
+          🔗 View Release: ${{ github.server_url }}/${{ github.repository }}/releases/tag/v${{ needs.validate-release.outputs.version }}
+        channel: '#releases'
+        webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+    - name: Create deployment issue
+      if: success()
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const version = '${{ needs.validate-release.outputs.version }}';
+          const isPrerelease = '${{ needs.validate-release.outputs.is_prerelease }}' === 'true';
+
+          const body = `
+          ## 🚀 Deployment Checklist - v${version}
+
+          ### Pre-deployment
+          - [ ] Review release notes
+          - [ ] Backup production database
+          - [ ] Notify stakeholders
+          - [ ] Prepare rollback plan
+
+          ### Deployment
+          - [ ] Deploy to staging environment
+          - [ ] Run staging tests
+          - [ ] Deploy to production
+          - [ ] Verify production deployment
+
+          ### Post-deployment
+          - [ ] Monitor system health
+          - [ ] Check error rates
+          - [ ] Verify user functionality
+          - [ ] Update documentation
+
+          **Release URL:** ${{ github.server_url }}/${{ github.repository }}/releases/tag/v${version}
+          **Type:** ${isPrerelease ? 'Pre-release' : 'Production Release'}
+          `;
+
+          await github.rest.issues.create({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            title: `Deployment Checklist - v${version}`,
+            body: body,
+            labels: ['deployment', 'release', isPrerelease ? 'prerelease' : 'production']
+          });

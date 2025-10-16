@@ -1,0 +1,409 @@
+{
+  "type": "record",
+  "name": "AuditEvent",
+  "namespace": "io.innovabiz.iam.events",
+  "doc": "Esquema para eventos de auditoria do módulo IAM",
+  "fields": [
+    {
+      "name": "event_id",
+      "type": "string",
+      "doc": "Identificador único do evento, formato UUID"
+    },
+    {
+      "name": "event_category",
+      "type": {
+        "type": "enum",
+        "name": "AuditCategory",
+        "symbols": [
+          "AUTHENTICATION",
+          "AUTHORIZATION",
+          "USER_MANAGEMENT",
+          "TENANT_MANAGEMENT",
+          "ACCESS_CONTROL",
+          "CONFIGURATION",
+          "TOKEN_MANAGEMENT",
+          "DATA_ACCESS",
+          "SENSITIVE_DATA_OPERATION",
+          "SECURITY_EVENT",
+          "COMPLIANCE",
+          "SYSTEM_EVENT"
+        ]
+      },
+      "doc": "Categoria do evento de auditoria"
+    },
+    {
+      "name": "event_type",
+      "type": "string",
+      "doc": "Tipo específico do evento de auditoria"
+    },
+    {
+      "name": "severity",
+      "type": {
+        "type": "enum",
+        "name": "AuditSeverity",
+        "symbols": [
+          "INFO",
+          "NOTICE",
+          "WARNING",
+          "ERROR",
+          "CRITICAL"
+        ]
+      },
+      "doc": "Severidade do evento"
+    },
+    {
+      "name": "timestamp",
+      "type": "long",
+      "logicalType": "timestamp-millis",
+      "doc": "Timestamp da ocorrência do evento (UTC)"
+    },
+    {
+      "name": "tenant_id",
+      "type": "string",
+      "doc": "Identificador do inquilino (tenant)"
+    },
+    {
+      "name": "source",
+      "type": {
+        "type": "record",
+        "name": "EventSource",
+        "fields": [
+          {
+            "name": "service",
+            "type": "string",
+            "doc": "Serviço que gerou o evento (ex: 'iam-auth-service')"
+          },
+          {
+            "name": "component",
+            "type": ["string", "null"],
+            "doc": "Componente específico dentro do serviço"
+          },
+          {
+            "name": "instance_id",
+            "type": ["string", "null"],
+            "doc": "Identificador da instância do serviço, se aplicável"
+          },
+          {
+            "name": "environment",
+            "type": "string",
+            "doc": "Ambiente (ex: 'production', 'staging')"
+          },
+          {
+            "name": "region",
+            "type": "string",
+            "doc": "Região de infraestrutura (ex: 'eu-west-1')"
+          }
+        ]
+      },
+      "doc": "Informações sobre a origem do evento"
+    },
+    {
+      "name": "actor",
+      "type": {
+        "type": "record",
+        "name": "Actor",
+        "fields": [
+          {
+            "name": "actor_type",
+            "type": {
+              "type": "enum",
+              "name": "ActorType",
+              "symbols": [
+                "USER",
+                "ADMIN",
+                "SYSTEM",
+                "SERVICE",
+                "API"
+              ]
+            },
+            "doc": "Tipo de ator que realizou a operação"
+          },
+          {
+            "name": "actor_id",
+            "type": ["string", "null"],
+            "doc": "Identificador do ator, pode ser nulo para SYSTEM"
+          },
+          {
+            "name": "actor_name",
+            "type": ["string", "null"],
+            "doc": "Nome/descrição do ator, mascarado em algumas regiões"
+          },
+          {
+            "name": "actor_role",
+            "type": ["string", "null"],
+            "doc": "Papel do ator no sistema"
+          },
+          {
+            "name": "ip_address",
+            "type": ["string", "null"],
+            "doc": "Endereço IP do ator, mascarado em regiões com GDPR/LGPD"
+          },
+          {
+            "name": "device_id",
+            "type": ["string", "null"],
+            "doc": "Identificador do dispositivo, se disponível"
+          }
+        ]
+      },
+      "doc": "Informações sobre o ator que realizou a operação"
+    },
+    {
+      "name": "target",
+      "type": ["null", {
+        "type": "record",
+        "name": "Target",
+        "fields": [
+          {
+            "name": "resource_type",
+            "type": "string",
+            "doc": "Tipo de recurso alvo (ex: 'user', 'token', 'tenant')"
+          },
+          {
+            "name": "resource_id",
+            "type": ["string", "null"],
+            "doc": "Identificador do recurso alvo"
+          },
+          {
+            "name": "resource_name",
+            "type": ["string", "null"],
+            "doc": "Nome/descrição do recurso, mascarado se sensível"
+          },
+          {
+            "name": "resource_owner",
+            "type": ["string", "null"],
+            "doc": "Proprietário do recurso, se aplicável"
+          }
+        ]
+      }],
+      "default": null,
+      "doc": "Informações sobre o recurso alvo da operação"
+    },
+    {
+      "name": "action",
+      "type": {
+        "type": "record",
+        "name": "Action",
+        "fields": [
+          {
+            "name": "operation",
+            "type": "string",
+            "doc": "Operação realizada (ex: 'create', 'read', 'update', 'delete')"
+          },
+          {
+            "name": "status",
+            "type": {
+              "type": "enum",
+              "name": "ActionStatus",
+              "symbols": [
+                "SUCCESS",
+                "FAILURE",
+                "DENIED",
+                "ERROR"
+              ]
+            },
+            "doc": "Status da operação"
+          },
+          {
+            "name": "affected_fields",
+            "type": ["null", {
+              "type": "array",
+              "items": "string"
+            }],
+            "default": null,
+            "doc": "Campos afetados pela operação"
+          },
+          {
+            "name": "reason",
+            "type": ["string", "null"],
+            "doc": "Motivo ou contexto da ação"
+          }
+        ]
+      },
+      "doc": "Informações sobre a ação realizada"
+    },
+    {
+      "name": "request_details",
+      "type": ["null", {
+        "type": "record",
+        "name": "RequestDetails",
+        "fields": [
+          {
+            "name": "request_id",
+            "type": ["string", "null"],
+            "doc": "ID da requisição"
+          },
+          {
+            "name": "user_agent",
+            "type": ["string", "null"],
+            "doc": "User-Agent do cliente"
+          },
+          {
+            "name": "http_method",
+            "type": ["string", "null"],
+            "doc": "Método HTTP, se aplicável"
+          },
+          {
+            "name": "url_path",
+            "type": ["string", "null"],
+            "doc": "Caminho da URL, se aplicável"
+          },
+          {
+            "name": "query_params",
+            "type": ["null", {
+              "type": "map",
+              "values": ["null", "string"]
+            }],
+            "default": null,
+            "doc": "Parâmetros de consulta, mascarados se sensíveis"
+          },
+          {
+            "name": "referrer",
+            "type": ["string", "null"],
+            "doc": "URL referenciadora, se disponível"
+          }
+        ]
+      }],
+      "default": null,
+      "doc": "Detalhes sobre a requisição, se aplicável"
+    },
+    {
+      "name": "error_details",
+      "type": ["null", {
+        "type": "record",
+        "name": "ErrorDetails",
+        "fields": [
+          {
+            "name": "error_code",
+            "type": "string",
+            "doc": "Código de erro padronizado"
+          },
+          {
+            "name": "error_message",
+            "type": "string",
+            "doc": "Mensagem descritiva do erro"
+          },
+          {
+            "name": "error_type",
+            "type": "string",
+            "doc": "Tipo de erro (ex: 'validation', 'permission', 'system')"
+          },
+          {
+            "name": "stack_trace",
+            "type": ["string", "null"],
+            "doc": "Stack trace, disponível apenas em ambientes de desenvolvimento"
+          }
+        ]
+      }],
+      "default": null,
+      "doc": "Detalhes de erro, se aplicável"
+    },
+    {
+      "name": "data_access",
+      "type": ["null", {
+        "type": "record",
+        "name": "DataAccess",
+        "fields": [
+          {
+            "name": "data_type",
+            "type": "string",
+            "doc": "Tipo de dados acessados (ex: 'PII', 'credentials', 'financial')"
+          },
+          {
+            "name": "sensitivity_level",
+            "type": {
+              "type": "enum",
+              "name": "SensitivityLevel",
+              "symbols": [
+                "PUBLIC",
+                "INTERNAL",
+                "CONFIDENTIAL",
+                "RESTRICTED",
+                "SENSITIVE"
+              ]
+            },
+            "doc": "Nível de sensibilidade dos dados"
+          },
+          {
+            "name": "data_categories",
+            "type": {
+              "type": "array",
+              "items": "string"
+            },
+            "doc": "Categorias de dados acessados (ex: 'nome', 'email', 'endereço')"
+          },
+          {
+            "name": "legal_basis",
+            "type": ["string", "null"],
+            "doc": "Base legal para o acesso aos dados"
+          },
+          {
+            "name": "purpose",
+            "type": ["string", "null"],
+            "doc": "Finalidade do acesso aos dados"
+          }
+        ]
+      }],
+      "default": null,
+      "doc": "Informações sobre acesso a dados, importante para compliance GDPR/LGPD"
+    },
+    {
+      "name": "region_code",
+      "type": "string",
+      "doc": "Código da região (EU, BR, AO, US)"
+    },
+    {
+      "name": "correlation_id",
+      "type": "string",
+      "doc": "Identificador de correlação para rastreabilidade"
+    },
+    {
+      "name": "regulatory_frameworks",
+      "type": {
+        "type": "array",
+        "items": "string"
+      },
+      "default": [],
+      "doc": "Frameworks regulatórios aplicáveis (ex: 'GDPR', 'LGPD', 'HIPAA')"
+    },
+    {
+      "name": "retention_policy",
+      "type": ["null", {
+        "type": "record",
+        "name": "RetentionPolicy",
+        "fields": [
+          {
+            "name": "retention_period_days",
+            "type": "int",
+            "doc": "Período de retenção em dias"
+          },
+          {
+            "name": "encryption_required",
+            "type": "boolean",
+            "doc": "Indica se o evento requer criptografia durante armazenamento"
+          },
+          {
+            "name": "masking_required",
+            "type": "boolean",
+            "doc": "Indica se dados sensíveis devem ser mascarados"
+          },
+          {
+            "name": "restricted_access",
+            "type": "boolean",
+            "doc": "Indica se o acesso a este evento é restrito"
+          }
+        ]
+      }],
+      "default": null,
+      "doc": "Política de retenção aplicável ao evento"
+    },
+    {
+      "name": "additional_context",
+      "type": {
+        "type": "map",
+        "values": ["null", "string", "int", "boolean", "double"]
+      },
+      "default": {},
+      "doc": "Dados contextuais adicionais específicos do evento"
+    }
+  ]
+}

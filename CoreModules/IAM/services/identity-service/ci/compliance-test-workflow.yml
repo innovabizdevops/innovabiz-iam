@@ -1,0 +1,350 @@
+name: OPA Compliance Testing
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'policies/**'
+      - 'tests/opa-compliance/**'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'policies/**'
+      - 'tests/opa-compliance/**'
+  workflow_dispatch:
+    inputs:
+      region:
+        description: 'Região específica para testar (vazio para todas)'
+        required: false
+        default: ''
+      framework:
+        description: 'Framework regulatório específico (vazio para todos)'
+        required: false
+        default: ''
+      remediate:
+        description: 'Tentar corrigir problemas automaticamente'
+        type: boolean
+        required: false
+        default: false
+
+jobs:
+  compliance-test:
+    name: Testes de Compliance Regulatório
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout do repositório
+        uses: actions/checkout@v3
+        
+      - name: Configurar Go
+        uses: actions/setup-go@v3
+        with:
+          go-version: '1.21'
+          
+      - name: Instalar dependências
+        run: |
+          go mod download
+          
+      - name: Compilar CLI de testes de compliance
+        run: |
+          go build -o compliance-test ./cmd/compliance-test
+          
+      - name: Executar testes de compliance para todas as regiões
+        if: ${{ github.event.inputs.region == '' }}
+        run: |
+          mkdir -p ./reports
+          ./compliance-test \
+            --opa=./policies \
+            --tests=./tests/opa-compliance \
+            --output=./reports \
+            --verbose \
+            --json \
+            --html \
+            ${{ github.event.inputs.remediate == 'true' && '--remediate' || '' }}
+            
+      - name: Executar testes de compliance para região específica
+        if: ${{ github.event.inputs.region != '' }}
+        run: |
+          mkdir -p ./reports
+          ./compliance-test \
+            --opa=./policies \
+            --tests=./tests/opa-compliance \
+            --output=./reports \
+            --regions=${{ github.event.inputs.region }} \
+            ${{ github.event.inputs.framework != '' && format('--frameworks={0}', github.event.inputs.framework) || '' }} \
+            --verbose \
+            --json \
+            --html \
+            ${{ github.event.inputs.remediate == 'true' && '--remediate' || '' }}
+            
+      - name: Arquivar relatórios de compliance
+        uses: actions/upload-artifact@v3
+        with:
+          name: compliance-reports
+          path: |
+            ./reports/**/*.json
+            ./reports/**/*.html
+          retention-days: 30
+          
+      - name: Verificar pontuação de compliance
+        run: |
+          SCORE=$(jq '.complianceScore' ./reports/*/compliance_report_*.json | sort -n | head -n1)
+          echo "Pontuação mínima de compliance: $SCORE%"
+          if (( $(echo "$SCORE < 80.0" | bc -l) )); then
+            echo "::warning::Pontuação de compliance abaixo do mínimo exigido (80%)!"
+            if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+              echo "::notice::O PR pode ser mesclado, mas requer revisão da equipe de governança."
+            fi
+          fi
+          # Falha apenas se a pontuação for extremamente baixa (crítico)
+          if (( $(echo "$SCORE < 50.0" | bc -l) )); then
+            echo "::error::Pontuação de compliance criticamente baixa!"
+            exit 1
+          fi
+          
+  compliance-metrics:
+    name: Métricas de Compliance
+    runs-on: ubuntu-latest
+    needs: compliance-test
+    
+    steps:
+      - name: Checkout do repositório
+        uses: actions/checkout@v3
+        
+      - name: Download de relatórios de compliance
+        uses: actions/download-artifact@v3
+        with:
+          name: compliance-reports
+          path: ./reports
+          
+      - name: Extrair métricas de compliance
+        run: |
+          echo "Gerando métricas de compliance para observabilidade..."
+          mkdir -p ./metrics
+          
+          # Processar relatórios JSON para métricas
+          python3 -c '
+          import os
+          import json
+          import glob
+          
+          metrics_file = open("./metrics/compliance_metrics.txt", "w")
+          
+          report_files = glob.glob("./reports/**/compliance_report_*.json", recursive=True)
+          for report_file in report_files:
+              with open(report_file, "r") as f:
+                  report = json.load(f)
+                  
+                  region = report.get("region", "unknown")
+                  region_name = report.get("regionName", "Unknown")
+                  score = report.get("complianceScore", 0)
+                  passed = report.get("passedTests", 0)
+                  failed = report.get("failedTests", 0)
+                  total = report.get("totalTests", 0)
+                  
+                  # Métrica geral de compliance
+                  metrics_file.write(f"innovabiz_opa_compliance_score{{region=\"{region}\"}} {score}\n")
+                  
+                  # Métricas por framework
+                  for framework_id, framework_data in report.get("frameworkScores", {}).items():
+                      fw_name = framework_data.get("name", framework_id)
+                      fw_score = framework_data.get("complianceScore", 0)
+                      metrics_file.write(f"innovabiz_opa_compliance_score_by_framework{{region=\"{region}\",framework=\"{framework_id}\",framework_name=\"{fw_name}\"}} {fw_score}\n")
+                  
+                  # Contagem de testes
+                  metrics_file.write(f"innovabiz_opa_compliance_tests_total{{region=\"{region}\",status=\"passed\"}} {passed}\n")
+                  metrics_file.write(f"innovabiz_opa_compliance_tests_total{{region=\"{region}\",status=\"failed\"}} {failed}\n")
+                  
+                  # Contagem de violações por criticidade
+                  criticality_counts = {"alta": 0, "média": 0, "baixa": 0}
+                  for result in report.get("testResults", []):
+                      if not result.get("passed", True):
+                          crit = result.get("criticality", "baixa").lower()
+                          if crit in criticality_counts:
+                              criticality_counts[crit] += 1
+                  
+                  for crit, count in criticality_counts.items():
+                      metrics_file.write(f"innovabiz_opa_compliance_violations_total{{region=\"{region}\",criticality=\"{crit}\"}} {count}\n")
+          
+          metrics_file.close()
+          print("Métricas geradas com sucesso.")
+          '
+          
+      - name: Arquivar métricas de compliance
+        uses: actions/upload-artifact@v3
+        with:
+          name: compliance-metrics
+          path: ./metrics
+          retention-days: 7
+          
+      - name: Publicar métricas no Prometheus (simulação)
+        run: |
+          echo "Métricas geradas que seriam publicadas no Prometheus:"
+          cat ./metrics/compliance_metrics.txt
+          
+          # Em um ambiente real, aqui seria utilizado o Pushgateway do Prometheus
+          # curl -X POST --data-binary @./metrics/compliance_metrics.txt http://prometheus-pushgateway:9091/metrics/job/compliance_tests
+          
+  compliance-notification:
+    name: Notificação de Resultados
+    runs-on: ubuntu-latest
+    needs: [compliance-test, compliance-metrics]
+    if: ${{ always() }}
+    
+    steps:
+      - name: Download de relatórios de compliance
+        uses: actions/download-artifact@v3
+        with:
+          name: compliance-reports
+          path: ./reports
+          
+      - name: Preparar resumo de compliance
+        run: |
+          echo "## 📊 Relatório de Compliance OPA" > summary.md
+          echo "" >> summary.md
+          
+          # Extrair informações dos relatórios
+          python3 -c '
+          import json
+          import glob
+          import os
+          
+          summary_file = open("summary.md", "a")
+          
+          report_files = glob.glob("./reports/**/compliance_report_*.json", recursive=True)
+          
+          if not report_files:
+              summary_file.write("❌ Nenhum relatório de compliance encontrado!\n")
+              exit(0)
+              
+          for report_file in report_files:
+              with open(report_file, "r") as f:
+                  try:
+                      report = json.load(f)
+                      
+                      region = report.get("region", "unknown")
+                      region_name = report.get("regionName", "Unknown")
+                      score = report.get("complianceScore", 0)
+                      passed = report.get("passedTests", 0)
+                      failed = report.get("failedTests", 0)
+                      total = report.get("totalTests", 0)
+                      
+                      status_emoji = "✅" if score >= 80 else "⚠️" if score >= 50 else "❌"
+                      
+                      summary_file.write(f"### {status_emoji} {region_name} ({region})\n\n")
+                      summary_file.write(f"- Pontuação: **{score:.2f}%**\n")
+                      summary_file.write(f"- Testes: {passed}/{total} passaram ({failed} falhas)\n\n")
+                      
+                      if "frameworkScores" in report:
+                          summary_file.write("| Framework | Pontuação | Status |\n")
+                          summary_file.write("|-----------|-----------|--------|\n")
+                          
+                          for framework_id, framework_data in report.get("frameworkScores", {}).items():
+                              fw_name = framework_data.get("name", framework_id)
+                              fw_score = framework_data.get("complianceScore", 0)
+                              fw_emoji = "✅" if fw_score >= 80 else "⚠️" if fw_score >= 50 else "❌"
+                              
+                              summary_file.write(f"| {fw_name} | {fw_score:.2f}% | {fw_emoji} |\n")
+                          
+                          summary_file.write("\n")
+                      
+                      # Lista de violações mais críticas
+                      critical_failures = []
+                      for result in report.get("testResults", []):
+                          if not result.get("passed", True) and result.get("criticality", "") == "alta":
+                              critical_failures.append({
+                                  "id": result.get("testCase", {}).get("id", "unknown"),
+                                  "name": result.get("testCase", {}).get("name", "Unknown test"),
+                                  "message": result.get("message", "No details")
+                              })
+                      
+                      if critical_failures:
+                          summary_file.write("#### ❗ Violações Críticas\n\n")
+                          for failure in critical_failures[:5]:  # Mostrar apenas as 5 mais importantes
+                              summary_file.write(f"- **{failure['id']}**: {failure['name']} - {failure['message']}\n")
+                          
+                          if len(critical_failures) > 5:
+                              summary_file.write(f"- *...e mais {len(critical_failures) - 5} violações críticas*\n")
+                              
+                          summary_file.write("\n")
+                  except Exception as e:
+                      summary_file.write(f"❌ Erro ao processar relatório {os.path.basename(report_file)}: {str(e)}\n\n")
+          
+          summary_file.close()
+          '
+          
+      - name: Adicionar links para relatórios completos
+        run: |
+          echo "### 📑 Relatórios Detalhados" >> summary.md
+          echo "" >> summary.md
+          echo "Faça o download dos relatórios detalhados nos artefatos do workflow." >> summary.md
+          echo "" >> summary.md
+          
+      - name: Adicionar instruções para equipe de governança
+        run: |
+          echo "### 📋 Próximos Passos" >> summary.md
+          echo "" >> summary.md
+          echo "1. Revise as violações críticas e de alta prioridade." >> summary.md
+          echo "2. Para problemas recorrentes, considere ajustar as políticas ou atualizar os testes." >> summary.md
+          echo "3. Utilize o modo de remediação automática para problemas simples: `--remediate`" >> summary.md
+          echo "" >> summary.md
+          
+      - name: Comentar no Pull Request
+        if: ${{ github.event_name == 'pull_request' }}
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const summary = fs.readFileSync('summary.md', 'utf8');
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: summary
+            });
+            
+      - name: Notificar equipe via Slack
+        if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+        run: |
+          # Em um ambiente real, enviar notificação para o Slack
+          echo "Simulando envio de notificação para o Slack com resultados dos testes de compliance..."
+          
+          # Exemplo de como seria o envio (comentado):
+          # curl -X POST -H 'Content-type: application/json' \
+          #   --data "$(cat <<EOF
+          #   {
+          #     "blocks": [
+          #       {
+          #         "type": "header",
+          #         "text": {
+          #           "type": "plain_text",
+          #           "text": "Relatório de Compliance OPA"
+          #         }
+          #       },
+          #       {
+          #         "type": "section",
+          #         "text": {
+          #           "type": "mrkdwn",
+          #           "text": "$(cat summary.md | sed 's/"/\\"/g' | sed ':a;N;$!ba;s/\n/\\n/g')"
+          #         }
+          #       },
+          #       {
+          #         "type": "actions",
+          #         "elements": [
+          #           {
+          #             "type": "button",
+          #             "text": {
+          #               "type": "plain_text",
+          #               "text": "Ver Detalhes"
+          #             },
+          #             "url": "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          #           }
+          #         ]
+          #       }
+          #     ]
+          #   }
+          #   EOF
+          #   )" \
+          #   ${{ secrets.SLACK_WEBHOOK_URL }}

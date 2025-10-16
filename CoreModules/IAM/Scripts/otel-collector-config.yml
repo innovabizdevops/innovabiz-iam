@@ -1,0 +1,257 @@
+# Configuração do OpenTelemetry Collector para INNOVABIZ
+# Implementação Multi-Mercado, Multi-Tenant e Multi-Contexto
+# Conformidade: ISO/IEC 27001, DMBOK 2.0, TOGAF 10.0, COBIT 2019, BNA, GDPR, LGPD
+
+receivers:
+  # Receptor OTLP para receber dados de telemetria dos serviços INNOVABIZ
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+  
+  # Receptor Prometheus para métricas
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: 'innovabiz-services'
+          scrape_interval: 15s
+          static_configs:
+            - targets: ['iam-service:9090', 'payment-gateway:9090', 'risk-management:9090', 'mobile-money:9090']
+
+processors:
+  # Processador de lotes para otimizar a exportação
+  batch:
+    send_batch_size: 1000
+    timeout: 10s
+  
+  # Processador de memória para limitar uso de recursos
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 1000
+  
+  # Processador de filtragem para remover PII conforme GDPR/LGPD/BNA
+  filter:
+    spans:
+      exclude:
+        match_type: regexp
+        attributes:
+          - key: db.statement
+            value: (?i)^(SELECT|INSERT|UPDATE|DELETE).*
+  
+  # Processador de transformação para enriquecimento e sanitização
+  transform:
+    trace:
+      queries:
+        - name: extract_market_context
+          type: string
+          statements:
+            - context.market = extract_from_attributes("market")
+            - context.tenant_type = extract_from_attributes("tenant_type")
+            - context.hook_type = extract_from_attributes("hook_type")
+            
+        - name: anonymize_pii
+          type: string
+          statements:
+            - replace_sensitive_fields("user_id", "***")
+            - replace_sensitive_fields("account_number", "***")
+            - replace_sensitive_fields("document_id", "***")
+      
+      # Adicionar contexto de compliance por mercado
+      span:
+        name: insert
+        statements:
+          - set(attributes["compliance_framework"], get_framework_for_market(attributes["market"]))
+          - set(attributes["retention_years"], get_retention_for_market(attributes["market"]))
+
+  # Processador de resource para adicionar atributos comuns
+  resource:
+    attributes:
+      - key: service.vendor
+        value: "INNOVABIZ"
+      - key: deployment.environment
+        value: ${DEPLOYMENT_ENVIRONMENT}
+        action: upsert
+      - key: service.version
+        value: ${SERVICE_VERSION}
+        action: upsert
+      - key: telemetry.compliance.enabled
+        value: true
+        action: upsert
+
+exporters:
+  # Exportador para Jaeger (visualização de traces)
+  jaeger:
+    endpoint: jaeger:14250
+    tls:
+      insecure: true
+  
+  # Exportador para Zipkin (alternativa para traces)
+  zipkin:
+    endpoint: "http://zipkin:9411/api/v2/spans"
+    format: proto
+  
+  # Exportador para Prometheus (métricas)
+  prometheus:
+    endpoint: "0.0.0.0:8889"
+    namespace: "innovabiz"
+    const_labels:
+      platform: "innovabiz"
+      deployment: "${DEPLOYMENT_ENVIRONMENT}"
+  
+  # Exportador para Elasticsearch (logs e traces)
+  elasticsearch:
+    endpoints: ["https://elasticsearch:9200"]
+    index: "innovabiz-telemetry"
+    user: "${ELASTICSEARCH_USERNAME}"
+    password: "${ELASTICSEARCH_PASSWORD}"
+    mapping:
+      mode: "elasticsearch"
+      version: 7
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 300s
+  
+  # Exportadores específicos por mercado (segmentação para compliance)
+  # Angola (BNA)
+  otlp/angola:
+    endpoint: "otlp-angola:4317"
+    tls:
+      insecure: false
+      ca_file: "/etc/certs/ca-angola.crt"
+    headers:
+      "market": "Angola"
+  
+  # Brasil (LGPD/BACEN)
+  otlp/brasil:
+    endpoint: "otlp-brasil:4317"
+    tls:
+      insecure: false
+      ca_file: "/etc/certs/ca-brasil.crt"
+    headers:
+      "market": "Brazil"
+  
+  # Europa (GDPR/PSD2)
+  otlp/eu:
+    endpoint: "otlp-eu:4317"
+    tls:
+      insecure: false
+      ca_file: "/etc/certs/ca-eu.crt"
+    headers:
+      "market": "EU"
+  
+  # EUA (SOX)
+  otlp/usa:
+    endpoint: "otlp-usa:4317"
+    tls:
+      insecure: false
+      ca_file: "/etc/certs/ca-usa.crt"
+    headers:
+      "market": "USA"
+
+  # Logging para debug e auditoria
+  file:
+    path: "/var/log/otel-collector/collector-debug.log"
+  
+  # Auditoria de compliance - arquivos separados por mercado
+  file/audit:
+    path: "/var/log/otel-collector/compliance-audit.log"
+    rotation:
+      max_size_mb: 100
+      max_age: 30
+      max_backups: 365  # Para cumprir requisitos de retenção
+
+extensions:
+  # Monitoramento de saúde
+  health_check:
+    endpoint: 0.0.0.0:13133
+  
+  # Métricas de performance do coletor
+  pprof:
+    endpoint: 0.0.0.0:1777
+  
+  # API zPages para debug
+  zpages:
+    endpoint: 0.0.0.0:55679
+
+service:
+  extensions: [health_check, pprof, zpages]
+  pipelines:
+    # Pipeline principal para traces
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, filter, transform, batch, resource]
+      exporters: [jaeger, zipkin, elasticsearch, file/audit]
+    
+    # Pipeline principal para métricas
+    metrics:
+      receivers: [otlp, prometheus]
+      processors: [memory_limiter, batch, resource]
+      exporters: [prometheus, elasticsearch]
+    
+    # Pipeline principal para logs
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, batch, resource]
+      exporters: [elasticsearch, file]
+    
+    # Pipelines específicos por mercado para compliance
+    
+    # Angola (BNA)
+    traces/angola:
+      receivers: [otlp]
+      processors: [memory_limiter, filter, transform, batch, resource]
+      exporters: [otlp/angola, elasticsearch, file/audit]
+      # Filtro para dados de Angola
+      filter:
+        spans:
+          include:
+            match_type: strict
+            attributes:
+              - key: market
+                value: "Angola"
+    
+    # Brasil (LGPD/BACEN)
+    traces/brasil:
+      receivers: [otlp]
+      processors: [memory_limiter, filter, transform, batch, resource]
+      exporters: [otlp/brasil, elasticsearch, file/audit]
+      # Filtro para dados do Brasil
+      filter:
+        spans:
+          include:
+            match_type: strict
+            attributes:
+              - key: market
+                value: "Brazil"
+    
+    # Europa (GDPR/PSD2)
+    traces/eu:
+      receivers: [otlp]
+      processors: [memory_limiter, filter, transform, batch, resource]
+      exporters: [otlp/eu, elasticsearch, file/audit]
+      # Filtro para dados da Europa
+      filter:
+        spans:
+          include:
+            match_type: strict
+            attributes:
+              - key: market
+                value: "EU"
+    
+    # EUA (SOX)
+    traces/usa:
+      receivers: [otlp]
+      processors: [memory_limiter, filter, transform, batch, resource]
+      exporters: [otlp/usa, elasticsearch, file/audit]
+      # Filtro para dados dos EUA
+      filter:
+        spans:
+          include:
+            match_type: strict
+            attributes:
+              - key: market
+                value: "USA"

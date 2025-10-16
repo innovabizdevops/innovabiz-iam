@@ -1,0 +1,79 @@
+name: IAM Integration
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'infrastructure/iam/**'
+      - 'docs/iam/**'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'infrastructure/iam/**'
+      - 'docs/iam/**'
+
+jobs:
+  iam-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Cache Gradle packages
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Build IAM Services
+        run: |
+          cd infrastructure/iam
+          ./gradlew build
+
+      - name: Configure IAM
+        run: |
+          docker-compose -f docker-compose.yml exec iam-auth-server /app/bin/configure-iam.sh
+
+      - name: Configure Multi-Region
+        run: |
+          docker-compose -f docker-compose.yml exec iam-auth-server /app/bin/configure-region.sh ${REGION:-eu}
+
+      - name: Configure Multi-Tenant
+        run: |
+          docker-compose -f docker-compose.yml exec iam-auth-server /app/bin/configure-tenant.sh
+
+      - name: Validate IAM Configuration
+        run: |
+          docker-compose -f docker-compose.yml exec iam-auth-server /app/bin/validate-config.sh
+
+      - name: Run IAM Tests
+        run: |
+          docker-compose -f docker-compose.yml exec iam-auth-server /app/bin/run-tests.sh
+
+      - name: Validate Authentication Methods
+        run: |
+          docker-compose -f docker-compose.yml exec iam-auth-server /app/bin/validate-auth-methods.sh
+
+      - name: Validate Authorization Rules
+        run: |
+          docker-compose -f docker-compose.yml exec iam-auth-server /app/bin/validate-authz-rules.sh
+
+      - name: Generate IAM Documentation
+        run: |
+          cd docs/iam
+          make html
+
+      - name: Deploy IAM Documentation
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: docs/iam/_build/html

@@ -1,0 +1,479 @@
+"""
+INNOVABIZ - Schema GraphQL para Compliance IAM
+==================================================================
+Autor: Eduardo Jeremias
+Data: 07/05/2025
+Versão: 1.0
+Descrição: Schema GraphQL para exposição dos serviços de validação
+           de compliance do módulo IAM, incluindo validação HIPAA
+           para o módulo Healthcare.
+==================================================================
+"""
+
+type Query {
+  """
+  Obtém relatório de compliance para um tenant específico
+  """
+  complianceReport(
+    """ID do tenant"""
+    tenantId: ID!,
+    
+    """Região para validação (opcional)"""
+    region: RegionCode,
+    
+    """Framework específico para validação (opcional)"""
+    framework: ComplianceFramework,
+    
+    """Idioma para o relatório (pt ou en)"""
+    language: String = "pt"
+  ): ComplianceReport
+  
+  """
+  Lista de frameworks de compliance suportados
+  """
+  supportedFrameworks: [ComplianceFrameworkInfo!]!
+  
+  """
+  Lista de regiões suportadas com seus frameworks aplicáveis
+  """
+  supportedRegions: [RegionInfo!]!
+  
+  """
+  Lista de requisitos para um framework específico
+  """
+  complianceRequirements(
+    """Framework de compliance"""
+    framework: ComplianceFramework!,
+    
+    """Idioma para descrições (pt ou en)"""
+    language: String = "pt"
+  ): [ComplianceRequirement!]!
+  
+  """
+  Detalhes de validação HIPAA para o módulo Healthcare
+  """
+  hipaaHealthcareCompliance(
+    """ID do tenant"""
+    tenantId: ID!,
+    
+    """Idioma para o relatório (pt ou en)"""
+    language: String = "pt"
+  ): HIPAAHealthcareReport
+  
+  """
+  Histórico de relatórios de compliance para um tenant
+  """
+  complianceReportHistory(
+    """ID do tenant"""
+    tenantId: ID!,
+    
+    """Número de relatórios a retornar"""
+    limit: Int = 10,
+    
+    """Offset para paginação"""
+    offset: Int = 0
+  ): [ComplianceReportSummary!]!
+}
+
+type Mutation {
+  """
+  Executa validação de compliance para um tenant
+  """
+  validateCompliance(
+    """ID do tenant"""
+    tenantId: ID!,
+    
+    """Região para validação (opcional)"""
+    region: RegionCode,
+    
+    """Framework específico para validação (opcional)"""
+    framework: ComplianceFramework,
+    
+    """Configuração IAM para validação (opcional)"""
+    iamConfig: JSONObject
+  ): ValidationResult!
+  
+  """
+  Gera um relatório de compliance para um tenant
+  """
+  generateComplianceReport(
+    """ID do tenant"""
+    tenantId: ID!,
+    
+    """Região para validação (opcional)"""
+    region: RegionCode,
+    
+    """Framework específico para validação (opcional)"""
+    framework: ComplianceFramework,
+    
+    """Idioma para o relatório (pt ou en)"""
+    language: String = "pt",
+    
+    """Formatos para o relatório"""
+    formats: [ReportFormat!] = [HTML, JSON]
+  ): ReportGenerationResult!
+  
+  """
+  Define um plano de remediação para problemas de compliance
+  """
+  createRemediationPlan(
+    """ID do tenant"""
+    tenantId: ID!,
+    
+    """Problemas a serem remediados"""
+    issueIds: [ID!]!,
+    
+    """Data limite para remediação"""
+    dueDate: DateTime,
+    
+    """Responsável pela remediação"""
+    assignee: String
+  ): RemediationPlan!
+}
+
+"""
+Enumeração de frameworks de compliance suportados
+"""
+enum ComplianceFramework {
+  GDPR
+  LGPD
+  HIPAA
+  PCI_DSS
+  SOX
+  ISO_27001
+  NIST_800_53
+  LAI
+}
+
+"""
+Enumeração de regiões suportadas
+"""
+enum RegionCode {
+  EU
+  PT
+  BR
+  US
+  AO
+  CD
+  GLOBAL
+}
+
+"""
+Enumeração de níveis de compliance
+"""
+enum ComplianceLevel {
+  COMPLIANT
+  PARTIALLY_COMPLIANT
+  NON_COMPLIANT
+  NOT_APPLICABLE
+}
+
+"""
+Enumeração de formatos de relatório
+"""
+enum ReportFormat {
+  HTML
+  PDF
+  JSON
+  CSV
+  MARKDOWN
+}
+
+"""
+Tipo para informações sobre framework de compliance
+"""
+type ComplianceFrameworkInfo {
+  code: String!
+  name: String!
+  namePt: String!
+  description: String!
+  descriptionPt: String!
+  regionScope: String
+  industryScope: String
+  version: String
+  effectiveDate: DateTime
+  status: String!
+}
+
+"""
+Tipo para informações sobre região
+"""
+type RegionInfo {
+  code: String!
+  name: String!
+  namePt: String!
+  applicableFrameworks: [ComplianceFrameworkInfo!]!
+}
+
+"""
+Tipo para requisito de compliance
+"""
+type ComplianceRequirement {
+  id: ID!
+  code: String!
+  title: String!
+  description: String!
+  category: String!
+  severity: String!
+  framework: ComplianceFrameworkInfo!
+  controlType: String
+  validationLogic: String
+}
+
+"""
+Tipo para resultado de validação de compliance
+"""
+type ValidationResult {
+  success: Boolean!
+  reportId: ID
+  timestamp: DateTime!
+  issues: Int!
+  compliantRequirements: Int!
+  nonCompliantRequirements: Int!
+  partiallyCompliantRequirements: Int!
+  notApplicableRequirements: Int!
+  overallComplianceScore: Float
+}
+
+"""
+Tipo para resultado de geração de relatório
+"""
+type ReportGenerationResult {
+  success: Boolean!
+  reportId: ID!
+  tenant: ID!
+  timestamp: DateTime!
+  formats: [ReportFormat!]!
+  downloadUrls: [ReportDownload!]!
+}
+
+"""
+Tipo para URL de download de relatório
+"""
+type ReportDownload {
+  format: ReportFormat!
+  url: String!
+  expiresAt: DateTime!
+}
+
+"""
+Tipo para resumo de relatório de compliance
+"""
+type ComplianceReportSummary {
+  id: ID!
+  tenant: ID!
+  timestamp: DateTime!
+  region: String
+  framework: String
+  overallComplianceScore: Float!
+  status: String!
+}
+
+"""
+Tipo para relatório completo de compliance
+"""
+type ComplianceReport {
+  id: ID!
+  tenant: ID!
+  timestamp: DateTime!
+  language: String!
+  
+  """Compliance geral"""
+  overallCompliance: OverallCompliance!
+  
+  """Compliance por região"""
+  regions: [RegionCompliance!]!
+  
+  """Compliance por framework"""
+  frameworks: [FrameworkCompliance!]!
+  
+  """Problemas encontrados"""
+  issues: [ComplianceIssue!]!
+  
+  """Recomendações"""
+  recommendations: [ComplianceRecommendation!]!
+}
+
+"""
+Tipo para compliance geral
+"""
+type OverallCompliance {
+  score: Float!
+  status: String!
+  summary: ComplianceSummary!
+}
+
+"""
+Tipo para resumo de compliance
+"""
+type ComplianceSummary {
+  regionsCount: Int!
+  frameworksCount: Int!
+  requirementsCount: Int!
+  issuesCount: Int!
+  criticalIssues: Int!
+}
+
+"""
+Tipo para compliance por região
+"""
+type RegionCompliance {
+  code: String!
+  name: String!
+  overallScore: Float!
+  status: String!
+  frameworks: [FrameworkCompliance!]!
+}
+
+"""
+Tipo para compliance por framework
+"""
+type FrameworkCompliance {
+  code: String!
+  name: String!
+  score: Float!
+  status: String!
+  requirements: RequirementsSummary!
+  requirementsDetails: [RequirementCompliance!]!
+  issues: [ComplianceIssue!]!
+}
+
+"""
+Tipo para resumo de requisitos
+"""
+type RequirementsSummary {
+  total: Int!
+  compliant: Int!
+  partiallyCompliant: Int!
+  nonCompliant: Int!
+  notApplicable: Int!
+}
+
+"""
+Tipo para compliance de requisito específico
+"""
+type RequirementCompliance {
+  reqId: String!
+  title: String!
+  description: String!
+  category: String!
+  severity: String!
+  status: String!
+  details: String
+  evidence: JSONObject
+  remediation: String
+}
+
+"""
+Tipo para problema de compliance
+"""
+type ComplianceIssue {
+  id: ID!
+  requirementId: String!
+  framework: String!
+  region: String!
+  description: String!
+  status: String!
+  details: String
+  remediation: String
+  severity: String!
+}
+
+"""
+Tipo para recomendação de compliance
+"""
+type ComplianceRecommendation {
+  region: String!
+  framework: String!
+  requirementId: String!
+  priority: String!
+  action: String!
+}
+
+"""
+Tipo para plano de remediação
+"""
+type RemediationPlan {
+  id: ID!
+  tenant: ID!
+  createdAt: DateTime!
+  dueDate: DateTime
+  assignee: String
+  issues: [ComplianceIssue!]!
+  status: String!
+}
+
+"""
+Tipo para relatório específico HIPAA-Healthcare
+"""
+type HIPAAHealthcareReport {
+  tenant: ID!
+  timestamp: DateTime!
+  hasHealthcareModule: Boolean!
+  
+  """Estatísticas específicas HIPAA"""
+  hipaaStats: HIPAAStats
+  
+  """Estatísticas de fatores AR"""
+  arFactors: ARFactorStats
+  
+  """Detalhes por categoria"""
+  categories: [HIPAACategoryStats!]
+  
+  """Recomendações específicas para o contexto healthcare"""
+  healthcareRecommendations: [HealthcareRecommendation!]
+}
+
+"""
+Tipo para estatísticas HIPAA
+"""
+type HIPAAStats {
+  totalRequirements: Int!
+  compliant: Int!
+  partiallyCompliant: Int!
+  nonCompliant: Int!
+  overallScore: Float!
+}
+
+"""
+Tipo para estatísticas de fatores AR
+"""
+type ARFactorStats {
+  arAuthEnabled: Boolean!
+  factorCount: Int!
+  enabledFactors: [String!]!
+  enhancesPhiSecurity: Boolean!
+}
+
+"""
+Tipo para estatísticas por categoria HIPAA
+"""
+type HIPAACategoryStats {
+  category: String!
+  total: Int!
+  compliant: Int!
+  partiallyCompliant: Int!
+  nonCompliant: Int!
+  score: Float!
+}
+
+"""
+Tipo para recomendação específica para healthcare
+"""
+type HealthcareRecommendation {
+  category: String!
+  title: String!
+  description: String!
+  priority: String!
+  bestPracticeReference: String
+}
+
+"""
+Tipo escalar para representar objetos JSON genéricos
+"""
+scalar JSONObject
+
+"""
+Tipo escalar para representar data e hora
+"""
+scalar DateTime

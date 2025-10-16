@@ -1,0 +1,80 @@
+# Configuração Prometheus para IAM Audit Service
+# Baseado nas recomendações do Prometheus Operator, Gartner e ISO 20000
+# Implementa padrão multi-contexto e multi-tenant INNOVABIZ
+
+global:
+  scrape_interval: 15s     # Intervalo padrão de coleta, adequado para equilibrar detalhamento e performance
+  evaluation_interval: 15s # Intervalo de avaliação para regras
+  scrape_timeout: 10s      # Timeout para cada operação de scrape
+
+  # Labels globais adicionados a todas as séries temporais
+  external_labels:
+    environment: "${ENVIRONMENT:production}"  # Ambiente (production, staging, qa, dev)
+    region: "${REGION:global}"                # Região de implantação
+    platform: "innovabiz-iam"                 # Plataforma INNOVABIZ - IAM
+    component: "audit-service"                # Componente específico
+
+# Configurações de alertas - conecta com Alertmanager
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: 
+            - "alertmanager:9093"
+      scheme: http
+      timeout: 10s
+      api_version: v2
+
+# Arquivos com regras de alerta e recording rules
+rule_files:
+  - "alert_rules.yml"
+  - "recording_rules.yml"
+
+# Configuração de scraping - alvos para coleta de métricas
+scrape_configs:
+  # Serviço principal de auditoria IAM
+  - job_name: "iam-audit-service"
+    honor_labels: true  # Preserva labels provenientes do alvo
+    metrics_path: "/metrics"
+    scheme: http
+    scrape_interval: 10s  # Coleta mais frequente para serviço principal
+
+    # Configuração de filtro para multi-tenant
+    relabel_configs:
+      # Adiciona label de serviço baseado no target
+      - source_labels: [__address__]
+        target_label: service
+        replacement: "iam-audit"
+      # Extrai a informação de ambiente da URL
+      - source_labels: [__param_environment]
+        regex: (.*)
+        target_label: environment
+        replacement: ${1}
+        action: replace
+
+    static_configs:
+      - targets: 
+          - "iam-audit-service:8000"
+        labels:
+          tier: "core"
+          criticality: "high"
+          sla_tier: "tier0"  # Nível de SLA mais alto
+
+  # Database PostgreSQL do serviço de auditoria (usando exporter)
+  - job_name: "iam-audit-postgres"
+    static_configs:
+      - targets: 
+          - "iam-audit-postgres-exporter:9187"
+        labels:
+          tier: "data"
+          component: "postgres"
+          criticality: "high"
+          
+  # Redis Cache para serviço de auditoria (usando exporter)
+  - job_name: "iam-audit-redis"
+    static_configs:
+      - targets: 
+          - "iam-audit-redis-exporter:9121"
+        labels:
+          tier: "cache"
+          component: "redis"
+          criticality: "medium"

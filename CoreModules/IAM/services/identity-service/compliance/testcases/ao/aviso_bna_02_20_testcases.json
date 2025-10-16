@@ -1,0 +1,272 @@
+{
+  "framework_id": "aviso-bna-02-20",
+  "region": "AO",
+  "version": "1.0.0",
+  "description": "Casos de teste para verificação de conformidade com o Aviso do BNA sobre Sistemas de Pagamentos (Aviso nº 02/20)",
+  "testcases": [
+    {
+      "id": "tc-aviso-bna-02-20-r01-01",
+      "requirement_id": "aviso-bna-02-20-r01",
+      "name": "Autenticação Forte - Transação de Alto Valor",
+      "description": "Verifica se a política exige autenticação forte para transações de alto valor",
+      "policy_file": "transaction_auth.rego",
+      "input": {
+        "user": {
+          "id": "user123",
+          "tenant_id": "tenant_ao_1",
+          "region": "AO",
+          "roles": ["customer"]
+        },
+        "action": "transfer",
+        "resource": "funds",
+        "amount": 50000,
+        "currency": "AOA",
+        "transaction_type": "transferencia_internacional",
+        "auth_factors": 1,
+        "is_new_beneficiary": true,
+        "operation_type": "transferencia_internacional"
+      },
+      "expected_decision": {
+        "allow": false,
+        "reasons": ["requires_strong_authentication"]
+      },
+      "tags": ["autenticacao", "seguranca", "alta_prioridade"]
+    },
+    {
+      "id": "tc-aviso-bna-02-20-r01-02",
+      "requirement_id": "aviso-bna-02-20-r01",
+      "name": "Autenticação Forte - Transação com Múltiplos Fatores",
+      "description": "Verifica se a política permite transação com múltiplos fatores de autenticação",
+      "policy_file": "transaction_auth.rego",
+      "input": {
+        "user": {
+          "id": "user123",
+          "tenant_id": "tenant_ao_1",
+          "region": "AO",
+          "roles": ["customer"]
+        },
+        "action": "transfer",
+        "resource": "funds",
+        "amount": 50000,
+        "currency": "AOA",
+        "transaction_type": "transferencia_internacional",
+        "auth_factors": 2,
+        "auth_methods": ["password", "sms_otp"],
+        "is_new_beneficiary": true,
+        "operation_type": "transferencia_internacional"
+      },
+      "expected_decision": {
+        "allow": true
+      },
+      "tags": ["autenticacao", "seguranca", "mfa"]
+    },
+    {
+      "id": "tc-aviso-bna-02-20-r02-01",
+      "requirement_id": "aviso-bna-02-20-r02",
+      "name": "Notificação de Transação Ausente",
+      "description": "Verifica se a política requer notificação ao cliente para transações eletrônicas",
+      "policy_file": "transaction_notification.rego",
+      "input": {
+        "user": {
+          "id": "system",
+          "tenant_id": "tenant_ao_1",
+          "region": "AO",
+          "roles": ["system"]
+        },
+        "action": "process",
+        "resource": "payment_transaction",
+        "transaction_id": "tx78901",
+        "customer_id": "user456",
+        "amount": 15000,
+        "currency": "AOA",
+        "notification_channels": [],
+        "notification_status": "not_sent"
+      },
+      "expected_decision": {
+        "allow_completion": false,
+        "reasons": ["notification_required"]
+      },
+      "tags": ["notificacao", "transparencia"]
+    },
+    {
+      "id": "tc-aviso-bna-02-20-r03-01",
+      "requirement_id": "aviso-bna-02-20-r03",
+      "name": "Limite Transacional Excedido",
+      "description": "Verifica se a política restringe transações que excedem o limite do cliente",
+      "policy_file": "transaction_limits.rego",
+      "input": {
+        "user": {
+          "id": "user789",
+          "tenant_id": "tenant_ao_1",
+          "region": "AO",
+          "profile": {
+            "category": "standard",
+            "limits": {
+              "daily": 100000,
+              "single_transaction": 50000
+            }
+          }
+        },
+        "action": "transfer",
+        "resource": "funds",
+        "amount": 75000,
+        "currency": "AOA",
+        "daily_total": 80000
+      },
+      "expected_decision": {
+        "allow_transaction": false,
+        "reasons": ["exceeds_single_transaction_limit"]
+      },
+      "tags": ["limites", "transacoes_eletronicas", "alta_prioridade"]
+    },
+    {
+      "id": "tc-aviso-bna-02-20-r03-02",
+      "requirement_id": "aviso-bna-02-20-r03",
+      "name": "Transação Dentro dos Limites",
+      "description": "Verifica se a política permite transação dentro dos limites do cliente",
+      "policy_file": "transaction_limits.rego",
+      "input": {
+        "user": {
+          "id": "user789",
+          "tenant_id": "tenant_ao_1",
+          "region": "AO",
+          "profile": {
+            "category": "premium",
+            "limits": {
+              "daily": 500000,
+              "single_transaction": 200000
+            }
+          }
+        },
+        "action": "transfer",
+        "resource": "funds",
+        "amount": 150000,
+        "currency": "AOA",
+        "daily_total": 200000
+      },
+      "expected_decision": {
+        "allow_transaction": true
+      },
+      "tags": ["limites", "transacoes_eletronicas"]
+    },
+    {
+      "id": "tc-aviso-bna-02-20-r04-01",
+      "requirement_id": "aviso-bna-02-20-r04",
+      "name": "Gestão de Incidentes Obrigatória",
+      "description": "Verifica se a política exige procedimentos de gestão de incidentes",
+      "policy_file": "security_incident.rego",
+      "input": {
+        "user": {
+          "id": "security_officer",
+          "tenant_id": "tenant_ao_1",
+          "region": "AO",
+          "roles": ["security_officer"]
+        },
+        "action": "record",
+        "resource": "security_incident",
+        "incident_id": "inc12345",
+        "incident_type": "unauthorized_access",
+        "severity": "high",
+        "notification_status": "pending",
+        "containment_measures": [],
+        "documentation": {}
+      },
+      "expected_decision": {
+        "allow_closure": false,
+        "require_notification": true,
+        "require_documentation": true,
+        "reasons": ["incomplete_incident_management"]
+      },
+      "tags": ["incidentes", "seguranca", "alta_prioridade"]
+    },
+    {
+      "id": "tc-aviso-bna-02-20-r05-01",
+      "requirement_id": "aviso-bna-02-20-r05",
+      "name": "Transferência para País Sancionado",
+      "description": "Verifica se a política bloqueia transferências para países sancionados",
+      "policy_file": "international_transfer.rego",
+      "input": {
+        "user": {
+          "id": "user123",
+          "tenant_id": "tenant_ao_1",
+          "region": "AO",
+          "roles": ["customer"]
+        },
+        "action": "transfer",
+        "resource": "international_transfer",
+        "destination": {
+          "country": "NK",
+          "bank": "foreign_bank",
+          "account": "dest45678"
+        },
+        "amount": 25000,
+        "currency": "USD",
+        "enhanced_due_diligence": false
+      },
+      "expected_decision": {
+        "allow_international_tx": false,
+        "reasons": ["sanctioned_country"]
+      },
+      "tags": ["internacional", "restricoes_geograficas", "alta_prioridade"]
+    },
+    {
+      "id": "tc-aviso-bna-02-20-r05-02",
+      "requirement_id": "aviso-bna-02-20-r05",
+      "name": "Transferência para País de Alto Risco",
+      "description": "Verifica se a política exige diligência adicional para países de alto risco",
+      "policy_file": "international_transfer.rego",
+      "input": {
+        "user": {
+          "id": "user123",
+          "tenant_id": "tenant_ao_1",
+          "region": "AO",
+          "roles": ["customer"]
+        },
+        "action": "transfer",
+        "resource": "international_transfer",
+        "destination": {
+          "country": "AF",
+          "bank": "foreign_bank",
+          "account": "dest45678"
+        },
+        "amount": 25000,
+        "currency": "USD",
+        "enhanced_due_diligence": false
+      },
+      "expected_decision": {
+        "allow_international_tx": false,
+        "reasons": ["enhanced_due_diligence_required"]
+      },
+      "tags": ["internacional", "restricoes_geograficas", "diligencia_reforcada"]
+    },
+    {
+      "id": "tc-aviso-bna-02-20-r05-03",
+      "requirement_id": "aviso-bna-02-20-r05",
+      "name": "Transferência Internacional Legítima",
+      "description": "Verifica se a política permite transferência para países sem restrições",
+      "policy_file": "international_transfer.rego",
+      "input": {
+        "user": {
+          "id": "user123",
+          "tenant_id": "tenant_ao_1",
+          "region": "AO",
+          "roles": ["customer"]
+        },
+        "action": "transfer",
+        "resource": "international_transfer",
+        "destination": {
+          "country": "PT",
+          "bank": "foreign_bank",
+          "account": "dest45678"
+        },
+        "amount": 25000,
+        "currency": "EUR",
+        "enhanced_due_diligence": true
+      },
+      "expected_decision": {
+        "allow_international_tx": true
+      },
+      "tags": ["internacional", "transferencia_permitida"]
+    }
+  ]
+}

@@ -1,0 +1,280 @@
+name: IAM Security Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    - cron: '0 2 * * 1'  # Execução semanal às 2 AM de segunda-feira
+
+jobs:
+  dependency-check:
+    name: Análise de Dependências
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Executar NPM Audit
+        run: npm audit --json > npm-audit-report.json || true
+
+      - name: Executar OWASP Dependency-Check
+        uses: dependency-check/Dependency-Check_Action@main
+        with:
+          project: 'INNOVABIZ IAM'
+          path: '.'
+          format: 'HTML'
+          args: >
+            --enableExperimental
+            --suppression ./.dependency-check/suppressions.xml
+            --failOnCVSS 7
+            --exclude "**/*.md"
+
+      - name: Publicar relatório de dependências
+        uses: actions/upload-artifact@v3
+        with:
+          name: dependency-check-report
+          path: |
+            dependency-check-report.html
+            npm-audit-report.json
+
+  static-code-analysis:
+    name: Análise Estática de Código (SAST)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # Para análise histórica completa
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: ESLint
+        run: npm run lint -- --format checkstyle --output-file eslint-report.xml || true
+
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >
+            -Dsonar.projectKey=innovabizdevops_innovabiz-iam
+            -Dsonar.organization=innovabizdevops
+            -Dsonar.sources=src
+            -Dsonar.tests=tests
+            -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
+            -Dsonar.eslint.reportPaths=eslint-report.xml
+            -Dsonar.coverage.exclusions=**/tests/**/*,**/node_modules/**/*,**/dist/**/*
+            -Dsonar.qualitygate.wait=true
+
+      - name: Semgrep Security Scan
+        uses: semgrep/semgrep-action@v1
+        with:
+          config: >-
+            p/typescript
+            p/nodejsscan
+            p/owasp-top-ten
+            p/jwt
+            p/auth
+          output: semgrep-results.sarif
+          metrics: false
+        env:
+          SEMGREP_RULES: >-
+            https://semgrep.dev/c/p/typescript
+            https://semgrep.dev/c/p/nodejsscan
+            https://semgrep.dev/c/p/owasp-top-ten
+            https://semgrep.dev/c/p/jwt
+            https://semgrep.dev/c/p/auth
+
+      - name: Publicar resultados Semgrep
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: semgrep-results.sarif
+          category: semgrep
+
+  secrets-scanning:
+    name: Análise de Segredos
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # Análise histórica completa
+
+      - name: TruffleHog Secrets Scanner
+        uses: trufflesecurity/trufflehog-actions-scan@master
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+          extra_args: --only-verified --exclude-paths .trufflehog-exclude.txt
+
+      - name: GitLeaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: ./.gitleaks.toml
+          GITLEAKS_REPORT: gitleaks-report.json
+
+      - name: Publicar relatórios de segredos
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: secrets-scan-reports
+          path: gitleaks-report.json
+
+  security-testing:
+    name: Testes de Segurança
+    runs-on: ubuntu-latest
+    needs: [static-code-analysis, dependency-check]
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Executar testes de segurança
+        run: npm run test:security -- --coverage
+
+      - name: Publicar relatório de cobertura de testes de segurança
+        uses: actions/upload-artifact@v3
+        with:
+          name: security-test-coverage
+          path: coverage
+
+  container-security:
+    name: Segurança de Containers
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v3
+
+      - name: Configurar Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Build da imagem Docker
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: false
+          tags: innovabiz/iam:${{ github.sha }}
+          load: true
+
+      - name: Análise Trivy para vulnerabilidades no container
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: innovabiz/iam:${{ github.sha }}
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Publicar relatório Trivy
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: trivy-results.sarif
+          category: trivy
+
+  compliance-check:
+    name: Verificação de Compliance
+    runs-on: ubuntu-latest
+    needs: [security-testing, container-security]
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Verificar conformidade GDPR
+        run: node ./scripts/compliance/check-gdpr-compliance.js
+
+      - name: Verificar conformidade PCI-DSS
+        run: node ./scripts/compliance/check-pci-dss-compliance.js
+
+      - name: Verificar conformidade LGPD (Brazil)
+        run: node ./scripts/compliance/check-lgpd-compliance.js
+        
+      - name: Verificar conformidade BNA (Angola)
+        run: node ./scripts/compliance/check-bna-compliance.js
+
+      - name: Verificar conformidade SADC/PALOP
+        run: node ./scripts/compliance/check-sadc-palop-compliance.js
+
+      - name: Gerar relatório de conformidade
+        run: node ./scripts/compliance/generate-compliance-report.js
+        
+      - name: Publicar relatório de compliance
+        uses: actions/upload-artifact@v3
+        with:
+          name: compliance-report
+          path: reports/compliance
+
+  security-report:
+    name: Relatório de Segurança
+    runs-on: ubuntu-latest
+    needs: [dependency-check, static-code-analysis, secrets-scanning, security-testing, container-security, compliance-check]
+    if: always()
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v3
+
+      - name: Baixar todos os relatórios
+        uses: actions/download-artifact@v3
+        with:
+          path: all-reports
+
+      - name: Consolidar relatórios
+        run: |
+          mkdir -p final-security-report
+          # Script para consolidar os relatórios de segurança
+          node ./scripts/security/consolidate-security-reports.js --input-dir all-reports --output-dir final-security-report
+
+      - name: Publicar relatório consolidado
+        uses: actions/upload-artifact@v3
+        with:
+          name: final-security-report
+          path: final-security-report
+
+      - name: Notificar via Slack sobre resultado
+        if: always()
+        uses: rtCamp/action-slack-notify@v2
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          SLACK_CHANNEL: security-alerts
+          SLACK_COLOR: ${{ job.status }}
+          SLACK_TITLE: 'Relatório de Segurança IAM'
+          SLACK_MESSAGE: 'Relatório de segurança para o módulo IAM está disponível. Verifique os artefatos do build para mais detalhes.'
+          SLACK_FOOTER: 'INNOVABIZ Security Pipeline'

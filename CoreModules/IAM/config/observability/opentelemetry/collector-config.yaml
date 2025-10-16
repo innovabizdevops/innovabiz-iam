@@ -1,0 +1,223 @@
+# INNOVABIZ IAM Audit Service - OpenTelemetry Collector Configuration
+# Versão: 1.0.0
+# Ano: 2025
+# Plataforma: Multi-plataforma, Multi-dimensional e Multi-Contexto
+# Baseado em OpenTelemetry Collector v0.96.0
+
+receivers:
+  # Receptor OTLP para rastreamento, métricas e logs
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+  
+  # Receptor Prometheus para coletar métricas do serviço
+  prometheus:
+    config:
+      scrape_configs:
+      - job_name: 'iam-audit-service'
+        scrape_interval: 10s
+        static_configs:
+        - targets: ['iam-audit-service:8000']
+          labels:
+            service: 'iam-audit-service'
+            environment: '${ENVIRONMENT}'
+      - job_name: 'iam-audit-service-compliance'
+        scrape_interval: 15s
+        metrics_path: '/metrics/compliance'
+        static_configs:
+        - targets: ['iam-audit-service:8000']
+          labels:
+            service: 'iam-audit-service'
+            component: 'compliance'
+            environment: '${ENVIRONMENT}'
+  
+  # Receptor de logs de arquivo para auditoria
+  filelog:
+    include:
+      - /var/log/iam-audit-service/*.log
+    exclude:
+      - /var/log/iam-audit-service/*.tmp
+    start_at: end
+    include_file_path: true
+    include_file_name: true
+    operators:
+      - type: json_parser
+      - type: timestamp
+        parse_from: attributes.time
+        layout: '%Y-%m-%dT%H:%M:%S.%LZ'
+      - type: resource
+        attributes:
+          service.name: iam-audit-service
+          service.version: '${VERSION}'
+          environment: '${ENVIRONMENT}'
+
+processors:
+  # Processador para adicionar atributos globais
+  resource:
+    attributes:
+      - key: platform.name
+        value: INNOVABIZ
+        action: insert
+      - key: service.instance.id
+        value: ${HOSTNAME}
+        action: insert
+
+  # Processador para filtrar dados sensíveis
+  filter:
+    logs:
+      include:
+        match_type: regexp
+        regexp:
+          - '^iam\.audit\.'
+    metrics:
+      exclude:
+        match_type: strict
+        metric_names:
+          - process.runtime.jvm.cpu.utilization # Métrica redundante
+
+  # Processador para agrupar por tenant e região
+  groupbytrace:
+    wait_duration: 10s
+    num_traces: 1000
+    storage: memory
+
+  # Processador de memória para controlar uso de recursos
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 2000
+    spike_limit_mib: 500
+
+  # Processador para detecção de latência anômala
+  tail_sampling:
+    decision_wait: 5s
+    num_traces: 1000
+    expected_new_traces_per_sec: 100
+    policies:
+      [
+        {
+          name: error-policy,
+          type: status_code,
+          status_code: {status_codes: [ERROR]}
+        },
+        {
+          name: slow-policy,
+          type: latency,
+          latency: {threshold_ms: 500}
+        },
+        {
+          name: tenant-policy,
+          type: string_attribute,
+          string_attribute: {key: tenant, values: ["${HIGH_VALUE_TENANTS}"]}
+        }
+      ]
+
+  # Processador de batch para otimizar envio
+  batch:
+    timeout: 1s
+    send_batch_size: 1024
+    send_batch_max_size: 2048
+
+exporters:
+  # Exportador para Jaeger
+  jaeger:
+    endpoint: jaeger-collector:14250
+    tls:
+      insecure: true
+
+  # Exportador para Prometheus
+  prometheus:
+    endpoint: prometheus:9090
+    namespace: innovabiz_iam
+    const_labels:
+      deployment: '${DEPLOYMENT_NAME}'
+
+  # Exportador para Elasticsearch
+  elasticsearch:
+    endpoints: ["https://elasticsearch:9200"]
+    index: innovabiz-audit-logs
+    user: ${ELASTIC_USERNAME}
+    password: ${ELASTIC_PASSWORD}
+    tls:
+      ca_file: /etc/otel/certs/ca.crt
+      cert_file: /etc/otel/certs/client.crt
+      key_file: /etc/otel/certs/client.key
+      insecure_skip_verify: false
+    mapping:
+      mode: infer
+      drop_unmatched: true
+
+  # Exportador para OpenTelemetry Protocol
+  otlp:
+    endpoint: otlp-collector:4317
+    tls:
+      insecure: false
+      ca_file: /etc/otel/certs/ca.crt
+
+  # Exportador para AWS X-Ray (suporte a ambientes AWS)
+  awsxray:
+    region: ${AWS_REGION}
+    role_arn: ${AWS_ROLE_ARN}
+
+  # Exportador para serviço centralizado de logs
+  logging:
+    verbosity: detailed
+
+# Extensões para gerenciamento e monitoramento do coletor
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+  
+  pprof:
+    endpoint: 0.0.0.0:1777
+  
+  zpages:
+    endpoint: 0.0.0.0:55679
+
+  # Extensão para métricas do próprio coletor
+  memory_ballast:
+    size_mib: 512
+  
+  # Autenticação para API de gerenciamento
+  basicauth:
+    htpasswd:
+      file: /etc/otel/auth/htpasswd
+      inline: ${BASIC_AUTH_PASSWORD}
+
+# Serviço principal com pipeline de dados
+service:
+  pipelines:
+    # Pipeline para traces (spans de rastreamento)
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, filter, groupbytrace, tail_sampling, batch]
+      exporters: [jaeger, otlp, awsxray, logging]
+    
+    # Pipeline para métricas
+    metrics:
+      receivers: [otlp, prometheus]
+      processors: [memory_limiter, resource, filter, batch]
+      exporters: [prometheus, otlp, logging]
+    
+    # Pipeline para logs
+    logs:
+      receivers: [otlp, filelog]
+      processors: [memory_limiter, resource, filter, batch]
+      exporters: [elasticsearch, otlp, logging]
+
+  # Extensões habilitadas
+  extensions: [health_check, pprof, zpages, memory_ballast, basicauth]
+
+# Telemetria para o próprio coletor
+telemetry:
+  metrics:
+    address: 0.0.0.0:8888
+  logs:
+    level: info
+    development: false
+    encoding: json
+    disable_caller: false
+    disable_stacktrace: false
+    output_paths: ["/var/log/otel-collector/collector.log", "stdout"]

@@ -1,0 +1,383 @@
+{
+  "topics": [
+    {
+      "name": "iam-auth-events",
+      "description": "Eventos de autenticação (login, logout, etc)",
+      "partitions": 12,
+      "replication_factor": 3,
+      "configs": {
+        "cleanup.policy": "delete",
+        "retention.ms": 604800000,
+        "segment.bytes": 1073741824
+      },
+      "schema_registry": true,
+      "observability": {
+        "monitoring": true,
+        "alerting": true
+      },
+      "regional_variations": {
+        "EU": {
+          "data_masking": true,
+          "partitions": 24
+        },
+        "US": {
+          "retention.ms": 2592000000,
+          "partitions": 24,
+          "specialized_subtopics": ["healthcare", "finance"]
+        }
+      }
+    },
+    {
+      "name": "iam-user-events",
+      "description": "Eventos relacionados a operações de usuários (criação, atualização, exclusão)",
+      "partitions": 6,
+      "replication_factor": 3,
+      "configs": {
+        "cleanup.policy": "delete",
+        "retention.ms": 1209600000,
+        "segment.bytes": 1073741824
+      },
+      "schema_registry": true,
+      "observability": {
+        "monitoring": true,
+        "alerting": true
+      }
+    },
+    {
+      "name": "iam-tenant-events",
+      "description": "Eventos relacionados a operações de inquilinos (criação, atualização, exclusão)",
+      "partitions": 3,
+      "replication_factor": 3,
+      "configs": {
+        "cleanup.policy": "delete",
+        "retention.ms": 2592000000,
+        "segment.bytes": 1073741824
+      },
+      "schema_registry": true,
+      "observability": {
+        "monitoring": true,
+        "alerting": true
+      }
+    },
+    {
+      "name": "iam-sessions",
+      "description": "Gerenciamento de sessões de usuários",
+      "partitions": 12,
+      "replication_factor": 3,
+      "configs": {
+        "cleanup.policy": "delete",
+        "retention.ms": 86400000,
+        "segment.bytes": 1073741824
+      },
+      "schema_registry": true,
+      "observability": {
+        "monitoring": true,
+        "alerting": true
+      },
+      "regional_variations": {
+        "EU": {
+          "retention.ms": 43200000
+        },
+        "AO": {
+          "retention.ms": 259200000
+        }
+      }
+    },
+    {
+      "name": "iam-token-events",
+      "description": "Eventos de ciclo de vida de tokens (geração, refresh, revogação)",
+      "partitions": 12,
+      "replication_factor": 3,
+      "configs": {
+        "cleanup.policy": "delete",
+        "retention.ms": 43200000,
+        "segment.bytes": 1073741824
+      },
+      "schema_registry": true,
+      "observability": {
+        "monitoring": true,
+        "alerting": true
+      }
+    },
+    {
+      "name": "iam-method-updates",
+      "description": "Atualizações sobre métodos de autenticação disponíveis",
+      "partitions": 3,
+      "replication_factor": 3,
+      "configs": {
+        "cleanup.policy": "compact,delete",
+        "retention.ms": 2592000000,
+        "segment.bytes": 1073741824
+      },
+      "schema_registry": true,
+      "observability": {
+        "monitoring": true,
+        "alerting": false
+      }
+    },
+    {
+      "name": "iam-auth-configurations",
+      "description": "Configurações dos métodos e fluxos de autenticação",
+      "partitions": 3,
+      "replication_factor": 3,
+      "configs": {
+        "cleanup.policy": "compact",
+        "segment.bytes": 1073741824
+      },
+      "schema_registry": true,
+      "observability": {
+        "monitoring": true,
+        "alerting": false
+      }
+    },
+    {
+      "name": "iam-risk-scores",
+      "description": "Pontuações de risco para autenticação adaptativa",
+      "partitions": 6,
+      "replication_factor": 3,
+      "configs": {
+        "cleanup.policy": "delete",
+        "retention.ms": 604800000,
+        "segment.bytes": 1073741824
+      },
+      "schema_registry": true,
+      "observability": {
+        "monitoring": true,
+        "alerting": true
+      }
+    },
+    {
+      "name": "iam-security-alerts",
+      "description": "Alertas de segurança (tentativas de login suspeitas, etc)",
+      "partitions": 6,
+      "replication_factor": 3,
+      "configs": {
+        "cleanup.policy": "delete",
+        "retention.ms": 2592000000,
+        "segment.bytes": 1073741824
+      },
+      "schema_registry": true,
+      "observability": {
+        "monitoring": true,
+        "alerting": true
+      },
+      "regional_variations": {
+        "EU": {
+          "data_masking": true,
+          "retention.ms": 5184000000
+        },
+        "US": {
+          "partitions": 12,
+          "specialized_subtopics": ["healthcare", "finance"]
+        }
+      }
+    },
+    {
+      "name": "iam-audit-logs",
+      "description": "Logs de auditoria para todas as operações IAM",
+      "partitions": 12,
+      "replication_factor": 3,
+      "configs": {
+        "cleanup.policy": "delete",
+        "retention.ms": 7776000000,
+        "segment.bytes": 1073741824
+      },
+      "schema_registry": true,
+      "observability": {
+        "monitoring": true,
+        "alerting": true
+      },
+      "regional_variations": {
+        "EU": {
+          "data_masking": true,
+          "retention.ms": 15552000000,
+          "partitions": 24
+        },
+        "BR": {
+          "data_masking": true,
+          "retention.ms": 15552000000
+        },
+        "US": {
+          "partitions": 24,
+          "specialized_subtopics": ["healthcare", "finance"],
+          "retention.ms": 31536000000
+        }
+      }
+    },
+    {
+      "name": "iam-user-deletion-requests",
+      "description": "Solicitações de exclusão de dados de usuários (GDPR, LGPD)",
+      "partitions": 3,
+      "replication_factor": 3,
+      "configs": {
+        "cleanup.policy": "compact,delete",
+        "retention.ms": 31536000000,
+        "segment.bytes": 1073741824
+      },
+      "schema_registry": true,
+      "observability": {
+        "monitoring": true,
+        "alerting": true
+      }
+    },
+    {
+      "name": "iam-data-subject-requests",
+      "description": "Solicitações de titulares de dados (acesso, portabilidade, etc)",
+      "partitions": 3,
+      "replication_factor": 3,
+      "configs": {
+        "cleanup.policy": "compact,delete",
+        "retention.ms": 31536000000,
+        "segment.bytes": 1073741824
+      },
+      "schema_registry": true,
+      "observability": {
+        "monitoring": true,
+        "alerting": true
+      }
+    },
+    {
+      "name": "iam-consent-events",
+      "description": "Eventos relacionados a consentimento para processamento de dados",
+      "partitions": 6,
+      "replication_factor": 3,
+      "configs": {
+        "cleanup.policy": "compact,delete",
+        "retention.ms": 63072000000,
+        "segment.bytes": 1073741824
+      },
+      "schema_registry": true,
+      "observability": {
+        "monitoring": true,
+        "alerting": true
+      }
+    },
+    {
+      "name": "iam-offline-auth-events",
+      "description": "Eventos de autenticação offline para regiões com conectividade limitada",
+      "partitions": 6,
+      "replication_factor": 3,
+      "configs": {
+        "cleanup.policy": "delete",
+        "retention.ms": 7776000000,
+        "segment.bytes": 1073741824
+      },
+      "schema_registry": true,
+      "observability": {
+        "monitoring": true,
+        "alerting": false
+      },
+      "regional_variations": {
+        "AO": {
+          "enabled": true,
+          "partitions": 12
+        },
+        "EU": {
+          "enabled": false
+        },
+        "BR": {
+          "enabled": false
+        },
+        "US": {
+          "enabled": false
+        }
+      }
+    },
+    {
+      "name": "iam-notification-events",
+      "description": "Eventos para disparo de notificações (email, SMS, etc)",
+      "partitions": 6,
+      "replication_factor": 3,
+      "configs": {
+        "cleanup.policy": "delete",
+        "retention.ms": 259200000,
+        "segment.bytes": 1073741824
+      },
+      "schema_registry": true,
+      "observability": {
+        "monitoring": true,
+        "alerting": false
+      }
+    },
+    {
+      "name": "iam-mfa-challenges",
+      "description": "Desafios de autenticação multifator",
+      "partitions": 6,
+      "replication_factor": 3,
+      "configs": {
+        "cleanup.policy": "delete",
+        "retention.ms": 86400000,
+        "segment.bytes": 1073741824
+      },
+      "schema_registry": true,
+      "observability": {
+        "monitoring": true,
+        "alerting": true
+      }
+    },
+    {
+      "name": "iam-healthchecks",
+      "description": "Verificações de saúde dos serviços IAM",
+      "partitions": 3,
+      "replication_factor": 3,
+      "configs": {
+        "cleanup.policy": "delete",
+        "retention.ms": 86400000,
+        "segment.bytes": 536870912
+      },
+      "schema_registry": true,
+      "observability": {
+        "monitoring": true,
+        "alerting": true
+      }
+    },
+    {
+      "name": "iam-healthcare-auth-events",
+      "description": "Eventos de autenticação específicos para o setor de saúde",
+      "partitions": 6,
+      "replication_factor": 3,
+      "configs": {
+        "cleanup.policy": "delete",
+        "retention.ms": 31536000000,
+        "segment.bytes": 1073741824
+      },
+      "schema_registry": true,
+      "observability": {
+        "monitoring": true,
+        "alerting": true
+      },
+      "regional_variations": {
+        "US": {
+          "enabled": true,
+          "hipaa_compliant": true
+        },
+        "EU": {
+          "enabled": true,
+          "data_masking": true
+        },
+        "BR": {
+          "enabled": false
+        },
+        "AO": {
+          "enabled": false
+        }
+      }
+    },
+    {
+      "name": "iam-deadletter",
+      "description": "Tópico para mensagens que não puderam ser processadas",
+      "partitions": 3,
+      "replication_factor": 3,
+      "configs": {
+        "cleanup.policy": "delete",
+        "retention.ms": 7776000000,
+        "segment.bytes": 1073741824
+      },
+      "schema_registry": false,
+      "observability": {
+        "monitoring": true,
+        "alerting": true
+      }
+    }
+  ]
+}

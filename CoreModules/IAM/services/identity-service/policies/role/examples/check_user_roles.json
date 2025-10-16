@@ -1,0 +1,31 @@
+{
+  "user": {
+    "id": "00000000-0000-0000-0000-000000000004",
+    "tenant_id": "20000000-0000-0000-0000-000000000001",
+    "username": "iam.operator",
+    "roles": ["IAM_OPERATOR"],
+    "permissions": ["role:read", "role:assign_to_user", "role:check_permission", "role:check_user_roles"]
+  },
+  "resource": {
+    "tenant_id": "20000000-0000-0000-0000-000000000001",
+    "user_id": "00000000-0000-0000-0000-000000000005"
+  },
+  "method": "GET",
+  "context": {
+    "requests_per_minute": 8,
+    "geo": {
+      "country": "AO",
+      "region": "Luanda"
+    },
+    "timestamp": "2025-08-05T17:45:00Z",
+    "client_ip": "192.168.1.140",
+    "user_agent": "Mozilla/5.0 (iPad; CPU OS 14_7_1 like Mac OS X)",
+    "request_id": "d9e8fd33-4e6d-5e59-abf5-6f1g5db4h804",
+    "audit": {
+      "transaction_id": "tx-20250805-174500-3216",
+      "source_ip": "192.168.1.140",
+      "security_level": "low",
+      "read_only": true
+    }
+  }
+}

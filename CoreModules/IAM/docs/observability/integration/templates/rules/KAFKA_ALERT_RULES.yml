@@ -1,0 +1,203 @@
+groups:
+- name: innovabiz_kafka_alerts
+  rules:
+  # Alertas de Disponibilidade
+  - alert: KafkaBrokerDown
+    expr: kafka_server_brokertopicmetrics_up{} == 0
+    for: 2m
+    labels:
+      severity: critical
+      service: kafka
+      category: availability
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Kafka Broker Indisponível"
+      description: "Broker {{ $labels.instance }} está offline há pelo menos 2 minutos. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/kafka-broker-unavailable"
+      dashboard_url: "https://grafana.innovabiz.com/d/innovabiz-kafka?var-tenant_id={{ $labels.tenant_id }}&var-region_id={{ $labels.region_id }}&var-environment={{ $labels.environment }}&var-instance={{ $labels.instance }}"
+      
+  - alert: KafkaTopicReplicationFactorLow
+    expr: sum(kafka_topic_partition_replicas{}) by (topic, tenant_id, region_id, environment) < 3
+    for: 10m
+    labels:
+      severity: warning
+      service: kafka
+      category: availability
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Fator de Replicação Baixo"
+      description: "O tópico {{ $labels.topic }} possui fator de replicação menor que 3 (atual: {{ $value }}). Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/kafka-replication-factor-low"
+  
+  - alert: KafkaClusterUnderReplicated
+    expr: sum(kafka_server_replicamanager_underreplicatedpartitions{}) > 0
+    for: 5m
+    labels:
+      severity: critical
+      service: kafka
+      category: availability
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Partições Sub-Replicadas"
+      description: "{{ $value }} partições estão sub-replicadas no broker {{ $labels.instance }}. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/kafka-under-replicated"
+  
+  # Alertas de Performance
+  - alert: KafkaHighConsumerLag
+    expr: kafka_consumergroup_group_lag{} > 10000
+    for: 5m
+    labels:
+      severity: warning
+      service: kafka
+      category: performance
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Lag Alto em Consumer Group"
+      description: "Consumer group {{ $labels.group }} apresenta lag de {{ $value }} mensagens por mais de 5 minutos. Tópico: {{ $labels.topic }}. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/kafka-consumer-lag"
+      
+  - alert: KafkaCriticalConsumerLag
+    expr: kafka_consumergroup_group_lag{} > 100000
+    for: 5m
+    labels:
+      severity: critical
+      service: kafka
+      category: performance
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Lag Crítico em Consumer Group"
+      description: "Consumer group {{ $labels.group }} apresenta lag crítico de {{ $value }} mensagens por mais de 5 minutos. Tópico: {{ $labels.topic }}. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/kafka-consumer-critical-lag"
+
+  - alert: KafkaHighRequestLatency
+    expr: sum by(request) (rate(kafka_network_requestmetrics_totaltimems_sum{}[5m])) / sum by(request) (rate(kafka_network_requestmetrics_totaltimems_count{}[5m])) > 100
+    for: 3m
+    labels:
+      severity: warning
+      service: kafka
+      category: performance
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Latência Alta em Requisições"
+      description: "Tipo de requisição {{ $labels.request }} apresenta latência média de {{ $value }}ms por mais de 3 minutos. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/kafka-high-latency"
+  
+  # Alertas de Recursos
+  - alert: KafkaHighCpuUsage
+    expr: 100 * (1 - avg by(instance, tenant_id, region_id, environment) (irate(node_cpu_seconds_total{mode="idle"}[5m]))) > 80
+    for: 5m
+    labels:
+      severity: warning
+      service: kafka
+      category: resource
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Alto Uso de CPU em Broker"
+      description: "Broker {{ $labels.instance }} está com utilização de CPU acima de 80% ({{ $value }}%) por mais de 5 minutos. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/kafka-high-cpu"
+  
+  - alert: KafkaHighMemoryUsage
+    expr: (sum by(instance, tenant_id, region_id, environment) (jvm_memory_bytes_used{area="heap"}) / sum by(instance, tenant_id, region_id, environment) (jvm_memory_bytes_max{area="heap"})) * 100 > 85
+    for: 5m
+    labels:
+      severity: warning
+      service: kafka
+      category: resource
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Alto Uso de Memória Heap"
+      description: "Broker {{ $labels.instance }} está com utilização de memória heap acima de 85% ({{ $value }}%) por mais de 5 minutos. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/kafka-high-memory"
+  
+  - alert: KafkaDiskSpaceWarning
+    expr: node_filesystem_avail_bytes{mountpoint=~".*kafka.*"} / node_filesystem_size_bytes{mountpoint=~".*kafka.*"} * 100 < 25
+    for: 5m
+    labels:
+      severity: warning
+      service: kafka
+      category: resource
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Espaço em Disco Baixo"
+      description: "Broker {{ $labels.instance }} está com menos de 25% de espaço livre em disco ({{ $value }}%) no ponto de montagem {{ $labels.mountpoint }}. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/kafka-disk-space"
+  
+  - alert: KafkaDiskSpaceCritical
+    expr: node_filesystem_avail_bytes{mountpoint=~".*kafka.*"} / node_filesystem_size_bytes{mountpoint=~".*kafka.*"} * 100 < 10
+    for: 5m
+    labels:
+      severity: critical
+      service: kafka
+      category: resource
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Espaço em Disco Crítico"
+      description: "Broker {{ $labels.instance }} está com menos de 10% de espaço livre em disco ({{ $value }}%) no ponto de montagem {{ $labels.mountpoint }}. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/kafka-critical-disk-space"
+  
+  # Alertas de Segurança e Governança
+  - alert: KafkaTopicWithoutRetention
+    expr: kafka_topic_partition_retention_bytes{} == -1 and kafka_topic_partition_retention_ms{} == -1
+    for: 60m
+    labels:
+      severity: warning
+      service: kafka
+      category: governance
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Tópico Sem Política de Retenção"
+      description: "O tópico {{ $labels.topic }} não possui política de retenção configurada (bytes e tempo). Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/kafka-missing-retention"
+  
+  - alert: KafkaGCPauseTime
+    expr: sum by(instance, tenant_id, region_id, environment) (increase(jvm_gc_collection_seconds_sum{}[5m])) > 30
+    for: 3m
+    labels:
+      severity: warning
+      service: kafka
+      category: performance
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Tempo Elevado de GC"
+      description: "Broker {{ $labels.instance }} passou mais de 30 segundos em garbage collection nos últimos 5 minutos ({{ $value }}s). Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/kafka-gc-issues"
+      
+  # Alertas de SLA/SLO
+  - alert: KafkaProduceRequestRate95pThreshold
+    expr: histogram_quantile(0.95, sum(rate(kafka_network_requestmetrics_requestqueuetimems_bucket{request="Produce"}[5m])) by (le, instance, tenant_id, region_id, environment)) > 50
+    for: 5m
+    labels:
+      severity: warning
+      service: kafka
+      category: slo
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "SLO de Produção Comprometido"
+      description: "Broker {{ $labels.instance }} está com 95º percentil do tempo de fila para requisições Produce acima de 50ms ({{ $value }}ms) nos últimos 5 minutos. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/kafka-slo-violation"

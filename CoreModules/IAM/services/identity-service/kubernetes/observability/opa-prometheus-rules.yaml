@@ -1,0 +1,92 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: opa-alerts
+  namespace: innovabiz-monitoring
+  labels:
+    app: opa
+    innovabiz.com/component: iam
+    innovabiz.com/module: opa
+    prometheus: innovabiz-prometheus
+    role: alert-rules
+spec:
+  groups:
+  - name: opa-policy.rules
+    rules:
+    - alert: OpaPolicyHighErrorRate
+      expr: sum(rate(opa_policy_query_error_total{job="opa"}[5m])) by (namespace, pod, tenant, environment, region) / sum(rate(opa_policy_query_total{job="opa"}[5m])) by (namespace, pod, tenant, environment, region) > 0.05
+      for: 5m
+      labels:
+        severity: warning
+        component: iam
+        module: opa
+        team: security
+      annotations:
+        summary: "OPA policy high error rate ({{ $value | humanizePercentage }})"
+        description: "OPA instância {{ $labels.pod }} no namespace {{ $labels.namespace }} para tenant {{ $labels.tenant }} em {{ $labels.environment }}/{{ $labels.region }} tem alta taxa de erros nas decisões de políticas: {{ $value | humanizePercentage }} nos últimos 5 minutos."
+        runbook_url: "https://innovabiz.com/docs/iam/troubleshooting/opa-errors"
+        
+    - alert: OpaPolicyHighLatency
+      expr: histogram_quantile(0.95, sum(rate(opa_policy_query_duration_seconds_bucket{job="opa"}[5m])) by (le, namespace, pod, tenant, environment, region)) > 0.1
+      for: 5m
+      labels:
+        severity: warning
+        component: iam
+        module: opa
+        team: performance
+      annotations:
+        summary: "OPA policy high latency ({{ $value | humanizeTimeSec }})"
+        description: "OPA instância {{ $labels.pod }} no namespace {{ $labels.namespace }} para tenant {{ $labels.tenant }} em {{ $labels.environment }}/{{ $labels.region }} tem alta latência p95: {{ $value | humanizeTimeSec }} nos últimos 5 minutos."
+        runbook_url: "https://innovabiz.com/docs/iam/troubleshooting/opa-performance"
+        
+    - alert: OpaPolicyEvaluationTimeout
+      expr: sum(rate(opa_policy_evaluation_timeout_total{job="opa"}[5m])) by (namespace, pod, tenant, environment, region) > 0
+      for: 5m
+      labels:
+        severity: warning
+        component: iam
+        module: opa
+        team: security
+      annotations:
+        summary: "OPA policy evaluation timeouts detectados"
+        description: "OPA instância {{ $labels.pod }} no namespace {{ $labels.namespace }} para tenant {{ $labels.tenant }} em {{ $labels.environment }}/{{ $labels.region }} reportou {{ $value | humanize }} timeouts de avaliação de políticas nos últimos 5 minutos."
+        runbook_url: "https://innovabiz.com/docs/iam/troubleshooting/opa-timeouts"
+        
+    - alert: OpaBundleActivationFailure
+      expr: opa_bundle_activation_failure_total{job="opa"} > 0
+      for: 5m
+      labels:
+        severity: critical
+        component: iam
+        module: opa
+        team: security
+      annotations:
+        summary: "Falha na ativação de bundle de políticas OPA"
+        description: "OPA instância {{ $labels.pod }} no namespace {{ $labels.namespace }} para tenant {{ $labels.tenant }} em {{ $labels.environment }}/{{ $labels.region }} reportou falhas na ativação de bundle de políticas."
+        runbook_url: "https://innovabiz.com/docs/iam/troubleshooting/opa-bundle-activation"
+        
+    - alert: OpaPolicyComplianceViolation
+      expr: opa_policy_compliance_violation_total{job="opa"} > 0
+      for: 15m
+      labels:
+        severity: critical
+        component: iam
+        module: opa
+        team: compliance
+      annotations:
+        summary: "Violação de conformidade nas políticas OPA"
+        description: "OPA instância {{ $labels.pod }} no namespace {{ $labels.namespace }} para tenant {{ $labels.tenant }} em {{ $labels.environment }}/{{ $labels.region }} detectou {{ $value | humanize }} violações de conformidade nas políticas. Tipos de conformidade afetados: {{ $labels.compliance_type }}"
+        runbook_url: "https://innovabiz.com/docs/iam/compliance/violation-handling"
+
+    - alert: OpaCacheEvictions
+      expr: sum(increase(opa_decision_cache_evictions_total{job="opa"}[10m])) by (namespace, pod, tenant, environment, region) > 1000
+      for: 10m
+      labels:
+        severity: warning
+        component: iam
+        module: opa
+        team: performance
+      annotations:
+        summary: "Alto número de evicções no cache OPA"
+        description: "OPA instância {{ $labels.pod }} no namespace {{ $labels.namespace }} para tenant {{ $labels.tenant }} em {{ $labels.environment }}/{{ $labels.region }} reportou {{ $value | humanize }} evicções no cache de decisões nos últimos 10 minutos, indicando possível subdimensionamento de recursos ou alta carga."
+        runbook_url: "https://innovabiz.com/docs/iam/troubleshooting/opa-cache"

@@ -1,0 +1,473 @@
+"""
+INNOVABIZ IAM - Group Service GraphQL Schema
+Copyright (c) 2025 INNOVABIZ
+
+Este schema define a estrutura de dados e operações para gerenciamento de grupos 
+na plataforma INNOVABIZ, seguindo os princípios de arquitetura multi-dimensional,
+multi-tenant, multi-camada, multi-contexto, observabilidade total e compliance
+com normas internacionais.
+
+Compliance:
+- ISO/IEC 27001:2022 (Segurança da Informação)
+- PCI DSS v4.0 (Requisito 7: Restringir acesso aos dados do titular do cartão)
+- LGPD (Brasil) / GDPR (Europa) / PDPA (Angola) / CCPA (EUA)
+- BNA Instrução 7/2021 (Segurança cibernética em Angola)
+- SOX (Rastreabilidade e auditoria)
+- NIST CSF (Framework de Segurança Cibernética)
+"""
+
+# Definição do tipo Group para gerenciamento de grupos de usuários
+type Group {
+  """ID único do grupo"""
+  id: UUID!
+  
+  """Código único do grupo para referência em sistemas"""
+  code: String!
+  
+  """Nome do grupo"""
+  name: String!
+  
+  """Descrição detalhada do grupo"""
+  description: String
+  
+  """Status atual do grupo"""
+  status: GroupStatus!
+  
+  """Tipo de grupo (PADRÃO, DEPARTAMENTO, EQUIPA, FUNÇÃO, PROJETO, etc.)"""
+  groupType: String
+  
+  """Caminho hierárquico completo (formato '/ancestral/pai/atual')"""
+  path: String!
+  
+  """Nível hierárquico (0 para grupos raiz)"""
+  level: Int!
+  
+  """Metadados adicionais do grupo (extensível para requisitos específicos)"""
+  metadata: JSON
+  
+  # Suporte multi-dimensional
+  """ID do tenant ao qual o grupo pertence"""
+  tenantId: UUID!
+  
+  """Código da região (opcional para grupos globais)"""
+  regionCode: String
+  
+  # Suporte a hierarquia
+  """ID do grupo pai (null para grupos raiz)"""
+  parentGroupId: UUID
+  
+  """Referência ao grupo pai"""
+  parentGroup: Group
+  
+  # Relacionamentos
+  """Usuários membros do grupo (paginado)"""
+  users(
+    """Termo de busca para filtragem"""
+    searchTerm: String
+    
+    """Status dos usuários a incluir"""
+    status: [UserStatus!]
+    
+    """Campo para ordenação"""
+    sortBy: String = "displayName"
+    
+    """Direção da ordenação (ASC/DESC)"""
+    sortDirection: String = "ASC"
+    
+    """Número da página (inicia em 1)"""
+    page: Int = 1
+    
+    """Tamanho da página"""
+    pageSize: Int = 20
+    
+    """Incluir usuários de subgrupos"""
+    recursive: Boolean = false
+  ): UserConnection!
+  
+  """Funções/papéis associados ao grupo"""
+  roles(limit: Int = 10, offset: Int = 0): RoleConnection!
+  
+  """Subgrupos diretos (filhos)"""
+  childGroups(
+    """Status dos grupos a incluir"""
+    status: [GroupStatus!]
+    
+    """Termo de busca para filtragem"""
+    searchTerm: String
+    
+    """Número da página (inicia em 1)"""
+    page: Int = 1
+    
+    """Tamanho da página"""
+    pageSize: Int = 20
+  ): GroupConnection!
+  
+  """Grupos ancestrais (caminho até a raiz)"""
+  parentGroups: [Group!]!
+  
+  """Contagem total de membros (diretos)"""
+  membersCount: Int!
+  
+  """Contagem total de subgrupos (diretos)"""
+  subgroupsCount: Int!
+  
+  """Estatísticas detalhadas do grupo"""
+  stats: GroupStats
+  
+  # Atributos de auditoria
+  """Data e hora de criação"""
+  createdAt: DateTime!
+  
+  """Data e hora da última atualização"""
+  updatedAt: DateTime
+  
+  """ID do usuário que criou o grupo"""
+  createdBy: UUID
+  
+  """ID do usuário que atualizou o grupo pela última vez"""
+  updatedBy: UUID
+}
+
+"""
+Status possíveis para um grupo
+"""
+enum GroupStatus {
+  """Grupo ativo e operacional"""
+  ACTIVE
+  
+  """Grupo inativo temporariamente"""
+  INACTIVE
+  
+  """Grupo marcado para exclusão"""
+  DELETED
+  
+  """Grupo em fase de aprovação"""
+  PENDING
+}
+
+"""
+Estatísticas detalhadas de um grupo
+"""
+type GroupStats {
+  """Total de usuários (diretos + indiretos)"""
+  totalUsers: Int!
+  
+  """Total de usuários ativos"""
+  activeUsers: Int!
+  
+  """Usuários diretamente associados ao grupo"""
+  directUsers: Int!
+  
+  """Usuários herdados de subgrupos"""
+  nestedUsers: Int!
+  
+  """Subgrupos diretos (primeiro nível)"""
+  directSubgroups: Int!
+  
+  """Total de subgrupos (todos os níveis)"""
+  totalSubgroups: Int!
+  
+  """Profundidade máxima da hierarquia de subgrupos"""
+  maxDepth: Int!
+}
+
+"""
+Conexão paginada de grupos
+"""
+type GroupConnection {
+  """Lista de grupos"""
+  groups: [Group!]!
+  
+  """Total de grupos que correspondem aos critérios de filtro"""
+  totalCount: Int!
+  
+  """Informações de paginação"""
+  pageInfo: PageInfo!
+}
+
+"""
+Conexão paginada de usuários
+"""
+type UserConnection {
+  """Lista de usuários"""
+  users: [User!]!
+  
+  """Total de usuários que correspondem aos critérios de filtro"""
+  totalCount: Int!
+  
+  """Informações de paginação"""
+  pageInfo: PageInfo!
+}
+
+"""
+Informações de paginação
+"""
+type PageInfo {
+  """Página atual"""
+  currentPage: Int!
+  
+  """Tamanho da página"""
+  pageSize: Int!
+  
+  """Total de páginas"""
+  totalPages: Int!
+  
+  """Se há uma próxima página"""
+  hasNextPage: Boolean!
+  
+  """Se há uma página anterior"""
+  hasPreviousPage: Boolean!
+}
+
+"""
+Filtro para consulta de grupos
+"""
+input GroupFilter {
+  """Status dos grupos a incluir"""
+  status: [GroupStatus!]
+  
+  """Tipo de grupo"""
+  groupType: String
+  
+  """Nível hierárquico máximo (profundidade)"""
+  maxLevel: Int
+  
+  """ID do grupo pai (para filtrar apenas subgrupos diretos)"""
+  parentGroupId: UUID
+  
+  """Filtrar grupos que contenham o usuário especificado"""
+  memberUserId: UUID
+  
+  """Termo de busca (nome, código, descrição)"""
+  searchTerm: String
+  
+  """Campo para ordenação"""
+  sortBy: String = "name"
+  
+  """Direção da ordenação"""
+  sortDirection: String = "ASC"
+  
+  """Número da página (inicia em 1)"""
+  page: Int = 1
+  
+  """Tamanho da página"""
+  pageSize: Int = 20
+}
+
+"""
+Input para criação de grupo
+"""
+input CreateGroupInput {
+  """Código único do grupo (deve ser único por tenant)"""
+  code: String!
+  
+  """Nome do grupo"""
+  name: String!
+  
+  """Descrição do grupo"""
+  description: String
+  
+  """Tipo do grupo"""
+  groupType: String
+  
+  """Status inicial"""
+  status: GroupStatus = ACTIVE
+  
+  """ID do tenant"""
+  tenantId: UUID!
+  
+  """Código da região (opcional)"""
+  regionCode: String
+  
+  """ID do grupo pai (opcional)"""
+  parentGroupId: UUID
+  
+  """Metadados adicionais"""
+  metadata: JSON
+}
+
+"""
+Input para atualização de grupo
+"""
+input UpdateGroupInput {
+  """ID do grupo a atualizar"""
+  id: UUID!
+  
+  """Nome do grupo"""
+  name: String
+  
+  """Descrição do grupo"""
+  description: String
+  
+  """Tipo do grupo"""
+  groupType: String
+  
+  """ID do grupo pai (para mover na hierarquia)"""
+  parentGroupId: UUID
+  
+  """Metadados adicionais"""
+  metadata: JSON
+}
+
+"""
+Input para alterar o status de um grupo
+"""
+input ChangeGroupStatusInput {
+  """ID do grupo"""
+  id: UUID!
+  
+  """Novo status"""
+  status: GroupStatus!
+  
+  """Motivo da alteração (para auditoria)"""
+  reason: String
+}
+
+"""
+Input para adicionar usuário a grupo
+"""
+input AddUserToGroupInput {
+  """ID do grupo"""
+  groupId: UUID!
+  
+  """ID do usuário"""
+  userId: UUID!
+  
+  """ID do tenant"""
+  tenantId: UUID!
+}
+
+"""
+Input para remover usuário de grupo
+"""
+input RemoveUserFromGroupInput {
+  """ID do grupo"""
+  groupId: UUID!
+  
+  """ID do usuário"""
+  userId: UUID!
+  
+  """ID do tenant"""
+  tenantId: UUID!
+}
+
+"""
+Resultado de operação em grupo
+"""
+type GroupResult {
+  """Indica se a operação foi bem-sucedida"""
+  success: Boolean!
+  
+  """Mensagem descritiva sobre o resultado da operação"""
+  message: String!
+  
+  """Código de erro (se houver)"""
+  errorCode: String
+  
+  """Grupo resultante da operação"""
+  group: Group
+  
+  """Erros de validação (se houver)"""
+  validationErrors: [ValidationError!]
+}
+
+"""
+Erro de validação
+"""
+type ValidationError {
+  """Campo com erro"""
+  field: String!
+  
+  """Mensagem de erro"""
+  message: String!
+  
+  """Código do erro"""
+  code: String!
+}
+
+"""
+Resultado de operação com membro de grupo
+"""
+type GroupMembershipResult {
+  """Indica se a operação foi bem-sucedida"""
+  success: Boolean!
+  
+  """Mensagem descritiva sobre o resultado da operação"""
+  message: String!
+  
+  """Grupo relacionado à operação"""
+  group: Group
+  
+  """Usuário relacionado à operação"""
+  user: User
+}
+
+# Extensão das Queries existentes para incluir operações de grupo
+extend type Query {
+  """
+  Obtém um grupo por ID
+  """
+  group(id: UUID!, tenantId: UUID!): Group
+  
+  """
+  Obtém um grupo pelo código
+  """
+  groupByCode(code: String!, tenantId: UUID!): Group
+  
+  """
+  Lista grupos com filtros e paginação
+  """
+  groups(tenantId: UUID!, filter: GroupFilter!): GroupConnection!
+  
+  """
+  Lista usuários membros de um grupo
+  """
+  groupMembers(
+    groupId: UUID!, 
+    tenantId: UUID!, 
+    recursive: Boolean = false,
+    page: Int = 1,
+    pageSize: Int = 20
+  ): UserConnection!
+}
+
+# Extensão das Mutations existentes para incluir operações de grupo
+extend type Mutation {
+  """
+  Cria um novo grupo
+  """
+  createGroup(input: CreateGroupInput!): GroupResult!
+  
+  """
+  Atualiza um grupo existente
+  """
+  updateGroup(input: UpdateGroupInput!): GroupResult!
+  
+  """
+  Altera o status de um grupo
+  """
+  changeGroupStatus(input: ChangeGroupStatusInput!): GroupResult!
+  
+  """
+  Adiciona um usuário a um grupo
+  """
+  addUserToGroup(input: AddUserToGroupInput!): GroupMembershipResult!
+  
+  """
+  Remove um usuário de um grupo
+  """
+  removeUserFromGroup(input: RemoveUserFromGroupInput!): GroupMembershipResult!
+}
+
+# Extensão das Subscriptions existentes para incluir operações de grupo
+extend type Subscription {
+  """
+  Notifica alterações em grupos
+  """
+  groupChanged(tenantId: UUID!): Group!
+  
+  """
+  Notifica alterações em membros de grupos
+  """
+  groupMembershipChanged(groupId: UUID!, tenantId: UUID!): User!
+}

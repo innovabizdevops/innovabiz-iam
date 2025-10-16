@@ -1,0 +1,100 @@
+{
+  "rules": [
+    {
+      "id": "AO-BNA-001",
+      "name": "Corrigir verificação de idade para conformidade BNA",
+      "description": "Corrige regras de verificação de idade para clientes, garantindo conformidade com a idade mínima de 18 anos",
+      "violation_type": "incorrect_implementation",
+      "test_id": "ao-bna-001",
+      "frameworks": ["BNA", "FINANCEIRO"],
+      "policy_patterns": ["customer", "cliente", "onboarding", "idade", "age"],
+      "severity": "alta",
+      "remediation_code": "package users.onboarding\n\nimport data.common.constants\n\ndefault allow_registration = false\n\nallow_registration {\n    input.age >= 18\n    input.documents_verified == true\n}",
+      "matching_pattern": "package users.onboarding\\n\\n.*\\ndefault allow_registration = false\\n\\nallow_registration {[\\s\\S]*?}"
+    },
+    {
+      "id": "AO-BNA-002",
+      "name": "Implementar registro de operações financeiras",
+      "description": "Adiciona registro detalhado de operações financeiras conforme exigido pelo BNA",
+      "violation_type": "missing_policy",
+      "test_id": "ao-bna-002",
+      "frameworks": ["BNA", "FINANCEIRO"],
+      "policy_patterns": ["transacao", "transaction", "financeiro", "operacao"],
+      "severity": "alta",
+      "remediation_code": "package transactions\n\nimport data.common.constants\nimport data.logs\n\nlog_transaction {\n    logs.record_operation({\n        \"operation_id\": input.transaction_id,\n        \"timestamp\": time.now_ns(),\n        \"user_id\": input.user_id,\n        \"operation_type\": input.operation_type,\n        \"amount\": input.amount,\n        \"currency\": input.currency,\n        \"status\": input.status,\n        \"source_account\": input.source_account,\n        \"destination_account\": input.destination_account\n    })\n}\n\nvalidate_transaction {\n    log_transaction\n    input.amount > 0\n    input.currency == \"AOA\" # Kwanza angolano\n    input.user_verified == true\n}",
+      "matching_pattern": "package transactions\\n\\n.*validate_transaction {[\\s\\S]*?}"
+    },
+    {
+      "id": "AO-BNA-003",
+      "name": "Ajustar prazo de retenção de dados",
+      "description": "Ajusta o prazo de retenção de dados para 5 anos, conforme exigido pela regulamentação BNA",
+      "violation_type": "configuration_error",
+      "test_id": "ao-bna-003",
+      "frameworks": ["BNA", "FINANCEIRO"],
+      "policy_patterns": ["retencao", "retention", "dados", "data"],
+      "severity": "media",
+      "remediation_code": "package data.retention\n\n# Período de retenção em dias por tipo de dado\nretention_period = {\n    \"transaction_data\": 1825,  # 5 anos em dias\n    \"customer_data\": 1825,    # 5 anos em dias\n    \"account_data\": 1825,     # 5 anos em dias\n    \"audit_logs\": 1825,      # 5 anos em dias\n    \"reports\": 1825          # 5 anos em dias\n}",
+      "matching_pattern": "package data.retention\\n\\n# Período de retenção em dias por tipo de dado\\nretention_period = {[\\s\\S]*?}"
+    },
+    {
+      "id": "AO-BNA-004",
+      "name": "Implementar validação de endereço para Angola",
+      "description": "Adiciona validação de endereço específica para Angola, requerida para KYC",
+      "violation_type": "incomplete_implementation",
+      "test_id": "ao-bna-004",
+      "frameworks": ["BNA", "FINANCEIRO"],
+      "policy_patterns": ["endereco", "address", "validacao", "validation"],
+      "severity": "media",
+      "remediation_code": "package validation.address\n\nimport data.geo.angola\n\nvalid_address {\n    # Verifica se o endereço está no formato angolano\n    is_angola_format\n    \n    # Verifica se a província é válida\n    angola.valid_province[input.address.province]\n    \n    # Verifica se o município é válido para a província\n    angola.province_municipalities[input.address.province][input.address.municipality]\n}\n\nis_angola_format {\n    input.address.street != \"\"\n    input.address.number != \"\"\n    input.address.municipality != \"\"\n    input.address.province != \"\"\n    regex.match(`^[0-9]{4,5}-[0-9]{3}$`, input.address.postal_code)\n}",
+      "matching_pattern": "package validation.address\\n\\n[\\s\\S]*?valid_address {[\\s\\S]*?}"
+    },
+    {
+      "id": "AO-BNA-005",
+      "name": "Implementar geração de relatórios regulatórios",
+      "description": "Adiciona lógica para geração de relatórios regulatórios exigidos pelo BNA",
+      "violation_type": "missing_policy",
+      "test_id": "ao-bna-005",
+      "frameworks": ["BNA", "FINANCEIRO"],
+      "policy_patterns": ["relatorio", "report", "regulatorio"],
+      "severity": "alta",
+      "remediation_code": "package reports.regulatory\n\nimport data.transactions\nimport data.customers\nimport data.time\n\ngenerate_bna_report {\n    current_month := time.current_month()\n    current_year := time.current_year()\n    \n    report := {\n        \"report_type\": \"BNA_MONTHLY\",\n        \"period\": sprintf(\"%d-%02d\", [current_year, current_month]),\n        \"generation_date\": time.now_ns(),\n        \"transactions\": transactions.summary_for_period(current_month, current_year),\n        \"new_customers\": customers.new_in_period(current_month, current_year),\n        \"suspicious_activities\": transactions.get_suspicious_for_period(current_month, current_year),\n        \"total_value_processed\": transactions.total_value_for_period(current_month, current_year),\n        \"currency_breakdown\": transactions.currency_breakdown_for_period(current_month, current_year)\n    }\n    \n    # Salva o relatório na base de dados\n    data.store.save_report(report)\n    \n    # Retorna o ID do relatório gerado\n    report.id := sprintf(\"BNA-REPORT-%d-%02d\", [current_year, current_month])\n}",
+      "matching_pattern": "package reports.regulatory\\n\\n[\\s\\S]*?"
+    },
+    {
+      "id": "AO-BNA-006",
+      "name": "Configurar monitoramento de transações suspeitas",
+      "description": "Configura thresholds para detecção de transações suspeitas conforme diretrizes do BNA",
+      "violation_type": "configuration_error",
+      "test_id": "ao-bna-006",
+      "frameworks": ["BNA", "FINANCEIRO"],
+      "policy_patterns": ["suspicious", "suspeita", "transaction", "transacao"],
+      "severity": "alta",
+      "remediation_code": "package monitoring.thresholds\n\n# Valores em AOA (Kwanza Angolano)\nsuspicious_transaction_thresholds = {\n    \"single_transaction\": 2000000,  # 2 milhões de kwanzas\n    \"daily_aggregate\": 5000000,    # 5 milhões de kwanzas\n    \"weekly_aggregate\": 15000000,  # 15 milhões de kwanzas\n    \"monthly_aggregate\": 50000000  # 50 milhões de kwanzas\n}\n\n# Multiplicadores para diferentes tipos de clientes\ncustomer_multipliers = {\n    \"individual\": 1.0,\n    \"small_business\": 2.0,\n    \"medium_business\": 5.0,\n    \"large_business\": 10.0\n}\n\n# Obter threshold ajustado para tipo de cliente\nadjusted_threshold(threshold_type, customer_type) = adjusted_value {\n    base := suspicious_transaction_thresholds[threshold_type]\n    multiplier := customer_multipliers[customer_type]\n    adjusted_value := base * multiplier\n}",
+      "matching_pattern": "package monitoring.thresholds\\n\\n# Valores em AOA[\\s\\S]*?suspicious_transaction_thresholds = {[\\s\\S]*?}"
+    },
+    {
+      "id": "AO-BNA-007",
+      "name": "Implementar validação de identidade BNA",
+      "description": "Implementa validação de documentos de identidade conforme requisitos do BNA",
+      "violation_type": "incomplete_implementation",
+      "test_id": "ao-bna-007",
+      "frameworks": ["BNA", "FINANCEIRO"],
+      "policy_patterns": ["identidade", "identity", "validacao", "validation", "kyc"],
+      "severity": "alta",
+      "remediation_code": "package validation.identity\n\nimport data.validation.documents\n\nvalid_identity_for_angola {\n    # Verifica tipo de documento\n    input.document.type == \"BI\" # Bilhete de Identidade Angolano\n    \n    # Verifica formato do documento\n    regex.match(`^[0-9]{9}[A-Z]{2}[0-9]{3}$`, input.document.number)\n    \n    # Verifica data de validade\n    time.parse_rfc3339_ns(input.document.expiry_date) > time.now_ns()\n    \n    # Verificação adicional de emissão\n    documents.is_valid_issuing_location(\"AO\", input.document.issuing_location)\n}\n\nvalid_identity_for_angola {\n    # Alternativa: Passaporte angolano\n    input.document.type == \"PASSPORT\"\n    \n    # Verifica formato do passaporte angolano\n    regex.match(`^[A-Z]{1}[0-9]{7}$`, input.document.number)\n    \n    # Verifica data de validade\n    time.parse_rfc3339_ns(input.document.expiry_date) > time.now_ns()\n    \n    # Verifica país emissor\n    input.document.country == \"AO\"\n}",
+      "matching_pattern": "package validation.identity\\n\\n[\\s\\S]*?valid_identity_for_angola {[\\s\\S]*?}"
+    },
+    {
+      "id": "AO-BNA-008",
+      "name": "Configurar limites de transação por tipo de cliente",
+      "description": "Configura limites de transação diferenciados por tipo de cliente conforme diretrizes do BNA",
+      "violation_type": "configuration_error",
+      "test_id": "ao-bna-008",
+      "frameworks": ["BNA", "FINANCEIRO"],
+      "policy_patterns": ["limite", "limit", "transacao", "transaction"],
+      "severity": "media",
+      "remediation_code": "package limits.transaction\n\n# Valores em AOA (Kwanza Angolano)\ntransaction_limits_by_customer_type = {\n    \"individual\": {\n        \"single_transaction\": 1000000,  # 1 milhão de kwanzas\n        \"daily_limit\": 3000000,        # 3 milhões de kwanzas\n        \"weekly_limit\": 10000000,      # 10 milhões de kwanzas\n        \"monthly_limit\": 25000000      # 25 milhões de kwanzas\n    },\n    \"small_business\": {\n        \"single_transaction\": 5000000,  # 5 milhões de kwanzas\n        \"daily_limit\": 15000000,       # 15 milhões de kwanzas\n        \"weekly_limit\": 50000000,      # 50 milhões de kwanzas\n        \"monthly_limit\": 150000000     # 150 milhões de kwanzas\n    },\n    \"medium_business\": {\n        \"single_transaction\": 20000000, # 20 milhões de kwanzas\n        \"daily_limit\": 50000000,       # 50 milhões de kwanzas\n        \"weekly_limit\": 200000000,     # 200 milhões de kwanzas\n        \"monthly_limit\": 500000000     # 500 milhões de kwanzas\n    },\n    \"large_business\": {\n        \"single_transaction\": 50000000, # 50 milhões de kwanzas\n        \"daily_limit\": 200000000,      # 200 milhões de kwanzas\n        \"weekly_limit\": 500000000,     # 500 milhões de kwanzas\n        \"monthly_limit\": 1500000000    # 1.5 bilhões de kwanzas\n    }\n}\n\n# Função para verificar se uma transação está dentro do limite\ntransaction_within_limit(customer_type, limit_type, amount) {\n    limit := transaction_limits_by_customer_type[customer_type][limit_type]\n    amount <= limit\n}",
+      "matching_pattern": "package limits.transaction\\n\\n[\\s\\S]*?transaction_limits_by_customer_type = {[\\s\\S]*?}"
+    }
+  ]
+}

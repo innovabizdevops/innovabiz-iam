@@ -1,0 +1,122 @@
+{
+  "validation": {
+    "framework": {
+      "hipaa": "Health Insurance Portability and Accountability Act (HIPAA)",
+      "gdpr": "Regulamento Geral de Proteção de Dados (GDPR)",
+      "lgpd": "Lei Geral de Proteção de Dados (LGPD)",
+      "pci_dss": "Padrão de Segurança de Dados da Indústria de Cartões de Pagamento (PCI DSS)",
+      "security": "Linha de Base de Segurança INNOVABIZ",
+      "ar_auth": "Padrões de Autenticação de Realidade Aumentada"
+    },
+    "status": {
+      "passed": "Aprovado",
+      "failed": "Falhou",
+      "warning": "Aviso",
+      "not_applicable": "Não Aplicável"
+    },
+    "severity": {
+      "critical": "Crítico",
+      "high": "Alto",
+      "medium": "Médio",
+      "low": "Baixo",
+      "info": "Informativo"
+    },
+    "type": {
+      "security": "Segurança",
+      "compliance": "Conformidade",
+      "performance": "Desempenho",
+      "integrity": "Integridade",
+      "authentication": "Autenticação",
+      "authorization": "Autorização",
+      "audit": "Auditoria",
+      "integration": "Integração"
+    },
+    "report": {
+      "title": "Relatório de Validação IAM INNOVABIZ",
+      "summary": "Resumo",
+      "total_validations": "Total de Validações",
+      "passed": "Aprovados",
+      "failed": "Falhas",
+      "warnings": "Avisos",
+      "overall_status": "Status Geral",
+      "results": "Resultados da Validação",
+      "id": "ID",
+      "description": "Descrição",
+      "type": "Tipo",
+      "severity": "Severidade",
+      "status": "Status",
+      "details": "Detalhes",
+      "reference": "Referência",
+      "affected_components": "Componentes Afetados",
+      "remediation": "Remediação",
+      "not_available": "N/A",
+      "footer": "Gerado por INNOVABIZ IAM Validator v",
+      "report_id": "ID do Relatório"
+    },
+    "certificate": {
+      "title": "Certificado de Conformidade IAM",
+      "subtitle": "Este certificado confirma que o módulo IAM atende aos requisitos de conformidade",
+      "tenant": "Tenant",
+      "issued_date": "Data de Emissão",
+      "valid_until": "Válido até",
+      "frameworks": "Frameworks Validados",
+      "signature": "Assinatura Digital",
+      "verification": "Verificação",
+      "verification_instructions": "Para verificar a autenticidade deste certificado, utilize o código de hash fornecido."
+    }
+  },
+  "hipaa": {
+    "sections": {
+      "164.312(a)(1)": "Controle de Acesso",
+      "164.312(b)": "Trilhas de Auditoria",
+      "164.312(c)(1)": "Integridade",
+      "164.312(d)": "Autenticação de Pessoa ou Entidade",
+      "164.312(e)(1)": "Segurança de Transmissão",
+      "164.308(a)(5)(ii)(C)": "Proteção contra Software Malicioso",
+      "164.308(a)(7)(ii)": "Plano de Contingência",
+      "164.308(a)(1)(ii)(D)": "Análise de Risco",
+      "164.308(a)(3)(ii)(A)": "Autorização/Supervisão",
+      "164.308(a)(4)": "Gerenciamento de Acesso"
+    },
+    "validations": {
+      "risk_analysis": {
+        "name": "Análise de Risco HIPAA",
+        "description": "A HIPAA exige que as organizações realizem análises de risco de segurança periodicamente",
+        "not_enabled": "A análise de risco não está habilitada na configuração do IAM",
+        "outdated": "A última análise de risco foi realizada em {date}, há mais de um ano",
+        "invalid_date": "A data da última análise de risco '{date}' está em formato inválido",
+        "success": "A análise de risco está habilitada e atualizada"
+      },
+      "access_control": {
+        "name": "Controle de Acesso HIPAA",
+        "description": "A HIPAA exige implementação de políticas e procedimentos para autorização de acesso",
+        "not_enabled": "Nenhum sistema de controle de acesso (RBAC ou ABAC) está habilitado",
+        "default_deny": "RBAC está habilitado, mas a política de negação por padrão não está ativada",
+        "success": "Sistema de controle de acesso habilitado: {control_types}"
+      },
+      "audit_controls": {
+        "name": "Controles de Auditoria HIPAA",
+        "description": "A HIPAA exige mecanismos para registrar e examinar a atividade em sistemas que contêm PHI",
+        "not_enabled": "Trilhas de auditoria não estão habilitadas",
+        "insufficient": "Nível de auditoria insuficiente. Configurado: {level}, Requerido: completo",
+        "storage_insufficient": "Período de retenção de logs de auditoria insuficiente: {days} dias, mínimo requerido: 180 dias",
+        "success": "Controles de auditoria adequadamente configurados"
+      },
+      "phi_protection": {
+        "name": "Proteção de Informações de Saúde Protegidas (PHI)",
+        "description": "Controles específicos para proteção de PHI conforme HIPAA",
+        "encryption_missing": "Criptografia de PHI não está habilitada",
+        "access_controls_missing": "Controles de acesso específicos para PHI não estão configurados",
+        "minimal_necessary_missing": "Princípio de acesso ao mínimo necessário não está implementado",
+        "success": "Proteções adequadas para PHI estão implementadas"
+      },
+      "ar_authentication": {
+        "name": "Autenticação de Realidade Aumentada para Acesso a PHI",
+        "description": "Validação de configurações de autenticação AR para acesso a informações de saúde protegidas",
+        "insufficient_factors": "Número insuficiente de fatores de autenticação AR: {count}, mínimo requerido: 2",
+        "contextual_missing": "Autenticação contextual não está habilitada para AR",
+        "success": "Autenticação AR configurada adequadamente para acesso a PHI"
+      }
+    }
+  }
+}

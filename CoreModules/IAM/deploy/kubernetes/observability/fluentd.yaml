@@ -1,0 +1,338 @@
+---
+# INNOVABIZ IAM Audit Service - Fluentd Deployment
+# Versão: 1.0.0
+# Ano: 2025
+# Ambiente: Multi-plataforma, Multi-dimensional e Multi-Contexto
+# Alinhado com: ISO 20000, ITIL v4, ISO 27001, NIST SP 800-53, PCI DSS 4.0
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: fluentd
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: fluentd
+    app.kubernetes.io/part-of: innovabiz-observability
+    app.kubernetes.io/component: logging
+    innovabiz.com/module: iam-audit
+    innovabiz.com/tier: observability
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: fluentd
+  labels:
+    app.kubernetes.io/name: fluentd
+    app.kubernetes.io/part-of: innovabiz-observability
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  - namespaces
+  verbs:
+  - get
+  - list
+  - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: fluentd
+  labels:
+    app.kubernetes.io/name: fluentd
+    app.kubernetes.io/part-of: innovabiz-observability
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: fluentd
+subjects:
+- kind: ServiceAccount
+  name: fluentd
+  namespace: iam-system
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fluentd-config
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: fluentd
+    app.kubernetes.io/part-of: innovabiz-observability
+    app.kubernetes.io/component: logging
+    innovabiz.com/module: iam-audit
+    innovabiz.com/tier: observability
+data:
+  fluent.conf: |
+    # Configurações do sistema
+    <system>
+      log_level info
+      root_dir /tmp/fluentd
+    </system>
+    
+    # Encaminhamento de logs do sistema
+    <label @FLUENT_LOG>
+      <match **>
+        @type null
+      </match>
+    </label>
+    
+    # Fonte: Contêineres Kubernetes
+    <source>
+      @type tail
+      @id in_tail_container_logs
+      path /var/log/containers/*.log
+      pos_file /var/log/fluentd-containers.log.pos
+      tag kubernetes.*
+      read_from_head true
+      <parse>
+        @type json
+        time_format %Y-%m-%dT%H:%M:%S.%NZ
+      </parse>
+    </source>
+    
+    # Filtros para logs do Kubernetes
+    <filter kubernetes.**>
+      @type kubernetes_metadata
+      @id filter_kube_metadata
+      kubernetes_url "#{ENV['KUBERNETES_SERVICE_HOST']}:#{ENV['KUBERNETES_SERVICE_PORT']}"
+      bearer_token_file /var/run/secrets/kubernetes.io/serviceaccount/token
+      ca_file /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+      skip_labels false
+      skip_container_metadata false
+      skip_master_url false
+      skip_namespace_metadata false
+      watch true
+    </filter>
+    
+    # Filtro para adicionar contexto de tenant e região
+    <filter kubernetes.**>
+      @type record_transformer
+      <record>
+        tenant_id ${record.dig('kubernetes', 'namespace_labels', 'innovabiz.com/tenant') || "default"}
+        region_id ${record.dig('kubernetes', 'namespace_labels', 'innovabiz.com/region') || "default"}
+      </record>
+    </filter>
+    
+    # Filtro para enriquecimento de logs de auditoria IAM
+    <filter kubernetes.var.log.containers.iam-audit-**.log>
+      @type record_transformer
+      <record>
+        service_type "audit"
+        compliance_relevant true
+        data_classification "sensitive"
+      </record>
+    </filter>
+    
+    # Parser para logs estruturados em JSON
+    <filter kubernetes.**>
+      @type parser
+      key_name log
+      reserve_data true
+      remove_key_name_field true
+      <parse>
+        @type json
+        time_key time
+        time_format %Y-%m-%dT%H:%M:%S.%NZ
+        json_parser json
+      </parse>
+      emit_invalid_record_to_error false
+    </filter>
+    
+    # Saída para Elasticsearch
+    <match kubernetes.**>
+      @type elasticsearch
+      @id out_es
+      @log_level info
+      include_tag_key true
+      host elasticsearch
+      port 9200
+      path ""
+      scheme https
+      ssl_verify false
+      ssl_version TLSv1_2
+      user "#{ENV['FLUENT_ELASTICSEARCH_USER']}"
+      password "#{ENV['FLUENT_ELASTICSEARCH_PASSWORD']}"
+      index_name innovabiz-iam-audit-${tenant_id}-${region_id}-%Y.%m.%d
+      type_name fluentd
+      include_timestamp true
+      reconnect_on_error true
+      reload_on_failure true
+      reload_connections false
+      request_timeout 15s
+      
+      <buffer tag, tenant_id, region_id, time>
+        @type file
+        path /var/log/fluentd-buffers/kubernetes.system.buffer
+        flush_mode interval
+        retry_type exponential_backoff
+        flush_thread_count 2
+        flush_interval 5s
+        retry_forever false
+        retry_max_interval 30
+        chunk_limit_size 2M
+        queue_limit_length 8
+        overflow_action block
+      </buffer>
+    </match>
+    
+    # Saída alternativa para Loki
+    <match kubernetes.**>
+      @type loki
+      url "http://loki:3100"
+      extra_labels {"job": "fluentd"}
+      bearer_token_file /var/run/secrets/kubernetes.io/serviceaccount/token
+      
+      <label>
+        tenant ${record['tenant_id'] || 'default'}
+        region ${record['region_id'] || 'default'}
+        app ${record.dig('kubernetes', 'labels', 'app.kubernetes.io/name') || 'unknown'}
+        namespace ${record.dig('kubernetes', 'namespace_name')}
+        pod ${record.dig('kubernetes', 'pod_name')}
+        container ${record.dig('kubernetes', 'container_name')}
+      </label>
+      
+      <buffer>
+        @type file
+        path /var/log/fluentd-buffers/kubernetes.loki.buffer
+        flush_mode interval
+        retry_type exponential_backoff
+        flush_thread_count 2
+        flush_interval 5s
+        retry_forever false
+        retry_max_interval 30
+        chunk_limit_size 1M
+        queue_limit_length 4
+      </buffer>
+    </match>
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: fluentd
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: fluentd
+    app.kubernetes.io/part-of: innovabiz-observability
+    app.kubernetes.io/component: logging
+    innovabiz.com/module: iam-audit
+    innovabiz.com/tier: observability
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: fluentd
+      app.kubernetes.io/part-of: innovabiz-observability
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: fluentd
+        app.kubernetes.io/part-of: innovabiz-observability
+        app.kubernetes.io/component: logging
+        innovabiz.com/module: iam-audit
+        innovabiz.com/tier: observability
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "24231"
+    spec:
+      serviceAccountName: fluentd
+      priorityClassName: system-node-critical
+      tolerations:
+      - key: node-role.kubernetes.io/master
+        effect: NoSchedule
+      - key: node-role.kubernetes.io/control-plane
+        effect: NoSchedule
+      containers:
+      - name: fluentd
+        image: fluent/fluentd-kubernetes-daemonset:v1.16-debian-elasticsearch7-1
+        env:
+        - name: FLUENT_ELASTICSEARCH_HOST
+          value: "elasticsearch"
+        - name: FLUENT_ELASTICSEARCH_PORT
+          value: "9200"
+        - name: FLUENT_ELASTICSEARCH_SCHEME
+          value: "https"
+        - name: FLUENT_ELASTICSEARCH_USER
+          valueFrom:
+            secretKeyRef:
+              name: elasticsearch-credentials
+              key: elastic-username
+        - name: FLUENT_ELASTICSEARCH_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: elasticsearch-credentials
+              key: elastic-password
+        - name: FLUENTD_SYSTEMD_CONF
+          value: disable
+        - name: INNOVABIZ_TENANT_CONTEXT
+          value: "${TENANT_CONTEXT}"
+        - name: INNOVABIZ_REGION_CONTEXT
+          value: "${REGION_CONTEXT}"
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 100m
+            memory: 200Mi
+        volumeMounts:
+        - name: varlog
+          mountPath: /var/log
+        - name: varlibdockercontainers
+          mountPath: /var/lib/docker/containers
+          readOnly: true
+        - name: config-volume
+          mountPath: /fluentd/etc/fluent.conf
+          subPath: fluent.conf
+        - name: fluentd-buffers
+          mountPath: /var/log/fluentd-buffers
+        ports:
+        - name: metrics
+          containerPort: 24231
+          protocol: TCP
+        livenessProbe:
+          tcpSocket:
+            port: metrics
+          initialDelaySeconds: 60
+          periodSeconds: 10
+        readinessProbe:
+          tcpSocket:
+            port: metrics
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        securityContext:
+          runAsUser: 0
+          privileged: true
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - name: varlog
+        hostPath:
+          path: /var/log
+      - name: varlibdockercontainers
+        hostPath:
+          path: /var/lib/docker/containers
+      - name: config-volume
+        configMap:
+          name: fluentd-config
+      - name: fluentd-buffers
+        emptyDir: {}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: fluentd
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: fluentd
+    app.kubernetes.io/part-of: innovabiz-observability
+    release: prometheus-operator
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: fluentd
+      app.kubernetes.io/part-of: innovabiz-observability
+  namespaceSelector:
+    matchNames:
+      - iam-system
+  endpoints:
+  - port: metrics
+    interval: 15s

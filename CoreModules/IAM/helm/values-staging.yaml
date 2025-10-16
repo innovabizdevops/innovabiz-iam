@@ -1,0 +1,241 @@
+# INNOVABIZ IAM WebAuthn - Staging Environment Values
+# Configuração específica para ambiente de staging
+
+# ========================================
+# ENVIRONMENT CONFIGURATION
+# ========================================
+app:
+  environment: staging
+
+# ========================================
+# IMAGE CONFIGURATION
+# ========================================
+image:
+  tag: "staging-latest"
+  pullPolicy: Always
+
+# ========================================
+# DEPLOYMENT CONFIGURATION
+# ========================================
+replicaCount: 2
+
+# ========================================
+# INGRESS CONFIGURATION
+# ========================================
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/rate-limit: "50"
+    nginx.ingress.kubernetes.io/rate-limit-window: "1m"
+    cert-manager.io/cluster-issuer: "letsencrypt-staging"
+    
+  hosts:
+    - host: staging-api.innovabiz.com
+      paths:
+        - path: /api/v1/webauthn
+          pathType: Prefix
+          
+  tls:
+    - secretName: webauthn-staging-tls
+      hosts:
+        - staging-api.innovabiz.com
+
+# ========================================
+# RESOURCE LIMITS (Reduced for staging)
+# ========================================
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 250m
+    memory: 256Mi
+
+# ========================================
+# AUTOSCALING (Conservative for staging)
+# ========================================
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 85
+
+# ========================================
+# ENVIRONMENT VARIABLES
+# ========================================
+env:
+  NODE_ENV: staging
+  LOG_LEVEL: debug
+  WEBAUTHN_ORIGIN: "https://staging-app.innovabiz.com"
+  RATE_LIMIT_MAX: "50"
+
+# ========================================
+# DATABASE CONFIGURATION
+# ========================================
+postgresql:
+  enabled: true
+  auth:
+    postgresPassword: "staging-postgres-password"
+    database: "webauthn_staging"
+  primary:
+    persistence:
+      enabled: true
+      size: 5Gi
+      storageClass: "gp2"
+  metrics:
+    enabled: true
+
+# ========================================
+# REDIS CONFIGURATION
+# ========================================
+redis:
+  enabled: true
+  auth:
+    enabled: true
+    password: "staging-redis-password"
+  master:
+    persistence:
+      enabled: true
+      size: 1Gi
+      storageClass: "gp2"
+  metrics:
+    enabled: true
+
+# ========================================
+# KAFKA CONFIGURATION
+# ========================================
+kafka:
+  enabled: true
+  auth:
+    clientProtocol: sasl
+    interBrokerProtocol: sasl
+  persistence:
+    enabled: true
+    size: 2Gi
+    storageClass: "gp2"
+  metrics:
+    kafka:
+      enabled: true
+    jmx:
+      enabled: true
+
+# ========================================
+# MONITORING
+# ========================================
+monitoring:
+  serviceMonitor:
+    enabled: true
+    interval: 15s
+    scrapeTimeout: 10s
+    labels:
+      environment: staging
+      
+  prometheusRule:
+    enabled: true
+    labels:
+      environment: staging
+    rules:
+      - alert: WebAuthnStagingHighErrorRate
+        expr: rate(webauthn_errors_total{environment="staging"}[5m]) > 0.05
+        for: 2m
+        labels:
+          severity: warning
+          environment: staging
+        annotations:
+          summary: "High error rate in WebAuthn staging service"
+          
+      - alert: WebAuthnStagingHighLatency
+        expr: histogram_quantile(0.95, rate(webauthn_request_duration_seconds_bucket{environment="staging"}[5m])) > 2
+        for: 5m
+        labels:
+          severity: warning
+          environment: staging
+        annotations:
+          summary: "High latency in WebAuthn staging service"
+
+# ========================================
+# POD DISRUPTION BUDGET
+# ========================================
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# ========================================
+# NETWORK POLICIES (More permissive for testing)
+# ========================================
+networkPolicy:
+  enabled: true
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: ingress-nginx
+        - namespaceSelector:
+            matchLabels:
+              name: monitoring
+      ports:
+        - protocol: TCP
+          port: 3000
+  egress:
+    - to: []
+      ports:
+        - protocol: TCP
+          port: 5432  # PostgreSQL
+        - protocol: TCP
+          port: 6379  # Redis
+        - protocol: TCP
+          port: 9092  # Kafka
+        - protocol: TCP
+          port: 443   # HTTPS
+        - protocol: TCP
+          port: 53    # DNS
+        - protocol: UDP
+          port: 53    # DNS
+
+# ========================================
+# NODE SELECTOR (Use staging nodes)
+# ========================================
+nodeSelector:
+  environment: staging
+  node-type: application
+
+# ========================================
+# TOLERATIONS
+# ========================================
+tolerations:
+  - key: "environment"
+    operator: "Equal"
+    value: "staging"
+    effect: "NoSchedule"
+
+# ========================================
+# AFFINITY (Prefer staging nodes)
+# ========================================
+affinity:
+  nodeAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        preference:
+          matchExpressions:
+            - key: environment
+              operator: In
+              values:
+                - staging
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - webauthn
+          topologyKey: kubernetes.io/hostname

@@ -1,0 +1,236 @@
+{
+  "scan_profile": {
+    "name": "IAM Security DAST Profile",
+    "description": "Perfil de teste DAST para o módulo IAM INNOVABIZ",
+    "target": {
+      "url": "http://localhost:3000",
+      "scope": {
+        "include_subdomains": false,
+        "exclude_paths": [
+          "/docs",
+          "/metrics",
+          "/health"
+        ]
+      }
+    },
+    "authentication": {
+      "type": "form",
+      "login_url": "http://localhost:3000/api/v1/auth/login",
+      "username_field": "username",
+      "password_field": "password",
+      "additional_fields": [
+        {
+          "name": "tenantId",
+          "value": "test-tenant"
+        }
+      ],
+      "test_credentials": {
+        "username": "dast_test@example.com",
+        "password": "SecureDast123!"
+      },
+      "success_validation": {
+        "response_code": 200,
+        "content_match": "access_token"
+      }
+    },
+    "scan_options": {
+      "max_scan_duration_minutes": 60,
+      "crawl_max_depth": 5,
+      "max_concurrent_requests": 10,
+      "request_timeout_seconds": 30,
+      "scan_types": [
+        "xss",
+        "sqli",
+        "csrf",
+        "jwt_weaknesses",
+        "insecure_headers",
+        "ssrf",
+        "open_redirects",
+        "broken_auth",
+        "sensitive_data_exposure",
+        "xxe",
+        "rate_limiting"
+      ]
+    },
+    "headers": {
+      "User-Agent": "INNOVABIZ-DAST-Scanner/1.0",
+      "X-Scanner": "IAM-Security-Test"
+    }
+  },
+  "reporting": {
+    "output_formats": [
+      "json",
+      "html",
+      "pdf"
+    ],
+    "output_directory": "../../../reports/security/dast",
+    "issue_severity_levels": [
+      "critical",
+      "high",
+      "medium",
+      "low",
+      "info"
+    ],
+    "include_evidence": true,
+    "include_remediation": true
+  },
+  "integrations": {
+    "jira": {
+      "enabled": false,
+      "project_key": "IAM",
+      "issue_type": "Security Bug",
+      "auto_create_issues": false,
+      "severity_mapping": {
+        "critical": "Critical",
+        "high": "High",
+        "medium": "Medium",
+        "low": "Low",
+        "info": "Task"
+      }
+    },
+    "slack": {
+      "enabled": false,
+      "webhook_url": "",
+      "channel": "security-alerts",
+      "notify_on": [
+        "critical",
+        "high"
+      ]
+    }
+  },
+  "compliance": {
+    "standards": [
+      "OWASP Top 10 2021",
+      "PCI DSS 4.0",
+      "ISO 27001",
+      "GDPR"
+    ],
+    "custom_compliance_mapping": {
+      "BNA-Security-Framework": {
+        "enabled": true,
+        "mapping_file": "../compliance/bna-security-mapping.json"
+      },
+      "PALOP-Banking-Standard": {
+        "enabled": true,
+        "mapping_file": "../compliance/palop-banking-mapping.json"
+      }
+    }
+  },
+  "test_cases": {
+    "authentication": [
+      {
+        "name": "Teste de bloqueio por tentativas incorretas",
+        "endpoint": "/api/v1/auth/login",
+        "method": "POST",
+        "data": {
+          "username": "bruteforce@test.com",
+          "password": "WrongPass123!",
+          "tenantId": "test-tenant"
+        },
+        "iterations": 10,
+        "expected_responses": [
+          {
+            "status": 401,
+            "after_iterations": 5
+          },
+          {
+            "status": 429,
+            "after_iterations": 6
+          }
+        ]
+      },
+      {
+        "name": "Teste de bypass de autenticação de dois fatores",
+        "endpoint": "/api/v1/auth/verify-2fa",
+        "method": "POST",
+        "auth_required": true,
+        "data": {
+          "code": "BYPASS_ATTEMPT",
+          "method": "totp"
+        }
+      },
+      {
+        "name": "Teste de segurança de tokens JWT",
+        "endpoint": "/api/v1/users/me",
+        "method": "GET",
+        "headers": {
+          "Authorization": "Bearer {{TAMPERED_JWT}}"
+        }
+      }
+    ],
+    "authorization": [
+      {
+        "name": "Teste de escalação de privilégios horizontal",
+        "endpoint": "/api/v1/users/{{OTHER_USER_ID}}",
+        "method": "GET",
+        "auth_required": true
+      },
+      {
+        "name": "Teste de escalação de privilégios vertical",
+        "endpoint": "/api/v1/admin/users",
+        "method": "GET",
+        "auth_required": true
+      }
+    ],
+    "data_validation": [
+      {
+        "name": "Teste de injeção SQL",
+        "endpoint": "/api/v1/users/search",
+        "method": "GET",
+        "params": {
+          "query": "'; DROP TABLE users; --"
+        }
+      },
+      {
+        "name": "Teste de Cross-Site Scripting (XSS)",
+        "endpoint": "/api/v1/users/profile",
+        "method": "PUT",
+        "auth_required": true,
+        "data": {
+          "displayName": "<script>alert(1)</script>"
+        }
+      },
+      {
+        "name": "Teste de XML External Entity (XXE)",
+        "endpoint": "/api/v1/import/xml",
+        "method": "POST",
+        "content_type": "application/xml",
+        "data": "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?><!DOCTYPE foo [<!ELEMENT foo ANY ><!ENTITY xxe SYSTEM \"file:///etc/passwd\" >]><foo>&xxe;</foo>"
+      }
+    ],
+    "session_management": [
+      {
+        "name": "Teste de fixação de sessão",
+        "steps": [
+          {
+            "endpoint": "/api/v1/auth/login",
+            "method": "POST",
+            "data": {
+              "username": "session_test@example.com",
+              "password": "Test123!",
+              "tenantId": "test-tenant"
+            },
+            "extract": {
+              "token": "$.access_token"
+            }
+          },
+          {
+            "endpoint": "/api/v1/auth/logout",
+            "method": "POST",
+            "headers": {
+              "Authorization": "Bearer {{token}}"
+            }
+          },
+          {
+            "endpoint": "/api/v1/users/me",
+            "method": "GET",
+            "headers": {
+              "Authorization": "Bearer {{token}}"
+            },
+            "expected_status": 401
+          }
+        ]
+      }
+    ]
+  }
+}

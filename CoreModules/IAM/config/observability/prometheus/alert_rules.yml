@@ -1,0 +1,136 @@
+groups:
+- name: innovabiz_iam_audit_service_alerts
+  rules:
+  # Alertas de disponibilidade
+  - alert: IAMAuditServiceDown
+    expr: up{job="iam-audit-service"} == 0
+    for: 1m
+    labels:
+      severity: critical
+      service: iam-audit-service
+      category: availability
+    annotations:
+      summary: "IAM Audit Service indisponível"
+      description: "O serviço de auditoria IAM está inativo por mais de 1 minuto."
+      dashboard_url: "https://grafana.innovabiz.io/d/iam-audit-service-overview"
+      runbook_url: "https://wiki.innovabiz.io/iam/audit/runbooks/service-down"
+  
+  - alert: IAMAuditServiceHighLatency
+    expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{service="iam-audit-service"}[5m])) by (method, path, tenant, region, le)) > 1
+    for: 5m
+    labels:
+      severity: warning
+      service: iam-audit-service
+      category: performance
+    annotations:
+      summary: "Latência elevada no IAM Audit Service"
+      description: "95º percentil de latência API > 1s por 5 min. Método {{ $labels.method }} em {{ $labels.path }} para tenant {{ $labels.tenant }} na região {{ $labels.region }}."
+      dashboard_url: "https://grafana.innovabiz.io/d/iam-audit-latency-detail"
+
+  # Alertas de erros HTTP
+  - alert: IAMAuditServiceHighErrorRate
+    expr: sum(rate(http_responses_total{service="iam-audit-service", status=~"5.."}[5m])) by (tenant, region) / sum(rate(http_requests_total{service="iam-audit-service"}[5m])) by (tenant, region) > 0.05
+    for: 3m
+    labels:
+      severity: warning
+      service: iam-audit-service
+      category: errors
+    annotations:
+      summary: "Taxa de erro elevada no IAM Audit Service"
+      description: "Taxa de erro HTTP > 5% por 3 minutos para tenant {{ $labels.tenant }} na região {{ $labels.region }}."
+      dashboard_url: "https://grafana.innovabiz.io/d/iam-audit-errors-detail"
+
+  # Alertas específicos de auditoria
+  - alert: IAMAuditEventProcessingFailure
+    expr: sum(increase(audit_events_errors_total{service="iam-audit-service"}[15m])) by (event_type, tenant, region) > 10
+    for: 5m
+    labels:
+      severity: warning
+      service: iam-audit-service
+      category: audit
+    annotations:
+      summary: "Falhas no processamento de eventos de auditoria"
+      description: "Mais de 10 falhas em 15 minutos no processamento de eventos {{ $labels.event_type }} para tenant {{ $labels.tenant }} na região {{ $labels.region }}."
+      dashboard_url: "https://grafana.innovabiz.io/d/iam-audit-events"
+
+  # Alertas de compliance
+  - alert: IAMAuditComplianceCheckFailure
+    expr: sum(increase(compliance_check_failures_total{service="iam-audit-service"}[1h])) by (compliance_type, tenant, region) > 5
+    for: 10m
+    labels:
+      severity: critical
+      service: iam-audit-service
+      category: compliance
+    annotations:
+      summary: "Falhas em verificações de compliance"
+      description: "Mais de 5 falhas em verificações de compliance {{ $labels.compliance_type }} para tenant {{ $labels.tenant }} na região {{ $labels.region }} na última hora."
+      dashboard_url: "https://grafana.innovabiz.io/d/iam-compliance-dashboard"
+      runbook_url: "https://wiki.innovabiz.io/iam/audit/runbooks/compliance-failures"
+
+  # Alertas de políticas de retenção
+  - alert: IAMAuditRetentionPolicyFailure
+    expr: sum(increase(retention_policy_failures_total{service="iam-audit-service"}[3h])) by (policy_name, tenant, region) > 0
+    for: 15m
+    labels:
+      severity: critical
+      service: iam-audit-service
+      category: retention
+    annotations:
+      summary: "Falhas na aplicação de políticas de retenção"
+      description: "Falhas na aplicação da política de retenção {{ $labels.policy_name }} para tenant {{ $labels.tenant }} na região {{ $labels.region }} nas últimas 3 horas."
+      dashboard_url: "https://grafana.innovabiz.io/d/iam-retention-policies"
+      runbook_url: "https://wiki.innovabiz.io/iam/audit/runbooks/retention-failures"
+
+  # Alertas de saúde de componentes
+  - alert: IAMAuditDatabaseConnectionFailing
+    expr: sum(health_component_status{service="iam-audit-service", component_type="database"}) by (tenant, region) < 1
+    for: 3m
+    labels:
+      severity: critical
+      service: iam-audit-service
+      category: dependencies
+    annotations:
+      summary: "Falha de conexão com banco de dados do IAM Audit"
+      description: "A conexão com o banco de dados do IAM Audit está falhando para tenant {{ $labels.tenant }} na região {{ $labels.region }}."
+      dashboard_url: "https://grafana.innovabiz.io/d/iam-audit-health"
+      runbook_url: "https://wiki.innovabiz.io/iam/audit/runbooks/database-failures"
+
+  # Alertas de saturação
+  - alert: IAMAuditHighDatabaseLatency
+    expr: histogram_quantile(0.95, sum(rate(database_operation_duration_seconds_bucket{service="iam-audit-service"}[5m])) by (operation, tenant, region, le)) > 0.5
+    for: 5m
+    labels:
+      severity: warning
+      service: iam-audit-service
+      category: performance
+    annotations:
+      summary: "Alta latência em operações de banco de dados"
+      description: "95º percentil de latência de banco de dados > 500ms para operação {{ $labels.operation }} (tenant: {{ $labels.tenant }}, região: {{ $labels.region }})."
+      dashboard_url: "https://grafana.innovabiz.io/d/iam-database-performance"
+
+  # Alertas de capacidade
+  - alert: IAMAuditHighEventProcessingRate
+    expr: sum(rate(audit_events_total{service="iam-audit-service"}[5m])) by (tenant, region) > 1000
+    for: 10m
+    labels:
+      severity: warning
+      service: iam-audit-service
+      category: capacity
+    annotations:
+      summary: "Taxa elevada de processamento de eventos de auditoria"
+      description: "Taxa de processamento de eventos > 1000/min para tenant {{ $labels.tenant }} na região {{ $labels.region }}. Verificar capacidade e escalabilidade."
+      dashboard_url: "https://grafana.innovabiz.io/d/iam-audit-capacity"
+
+  # Alertas de segurança
+  - alert: IAMAuditSuspiciousActivity
+    expr: sum(increase(audit_events_total{service="iam-audit-service", event_type="unauthorized_access"}[15m])) by (tenant, region) > 10
+    for: 5m
+    labels:
+      severity: critical
+      service: iam-audit-service
+      category: security
+    annotations:
+      summary: "Atividade suspeita detectada"
+      description: "Mais de 10 eventos de acesso não autorizado em 15 minutos para tenant {{ $labels.tenant }} na região {{ $labels.region }}."
+      dashboard_url: "https://grafana.innovabiz.io/d/iam-security-incidents"
+      runbook_url: "https://wiki.innovabiz.io/iam/audit/runbooks/security-incidents"

@@ -1,0 +1,44 @@
+# pipeline_template_github_actions.yml
+# Exemplo de pipeline CI/CD para migração de scripts SQL na plataforma InnovaBiz
+# Adapte conforme seu ambiente (banco, secrets, paths)
+
+name: Database Migration
+
+on:
+  push:
+    paths:
+      - 'CoreModules/IAM/database/migrations/*.sql'
+  workflow_dispatch:
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+      - name: Instalar PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Executar migrações
+        env:
+          DB_HOST: ${{ secrets.DB_HOST }}
+          DB_PORT: ${{ secrets.DB_PORT }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASS: ${{ secrets.DB_PASS }}
+          DB_NAME: ${{ secrets.DB_NAME }}
+        run: |
+          for sql in CoreModules/IAM/database/migrations/*.sql; do
+            echo "Executando $sql..."
+            PGPASSWORD=$DB_PASS psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME -f "$sql"
+          done
+      - name: Validar views e triggers
+        env:
+          DB_HOST: ${{ secrets.DB_HOST }}
+          DB_PORT: ${{ secrets.DB_PORT }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASS: ${{ secrets.DB_PASS }}
+          DB_NAME: ${{ secrets.DB_NAME }}
+        run: |
+          PGPASSWORD=$DB_PASS psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME -c "\dv bi.*"
+          PGPASSWORD=$DB_PASS psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME -c "\dy *"
+      - name: Notificar sucesso
+        run: echo "Migração concluída com sucesso!"

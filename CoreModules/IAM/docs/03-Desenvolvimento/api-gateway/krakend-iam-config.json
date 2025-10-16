@@ -1,0 +1,115 @@
+{
+  "$schema": "https://www.krakend.io/schema/v3.json",
+  "version": 3,
+  "name": "INNOVABIZ IAM API Gateway",
+  "port": 8080,
+  "timeout": "5s",
+  "cache_ttl": "300s",
+  "output_encoding": "json",
+  "debug_endpoint": false,
+  "echo_endpoint": false,
+  "sequential_start": true,
+  "extra_config": {
+    "telemetry/logging": {
+      "level": "INFO",
+      "prefix": "[KRAKEND]",
+      "syslog": false,
+      "stdout": true,
+      "format": "logstash"
+    },
+    "telemetry/metrics": {
+      "collection_time": "60s",
+      "proxy_disabled": false,
+      "router_disabled": false,
+      "backend_disabled": false,
+      "endpoint_disabled": false,
+      "listen_address": ":8090"
+    },
+    "security/cors": {
+      "allow_origins": [
+        "*"
+      ],
+      "allow_methods": [
+        "GET",
+        "POST",
+        "PUT",
+        "PATCH",
+        "DELETE",
+        "OPTIONS"
+      ],
+      "allow_headers": [
+        "Origin",
+        "Authorization",
+        "Content-Type",
+        "Accept",
+        "X-Requested-With",
+        "X-Forwarded-For",
+        "X-Tenant-Id",
+        "X-Region-Code",
+        "X-Device-Id",
+        "X-Client-Version",
+        "X-Correlation-ID"
+      ],
+      "expose_headers": [
+        "Content-Length",
+        "Content-Type",
+        "X-Rate-Limit",
+        "X-Rate-Limit-Remaining",
+        "X-Rate-Limit-Reset",
+        "X-Correlation-ID"
+      ],
+      "max_age": "12h",
+      "allow_credentials": true,
+      "debug": false
+    },
+    "auth/revoker": {
+      "N": 10000,
+      "TTL": 3600
+    },
+    "auth/validator": {
+      "alg": "RS256",
+      "jwk_url": "http://iam-service:8000/auth/jwks",
+      "jwk_local_path": "/etc/krakend/jwks.json",
+      "cache": true,
+      "cache_duration": "5m",
+      "audience": ["innovabiz-platform"],
+      "roles_key": "roles",
+      "roles_key_is_nested": false,
+      "disable_jwk_security": false,
+      "operation_debug": false
+    },
+    "security/http": {
+      "allowed_hosts": [],
+      "ssl_proxy_headers": {},
+      "ssl_redirect": false,
+      "sts_seconds": 315360000,
+      "sts_include_subdomains": true,
+      "frame_deny": true,
+      "custom_frame_options_value": "SAMEORIGIN",
+      "custom_browser_xss_value": "1; mode=block",
+      "content_type_nosniff": true,
+      "browser_xss_filter": true,
+      "content_security_policy": "default-src 'self'"
+    },
+    "security/rate-limit": {
+      "max_rate": 200,
+      "client_max_rate": 50,
+      "strategy": "ip",
+      "client_key": "X-Forwarded-For"
+    },
+    "qos/circuit-breaker": {
+      "interval": 60,
+      "timeout": 10,
+      "max_errors": 5,
+      "log_status_change": true
+    },
+    "qos/ratelimit/router": {
+      "max_rate": 2000,
+      "client_max_rate": 100,
+      "strategy": "header",
+      "client_key": "X-Tenant-Id",
+      "capacity": 1000
+    }
+  },
+  "endpoints": []
+}

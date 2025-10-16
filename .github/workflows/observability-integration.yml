@@ -1,0 +1,66 @@
+name: Observability Integration
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'infrastructure/observability/**'
+      - 'docs/observability/**'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'infrastructure/observability/**'
+      - 'docs/observability/**'
+
+jobs:
+  observability-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Monitoring
+        uses: prometheus-community/prometheus-operator@v1
+        with:
+          namespace: monitoring
+          grafana_admin_password: ${{ secrets.GRAFANA_PASSWORD }}
+
+      - name: Configure Alerts
+        run: |
+          kubectl apply -f monitoring/alerts.yaml
+          kubectl apply -f monitoring/rules.yaml
+
+      - name: Configure IAM Monitoring
+        run: |
+          kubectl apply -f monitoring/iam-alerts.yaml
+          kubectl apply -f monitoring/iam-rules.yaml
+
+      - name: Configure KrakenD Monitoring
+        run: |
+          kubectl apply -f monitoring/krakend-alerts.yaml
+          kubectl apply -f monitoring/krakend-rules.yaml
+
+      - name: Configure MCP Monitoring
+        run: |
+          kubectl apply -f monitoring/mcp-alerts.yaml
+          kubectl apply -f monitoring/mcp-rules.yaml
+
+      - name: Configure GraphQL Monitoring
+        run: |
+          kubectl apply -f monitoring/graphql-alerts.yaml
+          kubectl apply -f monitoring/graphql-rules.yaml
+
+      - name: Validate Monitoring Configuration
+        run: |
+          kubectl get alerts -n monitoring
+          kubectl get rules -n monitoring
+
+      - name: Generate Documentation
+        run: |
+          cd docs/observability
+          make html
+
+      - name: Deploy Documentation
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: docs/observability/_build/html

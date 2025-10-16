@@ -1,0 +1,60 @@
+name: GraphQL Integration
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'infrastructure/graphql/**'
+      - 'docs/graphql/**'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'infrastructure/graphql/**'
+      - 'docs/graphql/**'
+
+jobs:
+  graphql-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '16'
+
+      - name: Install Dependencies
+        run: |
+          cd infrastructure/graphql
+          npm install
+
+      - name: Configure GraphQL
+        run: |
+          docker-compose -f docker-compose.yml exec graphql-federation /bin/configure-graphql.sh
+
+      - name: Validate Schema
+        run: |
+          docker-compose -f docker-compose.yml exec graphql-federation /bin/validate-schema.sh
+
+      - name: Test Integration
+        run: |
+          docker-compose -f docker-compose.yml exec graphql-federation /bin/test-integration.sh
+
+      - name: Test KrakenD Integration
+        run: |
+          docker-compose -f docker-compose.yml exec krakend-integration-handler /bin/test-graphql.sh
+
+      - name: Validate Security
+        run: |
+          docker-compose -f docker-compose.yml exec graphql-federation /bin/validate-security.sh
+
+      - name: Generate Documentation
+        run: |
+          cd docs/graphql
+          make html
+
+      - name: Deploy Documentation
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: docs/graphql/_build/html

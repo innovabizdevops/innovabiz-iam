@@ -1,0 +1,38 @@
+{
+  "user": {
+    "id": "00000000-0000-0000-0000-000000000002",
+    "tenant_id": "20000000-0000-0000-0000-000000000001",
+    "username": "tenant.admin",
+    "roles": ["TENANT_ADMIN"],
+    "permissions": ["tenant:manage", "role:*", "role:assign_to_user"]
+  },
+  "resource": {
+    "tenant_id": "20000000-0000-0000-0000-000000000001",
+    "role_id": "20000000-0000-0000-0000-000000000002",
+    "user_id": "00000000-0000-0000-0000-000000000005",
+    "expires_at": "2026-08-05T23:59:59Z",
+    "metadata": {
+      "justification": "Necessário para acesso temporário ao módulo financeiro",
+      "request_reference": "REQ-2025-0805-001",
+      "approver": "00000000-0000-0000-0000-000000000002"
+    }
+  },
+  "method": "POST",
+  "context": {
+    "requests_per_minute": 2,
+    "geo": {
+      "country": "AO",
+      "region": "Luanda"
+    },
+    "timestamp": "2025-08-05T16:20:00Z",
+    "client_ip": "192.168.1.120",
+    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+    "request_id": "c8f7ec32-3d5c-4d58-9af4-5e0f4ca3f703",
+    "audit": {
+      "transaction_id": "tx-20250805-162000-4532",
+      "source_ip": "192.168.1.120",
+      "approval_flow": false,
+      "security_level": "standard"
+    }
+  }
+}

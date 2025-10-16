@@ -1,0 +1,31 @@
+{
+  "user": {
+    "id": "00000000-0000-0000-0000-000000000003",
+    "tenant_id": "20000000-0000-0000-0000-000000000001",
+    "username": "iam.admin",
+    "roles": ["IAM_ADMIN"],
+    "permissions": ["role:create", "role:read", "role:update", "role:delete", "role:manage_hierarchy"]
+  },
+  "resource": {
+    "tenant_id": "20000000-0000-0000-0000-000000000001",
+    "parent_id": "20000000-0000-0000-0000-000000000002",
+    "child_id": "20000000-0000-0000-0000-000000000003"
+  },
+  "method": "POST",
+  "context": {
+    "requests_per_minute": 1,
+    "geo": {
+      "country": "AO",
+      "region": "Luanda"
+    },
+    "timestamp": "2025-08-05T15:10:00Z",
+    "client_ip": "192.168.1.130",
+    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+    "request_id": "b7d6ea31-2c4b-4c57-89e3-4d9e3b92f602",
+    "audit": {
+      "transaction_id": "tx-20250805-151000-7821",
+      "source_ip": "192.168.1.130",
+      "approval_flow": false
+    }
+  }
+}

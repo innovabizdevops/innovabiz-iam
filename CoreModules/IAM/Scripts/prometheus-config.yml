@@ -1,0 +1,164 @@
+# Configuração Prometheus para MCP-IAM Observabilidade
+# Este arquivo define as configurações do Prometheus para coletar métricas
+# da plataforma INNOVABIZ, com foco em multi-mercado, multi-tenant e compliance.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+# Regras de alerta para detecção precoce de anomalias de segurança e performance
+rule_files:
+  - "innovabiz-iam-alerts.yml"
+
+# Configuração para Alertmanager
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - "alertmanager:9093"
+
+# Configurações de coleta (scrape) - Adaptado para diferentes mercados e ambientes
+scrape_configs:
+  # Métricas do adaptador MCP-IAM Observabilidade
+  - job_name: "innovabiz-mcp-iam"
+    metrics_path: "/metrics"
+    scrape_interval: 10s
+    static_configs:
+      - targets: ["iam-service:9090"]
+        labels:
+          module: "mcp-iam"
+          environment: "production"
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_label_market]
+        target_label: market
+      - source_labels: [__meta_kubernetes_pod_label_tenant_type]
+        target_label: tenant_type
+
+  # Métricas do Payment Gateway
+  - job_name: "innovabiz-payment-gateway"
+    metrics_path: "/metrics"
+    scrape_interval: 10s
+    static_configs:
+      - targets: ["payment-gateway:9090"]
+        labels:
+          module: "payment-gateway"
+          environment: "production"
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_label_market]
+        target_label: market
+      - source_labels: [__meta_kubernetes_pod_label_tenant_type]
+        target_label: tenant_type
+
+  # Métricas do Risk Management
+  - job_name: "innovabiz-risk-management"
+    metrics_path: "/metrics"
+    scrape_interval: 10s
+    static_configs:
+      - targets: ["risk-management:9090"]
+        labels:
+          module: "risk-management"
+          environment: "production"
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_label_market]
+        target_label: market
+      - source_labels: [__meta_kubernetes_pod_label_tenant_type]
+        target_label: tenant_type
+        
+  # Métricas do Mobile Money
+  - job_name: "innovabiz-mobile-money"
+    metrics_path: "/metrics"
+    scrape_interval: 10s
+    static_configs:
+      - targets: ["mobile-money:9090"]
+        labels:
+          module: "mobile-money"
+          environment: "production"
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_label_market]
+        target_label: market
+      - source_labels: [__meta_kubernetes_pod_label_tenant_type]
+        target_label: tenant_type
+
+  # Métricas do E-Commerce/Marketplace
+  - job_name: "innovabiz-marketplace"
+    metrics_path: "/metrics"
+    scrape_interval: 10s
+    static_configs:
+      - targets: ["marketplace:9090"]
+        labels:
+          module: "marketplace"
+          environment: "production"
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_label_market]
+        target_label: market
+      - source_labels: [__meta_kubernetes_pod_label_tenant_type]
+        target_label: tenant_type
+
+  # Métricas específicas de compliance por mercado
+  - job_name: "innovabiz-compliance"
+    metrics_path: "/metrics/compliance"
+    scrape_interval: 30s
+    static_configs:
+      - targets: ["compliance-service:9090"]
+        labels:
+          module: "compliance"
+          environment: "production"
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_label_market]
+        target_label: market
+      - source_labels: [__meta_kubernetes_pod_label_framework]
+        target_label: framework
+
+  # Coletor de métricas OpenTelemetry
+  - job_name: "otel-collector"
+    scrape_interval: 15s
+    static_configs:
+      - targets: ["otel-collector:8889"]
+        labels:
+          service: "otel-collector"
+          environment: "production"
+
+# Configurações específicas por mercado
+# Cada mercado pode ter requisitos distintos de coleta e retenção
+remote_write:
+  # Angola/PALOP - BNA exige retenção estendida (7 anos)
+  - url: "http://prometheus-angola:9090/api/v1/write"
+    write_relabel_configs:
+      - source_labels: [market]
+        regex: "Angola|Mozambique|CapeVerde|GuineaBissau|SaoTomePrincipe"
+        action: keep
+
+  # Brasil - LGPD/BACEN (5-10 anos de retenção)
+  - url: "http://prometheus-brasil:9090/api/v1/write"
+    write_relabel_configs:
+      - source_labels: [market]
+        regex: "Brazil"
+        action: keep
+
+  # Europa - GDPR/PSD2 (7 anos de retenção)
+  - url: "http://prometheus-eu:9090/api/v1/write"
+    write_relabel_configs:
+      - source_labels: [market]
+        regex: "EU|Portugal|Spain|France|Germany|Italy"
+        action: keep
+
+  # EUA - SOX/CCPA (7 anos de retenção)
+  - url: "http://prometheus-usa:9090/api/v1/write"
+    write_relabel_configs:
+      - source_labels: [market]
+        regex: "USA"
+        action: keep
+
+  # China - CSL (5 anos de retenção)
+  - url: "http://prometheus-china:9090/api/v1/write"
+    write_relabel_configs:
+      - source_labels: [market]
+        regex: "China"
+        action: keep
+
+  # Global - ISO 27001 (3 anos de retenção)
+  - url: "http://prometheus-global:9090/api/v1/write"
+    write_relabel_configs:
+      - source_labels: [market]
+        regex: "Global"
+        action: keep

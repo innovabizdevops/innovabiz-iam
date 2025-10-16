@@ -1,0 +1,218 @@
+groups:
+- name: innovabiz_clickhouse_alerts
+  rules:
+  # Alertas de Disponibilidade
+  - alert: ClickHouseInstanceDown
+    expr: up{job="clickhouse"} == 0
+    for: 1m
+    labels:
+      severity: critical
+      service: clickhouse
+      category: availability
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "ClickHouse Indisponível"
+      description: "Instância {{ $labels.instance }} está offline há pelo menos 1 minuto. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/clickhouse-instance-down"
+      dashboard_url: "https://grafana.innovabiz.com/d/innovabiz-clickhouse?var-tenant_id={{ $labels.tenant_id }}&var-region_id={{ $labels.region_id }}&var-environment={{ $labels.environment }}&var-instance={{ $labels.instance }}"
+      
+  - alert: ClickHouseTooManyConnections
+    expr: clickhouse_http_connections + clickhouse_tcp_connections > 500
+    for: 5m
+    labels:
+      severity: warning
+      service: clickhouse
+      category: availability
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Número elevado de conexões"
+      description: "A instância {{ $labels.instance }} tem mais de 500 conexões ativas por mais de 5 minutos. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/clickhouse-too-many-connections"
+
+  - alert: ClickHouseReplicaReadOnly
+    expr: clickhouse_replicas_readonly / clickhouse_replicas > 0.5
+    for: 10m
+    labels:
+      severity: warning
+      service: clickhouse
+      category: availability
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Réplicas em Modo Somente-Leitura"
+      description: "Mais de 50% das réplicas estão em modo somente-leitura na instância {{ $labels.instance }}. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/clickhouse-readonly-replicas"
+  
+  # Alertas de Performance
+  - alert: ClickHouseSlowQueries
+    expr: rate(clickhouse_query_time_ms_sum[5m]) / rate(clickhouse_query_time_ms_count[5m]) > 1000
+    for: 5m
+    labels:
+      severity: warning
+      service: clickhouse
+      category: performance
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Consultas Lentas"
+      description: "Latência média de consultas acima de 1000ms por 5 minutos na instância {{ $labels.instance }}. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/clickhouse-slow-queries"
+      
+  - alert: ClickHouseHighFailedQueries
+    expr: rate(clickhouse_failed_query_total[5m]) / rate(clickhouse_query_total[5m]) > 0.05
+    for: 5m
+    labels:
+      severity: warning
+      service: clickhouse
+      category: performance
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Alta Taxa de Falha em Consultas"
+      description: "Taxa de falha em consultas acima de 5% nos últimos 5 minutos na instância {{ $labels.instance }}. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/clickhouse-query-failures"
+
+  - alert: ClickHouseHighP95Latency
+    expr: histogram_quantile(0.95, sum by(le) (rate(clickhouse_query_duration_seconds_bucket[5m]))) > 3
+    for: 5m
+    labels:
+      severity: warning
+      service: clickhouse
+      category: performance
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Latência P95 Elevada"
+      description: "95º percentil da latência de consultas acima de 3 segundos nos últimos 5 minutos. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/clickhouse-p95-latency"
+  
+  - alert: ClickHouseHighMutexWaiting
+    expr: clickhouse_mutex_lock_waiting > 10
+    for: 5m
+    labels:
+      severity: warning
+      service: clickhouse
+      category: performance
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Contention em Mutex"
+      description: "Mais de 10 threads aguardando por mutex {{ $labels.mutex }} na instância {{ $labels.instance }}. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/clickhouse-mutex-waiting"
+
+  # Alertas de Recursos
+  - alert: ClickHouseHighCPUUsage
+    expr: 100 * (1 - avg by(instance, tenant_id, region_id, environment) (irate(node_cpu_seconds_total{mode="idle"}[5m]))) > 90
+    for: 15m
+    labels:
+      severity: warning
+      service: clickhouse
+      category: resource
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Alto Uso de CPU"
+      description: "Uso de CPU acima de 90% por 15 minutos na instância {{ $labels.instance }}. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/clickhouse-high-cpu"
+  
+  - alert: ClickHouseHighMemoryUsage
+    expr: (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes * 100 > 90
+    for: 15m
+    labels:
+      severity: warning
+      service: clickhouse
+      category: resource
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Alto Uso de Memória"
+      description: "Uso de memória acima de 90% por 15 minutos na instância {{ $labels.instance }}. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/clickhouse-high-memory"
+  
+  - alert: ClickHouseDiskSpaceWarning
+    expr: clickhouse_disk_free_bytes / clickhouse_disk_total_bytes * 100 < 20
+    for: 15m
+    labels:
+      severity: warning
+      service: clickhouse
+      category: resource
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Espaço em Disco Baixo"
+      description: "Menos de 20% de espaço livre no disco {{ $labels.disk }} da instância {{ $labels.instance }}. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/clickhouse-low-disk-space"
+  
+  - alert: ClickHouseDiskSpaceCritical
+    expr: clickhouse_disk_free_bytes / clickhouse_disk_total_bytes * 100 < 10
+    for: 5m
+    labels:
+      severity: critical
+      service: clickhouse
+      category: resource
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Espaço em Disco Crítico"
+      description: "Menos de 10% de espaço livre no disco {{ $labels.disk }} da instância {{ $labels.instance }}. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/clickhouse-critical-disk-space"
+  
+  # Alertas de Segurança e Governança
+  - alert: ClickHouseZooKeeperExceptions
+    expr: increase(clickhouse_events_ZooKeeperExceptions[5m]) > 0
+    for: 5m
+    labels:
+      severity: warning
+      service: clickhouse
+      category: coordination
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Exceções ZooKeeper Detectadas"
+      description: "Detectadas exceções ZooKeeper na instância {{ $labels.instance }}. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/clickhouse-zookeeper-exceptions"
+  
+  - alert: ClickHouseDistributedConnectionFailures
+    expr: increase(clickhouse_events_DistributedConnectionFailTry[5m]) > 0
+    for: 5m
+    labels:
+      severity: warning
+      service: clickhouse
+      category: coordination
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Falhas em Conexões Distribuídas"
+      description: "Detectadas falhas em conexões distribuídas na instância {{ $labels.instance }}. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/clickhouse-distributed-connection-failures"
+      
+  # Alertas de SLA/SLO
+  - alert: ClickHouseQuerySLOViolation
+    expr: histogram_quantile(0.99, sum(rate(clickhouse_query_duration_seconds_bucket{tenant_id=~"$tenant_id", region_id=~"$region_id", environment=~"$environment", instance=~"$instance"}[5m])) by (le, tenant_id, region_id, environment)) > 5
+    for: 10m
+    labels:
+      severity: warning
+      service: clickhouse
+      category: slo
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Violação de SLO em Consultas"
+      description: "SLO de latência de consultas violado - P99 > 5s por mais de 10 minutos. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/clickhouse-slo-violation"

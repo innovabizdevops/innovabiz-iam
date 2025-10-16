@@ -1,0 +1,135 @@
+{
+  "regionCode": "AO",
+  "regionName": "Angola",
+  "crossRegional": false,
+  "frameworks": [
+    {
+      "id": "lei-22-11",
+      "name": "Lei de Proteção de Dados de Angola",
+      "version": "Lei n.º 22/11",
+      "description": "Lei de Proteção de Dados Pessoais de Angola que estabelece os princípios e regras gerais aplicáveis ao tratamento de dados pessoais",
+      "references": [
+        "https://www.apd.ao/fotos/frontend_1/editor2/110617_lei_22-11_de_17_junho_-_da_proteccao_de_dados_pessoais.pdf"
+      ]
+    },
+    {
+      "id": "bna-02-20",
+      "name": "Aviso BNA nº 02/20",
+      "version": "2020",
+      "description": "Regulamento sobre Sistemas de Pagamentos do Banco Nacional de Angola",
+      "references": [
+        "https://www.bna.ao/uploads/%7Ba3ac6ff8-affd-476d-a338-e2f4b823816f%7D.pdf"
+      ]
+    },
+    {
+      "id": "lei-14-21",
+      "name": "Lei nº 14/21 de Prevenção e Combate ao Branqueamento de Capitais",
+      "version": "2021",
+      "description": "Lei que estabelece medidas de natureza preventiva e repressiva de combate ao branqueamento de capitais, financiamento do terrorismo e da proliferação de armas de destruição em massa",
+      "references": [
+        "https://www.uif.ao/upl/%7Bed8b3f86-e591-457b-a2c2-15181ab0fc31%7D.pdf"
+      ]
+    },
+    {
+      "id": "arseg-reg",
+      "name": "Regulamentos ARSEG",
+      "version": "2021",
+      "description": "Regulamentos da Agência Angolana de Regulação e Supervisão de Seguros aplicáveis a operações financeiras e seguros",
+      "references": [
+        "https://www.arseg.ao/pt/legislacao/regulamentos"
+      ]
+    },
+    {
+      "id": "multicaixa",
+      "name": "Padrão MultiCaixa",
+      "version": "2022",
+      "description": "Requisitos e especificações técnicas para integração com a rede de pagamentos MultiCaixa de Angola",
+      "references": [
+        "https://www.emis.co.ao/pt/empresas/multicaixa/"
+      ]
+    }
+  ],
+  "requirements": [
+    {
+      "id": "ao-pd-consentimento",
+      "name": "Obtenção de Consentimento",
+      "description": "O tratamento de dados pessoais deve ser precedido de consentimento expresso, livre e informado do titular dos dados",
+      "frameworkId": "lei-22-11",
+      "articleRefs": ["Artigo 12º"],
+      "criticality": "alta",
+      "testCaseIds": ["ao-pd-test-consent-01", "ao-pd-test-consent-02"]
+    },
+    {
+      "id": "ao-pd-transferencia",
+      "name": "Transferência Internacional de Dados",
+      "description": "A transferência de dados pessoais para países que não garantam um nível de proteção adequado está sujeita a autorização prévia da APD",
+      "frameworkId": "lei-22-11",
+      "articleRefs": ["Artigo 33º"],
+      "criticality": "alta",
+      "testCaseIds": ["ao-pd-test-transfer-01"]
+    },
+    {
+      "id": "ao-pd-seguranca",
+      "name": "Medidas de Segurança",
+      "description": "Implementação de medidas técnicas e organizacionais adequadas para proteção dos dados pessoais",
+      "frameworkId": "lei-22-11",
+      "articleRefs": ["Artigo 15º"],
+      "criticality": "alta",
+      "testCaseIds": ["ao-pd-test-security-01"]
+    },
+    {
+      "id": "ao-bna-autenticacao",
+      "name": "Autenticação Forte de Clientes",
+      "description": "Sistemas de pagamentos devem implementar autenticação forte de clientes com múltiplos fatores",
+      "frameworkId": "bna-02-20",
+      "articleRefs": ["Artigo 8º"],
+      "criticality": "alta",
+      "testCaseIds": ["ao-fin-test-auth-01", "ao-fin-test-auth-02"]
+    },
+    {
+      "id": "ao-bna-logs",
+      "name": "Registro de Operações",
+      "description": "Manutenção de registros detalhados de todas as operações financeiras",
+      "frameworkId": "bna-02-20",
+      "articleRefs": ["Artigo 12º"],
+      "criticality": "média",
+      "testCaseIds": ["ao-fin-test-logs-01"]
+    },
+    {
+      "id": "ao-aml-verificacao",
+      "name": "Verificação de Identidade do Cliente",
+      "description": "Procedimentos de verificação da identidade do cliente antes do estabelecimento de relação de negócio",
+      "frameworkId": "lei-14-21",
+      "articleRefs": ["Artigo 22º"],
+      "criticality": "alta",
+      "testCaseIds": ["ao-aml-test-kyc-01"]
+    },
+    {
+      "id": "ao-aml-monitoramento",
+      "name": "Monitoramento de Transações Suspeitas",
+      "description": "Sistema de monitoramento de transações para identificação de operações suspeitas",
+      "frameworkId": "lei-14-21",
+      "articleRefs": ["Artigo 26º"],
+      "criticality": "alta",
+      "testCaseIds": ["ao-aml-test-monitoring-01", "ao-aml-test-monitoring-02"]
+    },
+    {
+      "id": "ao-multicaixa-interoperabilidade",
+      "name": "Interoperabilidade com MultiCaixa",
+      "description": "Requisitos de interoperabilidade com a rede MultiCaixa para processamento de pagamentos",
+      "frameworkId": "multicaixa",
+      "articleRefs": ["Seção 3.2"],
+      "criticality": "alta",
+      "testCaseIds": ["ao-fin-test-multicaixa-01"]
+    },
+    {
+      "id": "ao-multicaixa-seguranca",
+      "name": "Segurança nas Transações MultiCaixa",
+      "description": "Requisitos de segurança para transações realizadas via rede MultiCaixa",
+      "frameworkId": "multicaixa",
+      "articleRefs": ["Seção 4.5"],
+      "criticality": "alta",
+      "testCaseIds": ["ao-fin-test-multicaixa-security-01"]
+    }
+  ]
+}

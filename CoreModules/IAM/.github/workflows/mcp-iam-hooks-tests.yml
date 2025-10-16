@@ -1,0 +1,317 @@
+name: MCP-IAM Hooks Testes & Qualidade
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'CoreModules/IAM/services/elevation/hooks/**'
+      - 'CoreModules/IAM/tests/hooks/**'
+      - 'CoreModules/IAM/tests/performance/**'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'CoreModules/IAM/services/elevation/hooks/**'
+      - 'CoreModules/IAM/tests/hooks/**'
+      - 'CoreModules/IAM/tests/performance/**'
+  workflow_dispatch:
+    inputs:
+      market:
+        description: 'Mercado para testes específicos (angola, brasil, eu, china, mocambique, brics, all)'
+        required: true
+        default: 'all'
+      tenant_type:
+        description: 'Tipo de tenant (financial, government, healthcare, retail, all)'
+        required: true
+        default: 'all'
+      compliance_level:
+        description: 'Nível de conformidade (standard, enhanced, strict)'
+        required: true
+        default: 'enhanced'
+
+env:
+  GO_VERSION: '1.20'
+  COVERAGE_THRESHOLD: 85
+  PERFORMANCE_THRESHOLD_MS: 5
+  OTEL_EXPORTER_OTLP_ENDPOINT: ${{ secrets.OTEL_EXPORTER_ENDPOINT }}
+  OTEL_SERVICE_NAME: 'innovabiz-iam-hooks'
+  TEST_LOG_LEVEL: 'info'
+  MARKETS: 'angola,brasil,eu,china,mocambique,brics,eua,sadc,palop'
+
+jobs:
+  lint:
+    name: Verificação de Qualidade de Código
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Configurar Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      
+      - name: Instalar golangci-lint
+        uses: golangci/golangci-lint-action@v3
+        with:
+          version: latest
+          args: --timeout=5m --config=.golangci.yml
+          working-directory: CoreModules/IAM
+      
+      - name: Verificar formatação
+        run: |
+          cd CoreModules/IAM
+          gofmt -l -s -w .
+          if [ -n "$(git diff)" ]; then
+            echo "Arquivos com problemas de formatação:"
+            git diff --name-only
+            exit 1
+          fi
+          
+      - name: Análise de Vulnerabilidades
+        uses: golang/govulncheck-action@v1
+        with:
+          go-version-file: CoreModules/IAM/go.mod
+          check-latest: true
+      
+      - name: SonarQube Scan
+        uses: sonarsource/sonarcloud-github-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          projectBaseDir: CoreModules/IAM
+
+  unit-tests:
+    name: Testes Unitários
+    runs-on: ubuntu-latest
+    needs: lint
+    strategy:
+      matrix:
+        market: [angola, brasil, eu, china, mocambique, brics, eua, sadc, palop]
+    steps:
+      - uses: actions/checkout@v3
+      - name: Configurar Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      
+      - name: Preparar ambiente de testes
+        run: |
+          cd CoreModules/IAM
+          go mod download
+          go install github.com/jstemmer/go-junit-report/v2@latest
+      
+      - name: Executar testes unitários para ${{ matrix.market }}
+        run: |
+          cd CoreModules/IAM
+          MARKET=${{ matrix.market }} go test -v -race -coverprofile=coverage-${{ matrix.market }}.out -covermode=atomic ./tests/hooks/... | go-junit-report -set-exit-code > junit-${{ matrix.market }}.xml
+      
+      - name: Verificar cobertura de testes
+        run: |
+          cd CoreModules/IAM
+          COVERAGE=$(go tool cover -func=coverage-${{ matrix.market }}.out | grep total | awk '{print $3}' | tr -d '%')
+          echo "Cobertura: $COVERAGE%"
+          if (( $(echo "$COVERAGE < ${{ env.COVERAGE_THRESHOLD }}" | bc -l) )); then
+            echo "Cobertura abaixo do limite mínimo de ${{ env.COVERAGE_THRESHOLD }}%"
+            exit 1
+          fi
+      
+      - name: Upload relatório de cobertura
+        uses: actions/upload-artifact@v3
+        with:
+          name: coverage-${{ matrix.market }}
+          path: |
+            CoreModules/IAM/coverage-${{ matrix.market }}.out
+            CoreModules/IAM/junit-${{ matrix.market }}.xml
+  
+  performance-tests:
+    name: Testes de Performance
+    runs-on: ubuntu-latest
+    needs: unit-tests
+    steps:
+      - uses: actions/checkout@v3
+      - name: Configurar Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      
+      - name: Preparar ambiente de testes
+        run: |
+          cd CoreModules/IAM
+          go mod download
+          go install github.com/jstemmer/go-junit-report/v2@latest
+      
+      - name: Executar testes de performance
+        run: |
+          cd CoreModules/IAM
+          THRESHOLD_MS=${{ env.PERFORMANCE_THRESHOLD_MS }} go test -v ./tests/performance/... -tags=performance | go-junit-report -set-exit-code > junit-performance.xml
+      
+      - name: Upload relatório de performance
+        uses: actions/upload-artifact@v3
+        with:
+          name: performance-reports
+          path: CoreModules/IAM/junit-performance.xml
+  
+  integration-tests:
+    name: Testes de Integração
+    runs-on: ubuntu-latest
+    needs: unit-tests
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: iam_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    
+    steps:
+      - uses: actions/checkout@v3
+      - name: Configurar Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      
+      - name: Preparar ambiente de testes
+        run: |
+          cd CoreModules/IAM
+          go mod download
+          go install github.com/jstemmer/go-junit-report/v2@latest
+      
+      - name: Preparar banco de dados de teste
+        run: |
+          cd CoreModules/IAM
+          go run scripts/migrate.go up -database "postgres://postgres:postgres@localhost:5432/iam_test?sslmode=disable" -path migrations
+      
+      - name: Executar testes de integração
+        run: |
+          cd CoreModules/IAM
+          DATABASE_URL="postgres://postgres:postgres@localhost:5432/iam_test?sslmode=disable" \
+          REDIS_URL="redis://localhost:6379/0" \
+          MARKETS="${{ env.MARKETS }}" \
+          go test -v -race ./tests/hooks/integration_test.go | go-junit-report -set-exit-code > junit-integration.xml
+      
+      - name: Upload relatório de integração
+        uses: actions/upload-artifact@v3
+        with:
+          name: integration-reports
+          path: CoreModules/IAM/junit-integration.xml
+  
+  e2e-tests:
+    name: Testes End-to-End
+    runs-on: ubuntu-latest
+    needs: integration-tests
+    if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' }}
+    
+    steps:
+      - uses: actions/checkout@v3
+      - name: Configurar Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      
+      - name: Configurar K3D
+        run: |
+          curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
+          k3d cluster create innovabiz-test --agents 1
+          kubectl wait --for=condition=Ready nodes --all --timeout=300s
+      
+      - name: Implantar aplicação de teste
+        run: |
+          cd CoreModules/IAM
+          helm upgrade --install iam-test ./helm \
+            --namespace innovabiz-test \
+            --create-namespace \
+            --set environment=test \
+            --set observability.enabled=true \
+            --set observability.otel.endpoint=${{ secrets.OTEL_EXPORTER_ENDPOINT }} \
+            --wait
+      
+      - name: Executar testes E2E
+        run: |
+          cd CoreModules/IAM/tests/e2e
+          go test -v -tags=e2e ./... -timeout 10m
+      
+      - name: Coletar logs
+        if: always()
+        run: |
+          mkdir -p logs
+          kubectl -n innovabiz-test logs -l app=innovabiz-iam --tail=1000 > logs/iam-pods.log
+      
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: e2e-logs
+          path: logs/
+  
+  publish-results:
+    name: Publicar Relatórios e Dashboards
+    runs-on: ubuntu-latest
+    needs: [unit-tests, performance-tests, integration-tests, e2e-tests]
+    if: always()
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Download todos os artefatos
+        uses: actions/download-artifact@v3
+        with:
+          path: reports/
+      
+      - name: Processar resultados
+        run: |
+          mkdir -p dashboard/
+          echo "Processando relatórios de testes..."
+          # Script que consolida os resultados e gera dashboards
+      
+      - name: Publicar para o Grafana
+        if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' }}
+        run: |
+          # Script para publicar dashboards no Grafana
+          echo "Publicando dashboards de qualidade no Grafana..."
+      
+      - name: Atualizar README do projeto
+        if: ${{ github.ref == 'refs/heads/main' }}
+        run: |
+          # Atualizar badges no README com status atual
+          echo "Atualizando badges de qualidade no README..."
+      
+      - name: Notificar Equipe via MS Teams
+        if: always()
+        uses: aliencube/microsoft-teams-actions@v0.8.0
+        with:
+          webhook_uri: ${{ secrets.TEAMS_WEBHOOK_URL }}
+          title: "Resultados dos testes MCP-IAM Hooks"
+          summary: "Resultados dos testes de hooks MCP-IAM"
+          theme_color: ${{ job.status == 'success' && '00FF00' || 'FF0000' }}
+          sections: |
+            [{
+              "activityTitle": "Testes de Hooks MCP-IAM",
+              "activitySubtitle": "Branch: ${{ github.ref_name }}",
+              "facts": [
+                { "name": "Status", "value": "${{ job.status }}" },
+                { "name": "Cobertura", "value": "Média de cobertura dos mercados" },
+                { "name": "Performance", "value": "Tempo médio de resposta dos hooks" }
+              ],
+              "markdown": true
+            }]

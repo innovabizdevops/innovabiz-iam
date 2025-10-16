@@ -1,0 +1,241 @@
+"""
+Definições de tipos GraphQL para o módulo TrustScore.
+
+Autor: Eduardo Jeremias
+Projeto: INNOVABIZ IAM/TrustGuard
+Data: 20/08/2025
+"""
+
+enum TrustDimension {
+  IDENTITY
+  BEHAVIORAL
+  FINANCIAL
+  CONTEXTUAL
+  REPUTATION
+}
+
+enum AnomalyType {
+  SCORE_DROP
+  IMPOSSIBLE_TRAVEL
+  UNUSUAL_LOCATION
+  DEVICE_CHANGE
+  UNUSUAL_BEHAVIOR
+  FINANCIAL_ANOMALY
+  IDENTITY_MISMATCH
+  UNUSUAL_TRANSACTION
+  CREDENTIAL_STUFFING
+  ACCOUNT_TAKEOVER_ATTEMPT
+}
+
+enum AnomalySeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum FactorType {
+  POSITIVE
+  NEGATIVE
+  NEUTRAL
+  REGIONAL
+  TEMPORAL
+}
+
+"""
+Modelo para detalhes de uma anomalia detectada
+"""
+type DetectedAnomaly {
+  anomalyId: ID!
+  type: AnomalyType!
+  description: String!
+  severity: AnomalySeverity!
+  confidence: Float!
+  affectedDimensions: [TrustDimension!]!
+  metadata: JSON
+  detectedAt: DateTime!
+}
+
+"""
+Modelo para um fator que influencia a pontuação de confiança
+"""
+type TrustScoreFactor {
+  factorId: ID!
+  dimension: TrustDimension!
+  name: String!
+  description: String!
+  type: FactorType!
+  weight: Float!
+  value: Float!
+  regionalContext: String
+  metadata: JSON
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+"""
+Resultado completo de uma avaliação de pontuação de confiança
+"""
+type TrustScoreResult {
+  userId: ID!
+  tenantId: ID!
+  contextId: ID
+  overallScore: Float!
+  dimensionScores: JSON!
+  regionalContext: String
+  confidenceLevel: Float!
+  evaluationTimeMs: Int!
+  timestamp: DateTime!
+  factors: [TrustScoreFactor!]
+  anomalies: [DetectedAnomaly!]
+  metadata: JSON
+}
+
+"""
+Item de histórico de pontuação de confiança para exibição compacta
+"""
+type TrustScoreHistoryItem {
+  score: Float!
+  dimensionScores: JSON!
+  confidenceLevel: Float!
+  regionCode: String
+  contextId: String
+  timestamp: DateTime!
+  anomalyCount: Int!
+}
+
+"""
+Perfil de confiança completo de um usuário
+"""
+type UserTrustProfile {
+  userId: ID!
+  tenantId: ID!
+  latestScore: Float!
+  trustScoreHistory: [TrustScoreHistoryItem!]!
+  historySummary: JSON!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+"""
+Linha do tempo de pontuações de confiança
+"""
+type TrustScoreTimeline {
+  userId: ID!
+  tenantId: ID!
+  latestScore: Float!
+  timeline: [TimelinePoint!]!
+  dimensions: JSON!
+  anomalies: [DetectedAnomaly!]
+  profileSummary: JSON!
+  generatedAt: DateTime!
+}
+
+"""
+Ponto na linha do tempo de pontuação
+"""
+type TimelinePoint {
+  date: String!
+  avgScore: Float!
+  minScore: Float
+  maxScore: Float
+  evaluations: Int!
+}
+
+"""
+Comparação regional de pontuação
+"""
+type RegionalComparison {
+  user: UserRegionalStats!
+  region: RegionStats!
+}
+
+"""
+Estatísticas regionais do usuário
+"""
+type UserRegionalStats {
+  id: ID!
+  avgScore: Float
+  evaluationCount: Int!
+  dimensions: JSON!
+  percentile: Float!
+}
+
+"""
+Estatísticas de uma região
+"""
+type RegionStats {
+  code: String!
+  avgScore: Float
+  medianScore: Float
+  userCount: Int!
+  evaluationCount: Int!
+  dimensions: JSON!
+}
+
+"""
+Estatísticas de anomalias com detalhes
+"""
+type AnomalyDetails {
+  userId: ID!
+  tenantId: ID!
+  period: TimePeriod!
+  anomalies: JSON!
+  statistics: JSON!
+  temporalPatterns: JSON!
+  totalAnomalies: Int!
+}
+
+"""
+Período de tempo para análise
+"""
+type TimePeriod {
+  start: String!
+  end: String!
+  days: Int!
+}
+
+"""
+Paginação padrão para resultados
+"""
+type PageInfo {
+  hasNextPage: Boolean!
+  hasPreviousPage: Boolean!
+  startCursor: String
+  endCursor: String
+}
+
+"""
+Lista paginada de resultados de pontuação
+"""
+type TrustScoreResultConnection {
+  edges: [TrustScoreResultEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+"""
+Edge para conexão paginada de resultados
+"""
+type TrustScoreResultEdge {
+  node: TrustScoreResult!
+  cursor: String!
+}
+
+"""
+Estatísticas agregadas por tenant
+"""
+type TenantStatistics {
+  tenantId: ID!
+  userCount: Int!
+  evaluationCount: Int!
+  averageScore: Float!
+  dimensionStats: JSON!
+  anomalyStats: JSON!
+  regionalDistribution: JSON
+  periodSummary: TimePeriod!
+}
+
+# Escalares customizados
+scalar DateTime
+scalar JSON

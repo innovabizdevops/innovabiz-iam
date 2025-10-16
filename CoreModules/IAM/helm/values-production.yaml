@@ -1,0 +1,389 @@
+# INNOVABIZ IAM WebAuthn - Production Environment Values
+# Configuração específica para ambiente de produção
+
+# ========================================
+# ENVIRONMENT CONFIGURATION
+# ========================================
+app:
+  environment: production
+
+# ========================================
+# IMAGE CONFIGURATION
+# ========================================
+image:
+  tag: "1.0.0"
+  pullPolicy: IfNotPresent
+
+# ========================================
+# DEPLOYMENT CONFIGURATION
+# ========================================
+replicaCount: 5
+
+deployment:
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 2
+
+# ========================================
+# INGRESS CONFIGURATION
+# ========================================
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/rate-limit: "200"
+    nginx.ingress.kubernetes.io/rate-limit-window: "1m"
+    nginx.ingress.kubernetes.io/proxy-body-size: "1m"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "5"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "10"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "10"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    
+  hosts:
+    - host: api.innovabiz.com
+      paths:
+        - path: /api/v1/webauthn
+          pathType: Prefix
+          
+  tls:
+    - secretName: webauthn-production-tls
+      hosts:
+        - api.innovabiz.com
+
+# ========================================
+# RESOURCE LIMITS (Production optimized)
+# ========================================
+resources:
+  limits:
+    cpu: 2000m
+    memory: 2Gi
+  requests:
+    cpu: 1000m
+    memory: 1Gi
+
+# ========================================
+# AUTOSCALING (Production ready)
+# ========================================
+autoscaling:
+  enabled: true
+  minReplicas: 5
+  maxReplicas: 20
+  targetCPUUtilizationPercentage: 60
+  targetMemoryUtilizationPercentage: 70
+  
+  customMetrics:
+    - type: Pods
+      pods:
+        metric:
+          name: webauthn_requests_per_second
+        target:
+          type: AverageValue
+          averageValue: "100"
+
+# ========================================
+# HEALTH CHECKS (Stricter for production)
+# ========================================
+healthChecks:
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: 3000
+    initialDelaySeconds: 60
+    periodSeconds: 30
+    timeoutSeconds: 10
+    failureThreshold: 3
+    
+  readinessProbe:
+    httpGet:
+      path: /ready
+      port: 3000
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+
+# ========================================
+# ENVIRONMENT VARIABLES
+# ========================================
+env:
+  NODE_ENV: production
+  LOG_LEVEL: info
+  WEBAUTHN_ORIGIN: "https://app.innovabiz.com"
+  RATE_LIMIT_MAX: "200"
+
+# ========================================
+# DATABASE CONFIGURATION (High availability)
+# ========================================
+postgresql:
+  enabled: true
+  auth:
+    postgresPassword: "production-postgres-password"
+    database: "webauthn_production"
+  primary:
+    persistence:
+      enabled: true
+      size: 100Gi
+      storageClass: "gp3"
+    resources:
+      limits:
+        cpu: 4000m
+        memory: 8Gi
+      requests:
+        cpu: 2000m
+        memory: 4Gi
+  readReplicas:
+    replicaCount: 2
+    persistence:
+      enabled: true
+      size: 100Gi
+      storageClass: "gp3"
+  metrics:
+    enabled: true
+  backup:
+    enabled: true
+    schedule: "0 2 * * *"
+    retention: "30d"
+
+# ========================================
+# REDIS CONFIGURATION (High availability)
+# ========================================
+redis:
+  enabled: true
+  architecture: replication
+  auth:
+    enabled: true
+    password: "production-redis-password"
+  master:
+    persistence:
+      enabled: true
+      size: 10Gi
+      storageClass: "gp3"
+    resources:
+      limits:
+        cpu: 1000m
+        memory: 2Gi
+      requests:
+        cpu: 500m
+        memory: 1Gi
+  replica:
+    replicaCount: 2
+    persistence:
+      enabled: true
+      size: 10Gi
+      storageClass: "gp3"
+  metrics:
+    enabled: true
+  sentinel:
+    enabled: true
+
+# ========================================
+# KAFKA CONFIGURATION (High availability)
+# ========================================
+kafka:
+  enabled: true
+  replicaCount: 3
+  auth:
+    clientProtocol: sasl
+    interBrokerProtocol: sasl
+  persistence:
+    enabled: true
+    size: 50Gi
+    storageClass: "gp3"
+  resources:
+    limits:
+      cpu: 2000m
+      memory: 4Gi
+    requests:
+      cpu: 1000m
+      memory: 2Gi
+  metrics:
+    kafka:
+      enabled: true
+    jmx:
+      enabled: true
+  zookeeper:
+    replicaCount: 3
+    persistence:
+      enabled: true
+      size: 10Gi
+      storageClass: "gp3"
+
+# ========================================
+# MONITORING (Production grade)
+# ========================================
+monitoring:
+  serviceMonitor:
+    enabled: true
+    interval: 30s
+    scrapeTimeout: 10s
+    labels:
+      environment: production
+      tier: critical
+      
+  prometheusRule:
+    enabled: true
+    labels:
+      environment: production
+      tier: critical
+    rules:
+      - alert: WebAuthnProductionDown
+        expr: up{job="webauthn-production"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          environment: production
+        annotations:
+          summary: "WebAuthn production service is down"
+          description: "WebAuthn service has been down for more than 1 minute"
+          
+      - alert: WebAuthnProductionHighErrorRate
+        expr: rate(webauthn_errors_total{environment="production"}[5m]) > 0.01
+        for: 5m
+        labels:
+          severity: critical
+          environment: production
+        annotations:
+          summary: "High error rate in WebAuthn production service"
+          description: "Error rate is {{ $value }} errors per second"
+          
+      - alert: WebAuthnProductionHighLatency
+        expr: histogram_quantile(0.95, rate(webauthn_request_duration_seconds_bucket{environment="production"}[5m])) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          environment: production
+        annotations:
+          summary: "High latency in WebAuthn production service"
+          description: "95th percentile latency is {{ $value }} seconds"
+          
+      - alert: WebAuthnProductionHighMemoryUsage
+        expr: container_memory_usage_bytes{pod=~"webauthn-.*"} / container_spec_memory_limit_bytes > 0.8
+        for: 10m
+        labels:
+          severity: warning
+          environment: production
+        annotations:
+          summary: "High memory usage in WebAuthn production"
+          description: "Memory usage is above 80%"
+
+# ========================================
+# POD DISRUPTION BUDGET (Strict for production)
+# ========================================
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 3
+
+# ========================================
+# NETWORK POLICIES (Strict security)
+# ========================================
+networkPolicy:
+  enabled: true
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 3000
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: monitoring
+      ports:
+        - protocol: TCP
+          port: 3000
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: database
+      ports:
+        - protocol: TCP
+          port: 5432
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: cache
+      ports:
+        - protocol: TCP
+          port: 6379
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: messaging
+      ports:
+        - protocol: TCP
+          port: 9092
+    - to: []
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 53
+        - protocol: UDP
+          port: 53
+
+# ========================================
+# NODE SELECTOR (Production nodes only)
+# ========================================
+nodeSelector:
+  environment: production
+  node-type: application
+  instance-type: c5.2xlarge
+
+# ========================================
+# TOLERATIONS
+# ========================================
+tolerations:
+  - key: "environment"
+    operator: "Equal"
+    value: "production"
+    effect: "NoSchedule"
+  - key: "tier"
+    operator: "Equal"
+    value: "critical"
+    effect: "NoSchedule"
+
+# ========================================
+# AFFINITY (Production optimized)
+# ========================================
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: environment
+              operator: In
+              values:
+                - production
+            - key: node-type
+              operator: In
+              values:
+                - application
+  podAntiAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
+          matchExpressions:
+            - key: app.kubernetes.io/name
+              operator: In
+              values:
+                - webauthn
+        topologyKey: kubernetes.io/hostname
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - webauthn
+          topologyKey: topology.kubernetes.io/zone

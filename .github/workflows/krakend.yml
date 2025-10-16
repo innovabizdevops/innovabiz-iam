@@ -1,0 +1,61 @@
+name: KrakenD Integration
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  krakend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Go
+        uses: actions/setup-go@v3
+        with:
+          go-version: '1.17'
+
+      - name: Cache Go modules
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/go/pkg/mod
+            /tmp/go-build
+          key: ${{ runner.os }}-go-${{ hashFiles('**.go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Install KrakenD
+        run: |
+          curl -sL https://raw.githubusercontent.com/devopsfaith/krakend/master/install.sh | sh
+
+      - name: Configure KrakenD
+        run: |
+          docker-compose -f docker-compose.yml exec krakend /bin/configure-krakend.sh
+
+      - name: Validate Configuration
+        run: |
+          docker-compose -f docker-compose.yml exec krakend krakend config check -c /etc/krakend/krakend.json
+          docker-compose -f docker-compose.yml exec krakend krakend config validate -c /etc/krakend/krakend.json
+
+      - name: Test Integration
+        run: |
+          docker-compose -f docker-compose.yml exec krakend-integration-handler /bin/test-integration.sh
+
+      - name: Test MCP Integration
+        run: |
+          docker-compose -f docker-compose.yml exec krakend-integration-handler /bin/test-mcp.sh
+
+      - name: Test GraphQL
+        run: |
+          docker-compose -f docker-compose.yml exec graphql-federation /bin/test-graphql.sh
+
+      - name: Validate Security
+        run: |
+          docker-compose -f docker-compose.yml exec krakend /bin/validate-security.sh
+
+      - name: Validate IAM Integration
+        run: |
+          docker-compose -f docker-compose.yml exec krakend-integration-handler /bin/validate-iam.sh

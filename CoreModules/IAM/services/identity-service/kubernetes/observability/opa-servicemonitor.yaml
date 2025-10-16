@@ -1,0 +1,45 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: opa-metrics
+  namespace: innovabiz-monitoring
+  labels:
+    app: opa
+    innovabiz.com/component: iam
+    innovabiz.com/module: opa
+    release: prometheus-operator
+spec:
+  namespaceSelector:
+    matchNames:
+      - innovabiz-iam
+  selector:
+    matchLabels:
+      app: opa
+      innovabiz.com/component: iam
+  endpoints:
+  - port: metrics
+    path: /metrics
+    interval: 15s
+    scrapeTimeout: 10s
+    metricRelabelings:
+    - sourceLabels: [__name__]
+      regex: 'go_.*|process_.*'
+      action: drop
+  - port: metrics
+    path: /plugins/prometheus/metrics
+    interval: 15s
+    scrapeTimeout: 10s
+    honorLabels: true
+    relabelings:
+    - sourceLabels: [__meta_kubernetes_pod_label_innovabiz_com_tenant]
+      targetLabel: tenant
+      action: replace
+    - sourceLabels: [__meta_kubernetes_pod_label_innovabiz_com_environment]
+      targetLabel: environment
+      action: replace
+    - sourceLabels: [__meta_kubernetes_pod_label_innovabiz_com_region]
+      targetLabel: region
+      action: replace
+    - sourceLabels: [__meta_kubernetes_pod_label_innovabiz_com_compliance_zone]
+      targetLabel: compliance_zone
+      action: replace

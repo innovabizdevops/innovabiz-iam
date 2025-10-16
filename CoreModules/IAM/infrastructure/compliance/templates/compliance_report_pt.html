@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Relatório de Compliance IAM - INNOVABIZ</title>
+    <style>
+        :root {
+            --primary-color: #2c3e50;
+            --secondary-color: #3498db;
+            --accent-color: #e74c3c;
+            --light-color: #ecf0f1;
+            --dark-color: #2c3e50;
+            --success-color: #2ecc71;
+            --warning-color: #f39c12;
+            --danger-color: #e74c3c;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            margin: 0;
+            padding: 0;
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: white;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        
+        .header {
+            background-color: var(--primary-color);
+            color: white;
+            padding: 20px;
+            margin-bottom: 30px;
+            position: relative;
+        }
+        
+        .header h1 {
+            margin: 0;
+            font-size: 28px;
+        }
+        
+        .header .metadata {
+            margin-top: 10px;
+            font-size: 14px;
+            opacity: 0.9;
+        }
+        
+        .header .logo {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            height: 60px;
+        }
+        
+        .summary-box {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 30px;
+        }
+        
+        .summary-card {
+            flex: 1;
+            background-color: white;
+            padding: 15px;
+            border-radius: 4px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            margin: 0 10px;
+            text-align: center;
+        }
+        
+        .summary-card h3 {
+            margin-top: 0;
+            font-size: 16px;
+            color: var(--primary-color);
+        }
+        
+        .summary-card .value {
+            font-size: 24px;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        
+        .compliance-score {
+            font-size: 42px;
+            font-weight: bold;
+            text-align: center;
+            margin: 20px 0;
+        }
+        
+        .high-compliance {
+            color: var(--success-color);
+        }
+        
+        .moderate-compliance {
+            color: var(--warning-color);
+        }
+        
+        .low-compliance {
+            color: var(--danger-color);
+        }
+        
+        .section {
+            margin-bottom: 30px;
+        }
+        
+        .section h2 {
+            color: var(--primary-color);
+            border-bottom: 2px solid var(--secondary-color);
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .section h3 {
+            color: var(--primary-color);
+            margin-top: 25px;
+            margin-bottom: 15px;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+        }
+        
+        table th, table td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        
+        table th {
+            background-color: var(--primary-color);
+            color: white;
+            font-weight: 600;
+        }
+        
+        table tr:nth-child(even) {
+            background-color: #f8f8f8;
+        }
+        
+        .issue-card {
+            margin-bottom: 20px;
+            border-left: 4px solid var(--danger-color);
+            background-color: white;
+            padding: 15px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+        
+        .partial-card {
+            border-left-color: var(--warning-color);
+        }
+        
+        .compliant-card {
+            border-left-color: var(--success-color);
+        }
+        
+        .issue-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+        
+        .issue-id {
+            font-weight: bold;
+            color: var(--primary-color);
+        }
+        
+        .issue-severity {
+            padding: 3px 8px;
+            border-radius: 3px;
+            font-size: 12px;
+            font-weight: bold;
+            color: white;
+        }
+        
+        .severity-high {
+            background-color: var(--danger-color);
+        }
+        
+        .severity-medium {
+            background-color: var(--warning-color);
+        }
+        
+        .severity-low {
+            background-color: var(--secondary-color);
+        }
+        
+        .issue-description {
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+        
+        .issue-details {
+            font-size: 14px;
+            color: #555;
+            margin-bottom: 10px;
+        }
+        
+        .remediation {
+            background-color: #f8f8f8;
+            padding: 10px;
+            border-left: 3px solid var(--secondary-color);
+            font-size: 14px;
+        }
+        
+        .remediation h4 {
+            margin-top: 0;
+            margin-bottom: 5px;
+            color: var(--secondary-color);
+        }
+        
+        .chart-container {
+            display: flex;
+            justify-content: space-around;
+            flex-wrap: wrap;
+            margin: 20px 0;
+        }
+        
+        .chart {
+            width: 45%;
+            min-width: 300px;
+            background-color: white;
+            padding: 15px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+        
+        .footer {
+            margin-top: 50px;
+            padding-top: 20px;
+            border-top: 1px solid #ddd;
+            font-size: 12px;
+            color: #777;
+            text-align: center;
+        }
+        
+        @media print {
+            body {
+                background-color: white;
+            }
+            
+            .container {
+                box-shadow: none;
+                max-width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Relatório de Compliance IAM</h1>
+            <div class="metadata">
+                <div>ID do Relatório: {{ report.report_id }}</div>
+                <div>Tenant ID: {{ report.tenant_id }}</div>
+                <div>Data: {{ now.strftime('%d/%m/%Y %H:%M:%S') }}</div>
+            </div>
+            <!-- Logo placeholder -->
+            <img class="logo" src="data:image/png;base64,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" alt="INNOVABIZ">
+        </div>
+
+        <div class="section">
+            <div class="compliance-score {{ report.overall_compliance.status }}">
+                {{ report.overall_compliance.score }}%
+                {% if report.overall_compliance.status == 'high_compliance' %}
+                    <div style="font-size: 16px;">Conformidade Alta</div>
+                {% elif report.overall_compliance.status == 'moderate_compliance' %}
+                    <div style="font-size: 16px;">Conformidade Moderada</div>
+                {% else %}
+                    <div style="font-size: 16px;">Conformidade Baixa</div>
+                {% endif %}
+            </div>
+
+            <div class="summary-box">
+                <div class="summary-card">
+                    <h3>Requisitos Totais</h3>
+                    <div class="value">{{ report.overall_compliance.summary.total_requirements }}</div>
+                </div>
+                <div class="summary-card">
+                    <h3>Conformes</h3>
+                    <div class="value" style="color: var(--success-color);">{{ report.overall_compliance.summary.compliant }}</div>
+                </div>
+                <div class="summary-card">
+                    <h3>Parcialmente Conformes</h3>
+                    <div class="value" style="color: var(--warning-color);">{{ report.overall_compliance.summary.partially_compliant }}</div>
+                </div>
+                <div class="summary-card">
+                    <h3>Não Conformes</h3>
+                    <div class="value" style="color: var(--danger-color);">{{ report.overall_compliance.summary.non_compliant }}</div>
+                </div>
+                <div class="summary-card">
+                    <h3>Problemas Críticos</h3>
+                    <div class="value" style="color: var(--danger-color);">{{ report.overall_compliance.summary.critical_issues }}</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Conformidade por Região</h2>
+            
+            <table>
+                <thead>
+                    <tr>
+                        <th>Região</th>
+                        <th>Score</th>
+                        <th>Total</th>
+                        <th>Conformes</th>
+                        <th>Parciais</th>
+                        <th>Não Conformes</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for region_code, region_data in report.regions.items() %}
+                    <tr>
+                        <td>{{ region_code|upper }}</td>
+                        <td><strong>{{ region_data.overall_score }}%</strong></td>
+                        <td>{{ region_data.total_requirements }}</td>
+                        <td>{{ region_data.compliant }}</td>
+                        <td>{{ region_data.partially_compliant }}</td>
+                        <td>{{ region_data.non_compliant }}</td>
+                        <td>
+                            {% if region_data.status == 'high_compliance' %}
+                                <span style="color: var(--success-color);">Alta</span>
+                            {% elif region_data.status == 'moderate_compliance' %}
+                                <span style="color: var(--warning-color);">Moderada</span>
+                            {% else %}
+                                <span style="color: var(--danger-color);">Baixa</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="section">
+            <h2>Conformidade por Framework</h2>
+            
+            <table>
+                <thead>
+                    <tr>
+                        <th>Framework</th>
+                        <th>Score</th>
+                        <th>Total</th>
+                        <th>Conformes</th>
+                        <th>Parciais</th>
+                        <th>Não Conformes</th>
+                        <th>Regiões</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for framework_key, framework_data in report.frameworks.items() %}
+                    <tr>
+                        <td>{{ framework_key|upper }}</td>
+                        <td><strong>{{ framework_data.score }}%</strong></td>
+                        <td>{{ framework_data.total_requirements }}</td>
+                        <td>{{ framework_data.compliant }}</td>
+                        <td>{{ framework_data.partially_compliant }}</td>
+                        <td>{{ framework_data.non_compliant }}</td>
+                        <td>{{ ", ".join(framework_data.regions) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% if report.issues %}
+        <div class="section">
+            <h2>Problemas Identificados</h2>
+            
+            {% for issue in report.issues %}
+            <div class="issue-card">
+                <div class="issue-header">
+                    <div class="issue-id">{{ issue.requirement_id }} ({{ issue.framework|upper }}, {{ issue.region|upper }})</div>
+                    <div class="issue-severity severity-{{ issue.severity }}">{{ issue.severity|upper }}</div>
+                </div>
+                <div class="issue-description">{{ issue.description }}</div>
+                {% if issue.details %}
+                <div class="issue-details">{{ issue.details }}</div>
+                {% endif %}
+                {% if issue.remediation %}
+                <div class="remediation">
+                    <h4>Recomendação:</h4>
+                    {{ issue.remediation }}
+                </div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if report.strengths %}
+        <div class="section">
+            <h2>Pontos Fortes</h2>
+            
+            {% for strength in report.strengths %}
+            <div class="issue-card compliant-card">
+                <div class="issue-header">
+                    <div class="issue-id">{{ strength.requirement_id }} ({{ strength.framework|upper }}, {{ strength.region|upper }})</div>
+                    <div class="issue-severity" style="background-color: var(--success-color);">CONFORME</div>
+                </div>
+                <div class="issue-description">{{ strength.description }}</div>
+                {% if strength.details %}
+                <div class="issue-details">{{ strength.details }}</div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <div class="footer">
+            <p>Este relatório foi gerado automaticamente pelo sistema de Validação de Compliance do INNOVABIZ IAM em {{ now.strftime('%d/%m/%Y %H:%M:%S') }}.</p>
+            <p>© 2025 INNOVABIZ. Todos os direitos reservados.</p>
+        </div>
+    </div>
+</body>
+</html>

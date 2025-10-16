@@ -1,0 +1,61 @@
+{
+  "id": "ao-pd-test-consent-01",
+  "name": "Verificação de Consentimento Explícito para Tratamento de Dados",
+  "description": "Testa se as políticas OPA exigem consentimento explícito do utilizador antes de permitir acesso aos seus dados pessoais",
+  "requirementIds": ["ao-pd-consentimento"],
+  "policyPath": "innovabiz/iam/authz/data_access",
+  "input": {
+    "user": {
+      "id": "user123",
+      "tenant_id": "tenant_ao_001",
+      "roles": ["customer"]
+    },
+    "resource": {
+      "type": "personal_data",
+      "id": "pd123",
+      "owner_id": "user123",
+      "data_categories": ["identificacao", "contacto", "financeiro"]
+    },
+    "action": "read",
+    "context": {
+      "consent_status": {
+        "identificacao": {
+          "granted": true,
+          "timestamp": "2025-08-01T10:00:00Z",
+          "expiry": "2026-08-01T10:00:00Z",
+          "purpose": ["identidade", "kyt"]
+        },
+        "contacto": {
+          "granted": true,
+          "timestamp": "2025-08-01T10:00:00Z",
+          "expiry": "2026-08-01T10:00:00Z",
+          "purpose": ["comunicacao"]
+        },
+        "financeiro": {
+          "granted": false,
+          "timestamp": "2025-08-01T10:00:00Z",
+          "expiry": null,
+          "purpose": []
+        }
+      }
+    }
+  },
+  "expectedDecision": {
+    "allow": false,
+    "reason": "consent_missing",
+    "missing_consent": ["financeiro"],
+    "violations": [
+      {
+        "code": "AO-PD-001",
+        "description": "Acesso a dados financeiros negado por falta de consentimento",
+        "reference": "Lei n.º 22/11, Artigo 12º"
+      }
+    ]
+  },
+  "tags": ["protecao_dados", "consentimento", "angola", "lei-22-11"],
+  "context": {
+    "compliance_region": "AO",
+    "data_sensitivity": "alta",
+    "regulatory_framework": "lei-22-11"
+  }
+}

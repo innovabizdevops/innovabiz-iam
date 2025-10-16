@@ -1,0 +1,302 @@
+"""
+Schema GraphQL para integração de Mobile Money com IAM
+Suporte para múltiplos provedores de Mobile Money nos mercados PALOP, SADC e CPLP
+Conformidade com regulamentos financeiros e bancários das regiões suportadas
+"""
+
+scalar DateTime
+scalar JSON
+scalar Upload
+
+"""
+Enum representando os provedores de serviços Mobile Money suportados
+"""
+enum MobileMoneyProvider {
+  MPESA
+  UNITEL
+  ECOCASH
+  AIRTEL
+  ORANGE
+  MTN
+}
+
+"""
+Enum representando os tipos de transações Mobile Money
+"""
+enum MobileMoneyTransactionType {
+  DEPOSIT
+  WITHDRAWAL
+  PAYMENT
+  TRANSFER
+}
+
+"""
+Enum representando o status das transações Mobile Money
+"""
+enum MobileMoneyTransactionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  CANCELLED
+  REFUNDED
+}
+
+"""
+Enum representando níveis de KYC conforme regulações
+"""
+enum KYCLevel {
+  BASIC
+  INTERMEDIATE
+  FULL
+  ENHANCED
+}
+
+"""
+Dados específicos de compliance para transações financeiras
+"""
+type ComplianceData {
+  consentId: ID
+  authorizationId: ID
+  purposeCode: String!
+  consentDate: DateTime
+  kycLevel: KYCLevel!
+  regulatoryId: String
+  requiredDocuments: [String!]
+  verificationStatus: String
+  verifiedAt: DateTime
+  complianceOfficer: String
+  riskCategory: String
+}
+
+"""
+Input para dados de compliance em transações
+"""
+input ComplianceDataInput {
+  consentId: ID
+  authorizationId: ID
+  purposeCode: String
+  consentDate: DateTime
+  kycLevel: KYCLevel!
+  regulatoryId: String
+}
+
+"""
+Tipo representando uma transação Mobile Money
+"""
+type MobileMoneyTransaction {
+  id: ID!
+  provider: MobileMoneyProvider!
+  type: MobileMoneyTransactionType!
+  amount: Float!
+  currency: String!
+  phoneNumber: String!
+  referenceId: String!
+  userId: ID!
+  description: String
+  status: MobileMoneyTransactionStatus!
+  statusCode: Int!
+  message: String
+  providerRef: String
+  otpRequired: Boolean!
+  otpReference: String
+  redirectUrl: String
+  fee: Float
+  processedAt: DateTime!
+  completedAt: DateTime
+  riskScore: Float
+  riskAssessment: JSON
+  tenantId: ID!
+  metadata: JSON
+  complianceData: ComplianceData
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+"""
+Input para iniciar uma transação Mobile Money
+"""
+input InitiateTransactionInput {
+  provider: MobileMoneyProvider!
+  type: MobileMoneyTransactionType!
+  amount: Float!
+  currency: String!
+  phoneNumber: String!
+  referenceId: String!
+  userId: ID!
+  description: String
+  callbackUrl: String
+  tenantId: ID
+  metadata: JSON
+  requireOtp: Boolean
+  regionCode: String!
+  complianceData: ComplianceDataInput
+}
+
+"""
+Input para verificar OTP de uma transação
+"""
+input VerifyOTPInput {
+  transactionId: ID!
+  otp: String!
+  tenantId: ID
+}
+
+"""
+Resposta para operações de transação Mobile Money
+"""
+type MobileMoneyTransactionResponse {
+  transaction: MobileMoneyTransaction!
+  success: Boolean!
+  message: String
+  errors: [String!]
+}
+
+"""
+Resposta para consulta de histórico de transações
+"""
+type TransactionHistoryResponse {
+  transactions: [MobileMoneyTransaction!]!
+  totalCount: Int!
+  pageInfo: PageInfo!
+}
+
+"""
+Informações de paginação para consultas
+"""
+type PageInfo {
+  hasNextPage: Boolean!
+  hasPreviousPage: Boolean!
+  startCursor: String
+  endCursor: String
+}
+
+"""
+Resposta para verificação de elegibilidade de usuário
+"""
+type MobileMoneyEligibilityResponse {
+  eligible: Boolean!
+  services: [String!]!
+  limits: JSON
+  restrictions: [String!]
+  kycRequired: Boolean!
+  requiresUpgrade: Boolean!
+  message: String
+  regionRequirements: JSON
+}
+
+"""
+Input para verificação de elegibilidade de usuário
+"""
+input CheckEligibilityInput {
+  userId: ID!
+  provider: MobileMoneyProvider!
+  regionCode: String!
+  tenantId: ID
+  transactionType: MobileMoneyTransactionType
+}
+
+"""
+Input para filtros de histórico de transações
+"""
+input TransactionHistoryFilterInput {
+  userId: ID
+  provider: MobileMoneyProvider
+  status: MobileMoneyTransactionStatus
+  type: MobileMoneyTransactionType
+  dateFrom: DateTime
+  dateTo: DateTime
+  minAmount: Float
+  maxAmount: Float
+  currency: String
+  regionCode: String
+  tenantId: ID
+}
+
+"""
+Input para paginação de consultas
+"""
+input PaginationInput {
+  first: Int
+  after: String
+  last: Int
+  before: String
+}
+
+extend type Query {
+  """
+  Consulta status de uma transação Mobile Money específica
+  """
+  mobileMoneyTransaction(id: ID!, tenantId: ID): MobileMoneyTransaction!
+  
+  """
+  Consulta histórico de transações Mobile Money com filtros e paginação
+  """
+  mobileMoneyTransactionHistory(
+    filters: TransactionHistoryFilterInput!
+    pagination: PaginationInput
+  ): TransactionHistoryResponse!
+  
+  """
+  Verifica elegibilidade de um usuário para serviços Mobile Money
+  """
+  checkMobileMoneyEligibility(
+    input: CheckEligibilityInput!
+  ): MobileMoneyEligibilityResponse!
+  
+  """
+  Consulta limites de transação por provedor e região
+  """
+  mobileMoneyTransactionLimits(
+    provider: MobileMoneyProvider!
+    regionCode: String!
+    kycLevel: KYCLevel
+    tenantId: ID
+  ): JSON!
+}
+
+extend type Mutation {
+  """
+  Inicia uma transação Mobile Money
+  """
+  initiateMobileMoneyTransaction(
+    input: InitiateTransactionInput!
+  ): MobileMoneyTransactionResponse!
+  
+  """
+  Verifica OTP para uma transação Mobile Money
+  """
+  verifyMobileMoneyOTP(
+    input: VerifyOTPInput!
+  ): MobileMoneyTransactionResponse!
+  
+  """
+  Cancela uma transação Mobile Money pendente
+  """
+  cancelMobileMoneyTransaction(
+    transactionId: ID!
+    reason: String!
+    tenantId: ID
+  ): MobileMoneyTransactionResponse!
+  
+  """
+  Registra consentimento para operações Mobile Money (compliance)
+  """
+  registerMobileMoneyConsent(
+    userId: ID!
+    purpose: String!
+    scope: [String!]!
+    expiresAt: DateTime
+    consentText: String!
+    tenantId: ID
+  ): ID!
+}
+
+extend type Subscription {
+  """
+  Subscrição para atualizações de status de transações Mobile Money
+  """
+  mobileMoneyTransactionStatusChanged(
+    transactionId: ID!
+    tenantId: ID
+  ): MobileMoneyTransaction!
+}

@@ -1,0 +1,437 @@
+---
+# INNOVABIZ IAM Audit Service - Prometheus Deployment
+# Versão: 1.0.0
+# Ano: 2025
+# Ambiente: Multi-plataforma, Multi-dimensional e Multi-Contexto
+# Alinhado com: ISO 20000, ITIL v4, NIST SP 800-53, ISO 27001
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/part-of: innovabiz-observability
+    app.kubernetes.io/component: metrics
+    innovabiz.com/module: iam-audit
+    innovabiz.com/tier: observability
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+      external_labels:
+        environment: "${ENVIRONMENT}"
+        region: "${REGION}"
+        deployment: "${DEPLOYMENT_NAME}"
+
+    # Alertmanager configuration
+    alerting:
+      alertmanagers:
+        - static_configs:
+            - targets:
+              - alertmanager:9093
+
+    # Load rules once and periodically evaluate them
+    rule_files:
+      - /etc/prometheus/rules/*.yml
+
+    # Scrape configurations
+    scrape_configs:
+      # IAM Audit Service
+      - job_name: 'iam-audit-service'
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - iam-system
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
+            action: keep
+            regex: iam-audit-service
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            regex: ([^:]+)(?::\d+)?;(\d+)
+            replacement: $1:$2
+            target_label: __address__
+          - action: labelmap
+            regex: __meta_kubernetes_pod_label_(.+)
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: kubernetes_namespace
+          - source_labels: [__meta_kubernetes_pod_name]
+            action: replace
+            target_label: kubernetes_pod_name
+        metric_relabel_configs:
+          - source_labels: [__name__]
+            regex: 'go_.*|process_.*'
+            action: drop
+
+      # OpenTelemetry Collector
+      - job_name: 'otel-collector'
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - iam-system
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
+            action: keep
+            regex: otel-collector
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            regex: ([^:]+)(?::\d+)?;(\d+)
+            replacement: $1:$2
+            target_label: __address__
+          - action: labelmap
+            regex: __meta_kubernetes_pod_label_(.+)
+
+      # Kubernetes nodes
+      - job_name: 'kubernetes-nodes'
+        scheme: https
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        kubernetes_sd_configs:
+          - role: node
+        relabel_configs:
+          - action: labelmap
+            regex: __meta_kubernetes_node_label_(.+)
+
+      # Kubernetes service endpoints
+      - job_name: 'kubernetes-service-endpoints'
+        kubernetes_sd_configs:
+          - role: endpoints
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scheme]
+            action: replace
+            target_label: __scheme__
+            regex: (https?)
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          - source_labels: [__address__, __meta_kubernetes_service_annotation_prometheus_io_port]
+            action: replace
+            regex: ([^:]+)(?::\d+)?;(\d+)
+            replacement: $1:$2
+            target_label: __address__
+          - action: labelmap
+            regex: __meta_kubernetes_service_label_(.+)
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: kubernetes_namespace
+          - source_labels: [__meta_kubernetes_service_name]
+            action: replace
+            target_label: kubernetes_name
+            
+  recording_rules.yml: |
+    groups:
+    - name: iam_audit_service_recording_rules
+      rules:
+      # Aggregated error rates
+      - record: innovabiz:iam_audit:error_rate:5m
+        expr: sum(rate(http_requests_total{job="iam-audit-service", status_code=~"5.."}[5m])) / sum(rate(http_requests_total{job="iam-audit-service"}[5m]))
+        
+      # Aggregated success rates per tenant
+      - record: innovabiz:iam_audit:success_rate:tenant:5m
+        expr: sum by (tenant) (rate(http_requests_total{job="iam-audit-service", status_code=~"2.."}[5m])) / sum by (tenant) (rate(http_requests_total{job="iam-audit-service"}[5m]))
+        
+      # P95 latency across all endpoints
+      - record: innovabiz:iam_audit:latency:p95:5m
+        expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{job="iam-audit-service"}[5m])) by (le))
+        
+      # P95 latency per endpoint
+      - record: innovabiz:iam_audit:latency:path:p95:5m
+        expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{job="iam-audit-service"}[5m])) by (le, path))
+        
+      # Audit events per type
+      - record: innovabiz:iam_audit:events:type:rate:5m
+        expr: sum by (event_type) (rate(audit_events_total{job="iam-audit-service"}[5m]))
+        
+      # Audit events error rate
+      - record: innovabiz:iam_audit:events:error_rate:5m
+        expr: sum(rate(audit_events_errors_total{job="iam-audit-service"}[5m])) / sum(rate(audit_events_total{job="iam-audit-service"}[5m]))
+        
+      # P95 audit event processing duration
+      - record: innovabiz:iam_audit:event_duration:p95:5m
+        expr: histogram_quantile(0.95, sum(rate(audit_events_duration_seconds_bucket{job="iam-audit-service"}[5m])) by (le, event_type))
+        
+      # Compliance check failure ratio
+      - record: innovabiz:iam_audit:compliance:failure_ratio:5m
+        expr: sum(rate(compliance_checks_failed_total{job="iam-audit-service"}[5m])) / sum(rate(compliance_checks_total{job="iam-audit-service"}[5m]))
+        
+      # Retention policy execution rate
+      - record: innovabiz:iam_audit:retention:execution_rate:1h
+        expr: sum(increase(retention_policy_executions_total{job="iam-audit-service"}[1h])) by (tenant, policy)
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/part-of: innovabiz-observability
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: prometheus-iam
+  labels:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/part-of: innovabiz-observability
+rules:
+- apiGroups: [""]
+  resources:
+  - nodes
+  - nodes/proxy
+  - services
+  - endpoints
+  - pods
+  verbs: ["get", "list", "watch"]
+- apiGroups:
+  - extensions
+  resources:
+  - ingresses
+  verbs: ["get", "list", "watch"]
+- nonResourceURLs: ["/metrics"]
+  verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: prometheus-iam
+  labels:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/part-of: innovabiz-observability
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: prometheus-iam
+subjects:
+- kind: ServiceAccount
+  name: prometheus
+  namespace: iam-system
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/part-of: innovabiz-observability
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9090"
+spec:
+  type: ClusterIP
+  ports:
+  - name: web
+    port: 9090
+    targetPort: web
+  selector:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/part-of: innovabiz-observability
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: prometheus
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/part-of: innovabiz-observability
+    app.kubernetes.io/component: metrics
+    innovabiz.com/module: iam-audit
+    innovabiz.com/tier: observability
+spec:
+  serviceName: prometheus
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: prometheus
+      app.kubernetes.io/part-of: innovabiz-observability
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: prometheus
+        app.kubernetes.io/part-of: innovabiz-observability
+        app.kubernetes.io/component: metrics
+        innovabiz.com/module: iam-audit
+        innovabiz.com/tier: observability
+      annotations:
+        checksum/config: "${CONFIG_HASH}"
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+    spec:
+      serviceAccountName: prometheus
+      securityContext:
+        fsGroup: 65534
+        runAsGroup: 65534
+        runAsNonRoot: true
+        runAsUser: 65534
+      terminationGracePeriodSeconds: 600
+      containers:
+      - name: prometheus
+        image: prom/prometheus:v2.48.0
+        imagePullPolicy: IfNotPresent
+        args:
+        - --config.file=/etc/prometheus/prometheus.yml
+        - --storage.tsdb.path=/prometheus
+        - --storage.tsdb.retention.time=15d
+        - --web.console.libraries=/etc/prometheus/console_libraries
+        - --web.console.templates=/etc/prometheus/consoles
+        - --web.enable-lifecycle
+        - --web.enable-admin-api
+        - --web.external-url=https://${PROMETHEUS_HOST}
+        ports:
+        - name: web
+          containerPort: 9090
+        env:
+        - name: ENVIRONMENT
+          valueFrom:
+            configMapKeyRef:
+              name: iam-env-config
+              key: ENVIRONMENT
+        - name: REGION
+          valueFrom:
+            configMapKeyRef:
+              name: iam-env-config
+              key: REGION
+        - name: DEPLOYMENT_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: iam-env-config
+              key: DEPLOYMENT_NAME
+        livenessProbe:
+          httpGet:
+            path: /-/healthy
+            port: web
+          initialDelaySeconds: 30
+          timeoutSeconds: 30
+          periodSeconds: 15
+        readinessProbe:
+          httpGet:
+            path: /-/ready
+            port: web
+          initialDelaySeconds: 30
+          timeoutSeconds: 30
+          periodSeconds: 15
+        resources:
+          limits:
+            cpu: 1000m
+            memory: 2Gi
+          requests:
+            cpu: 200m
+            memory: 512Mi
+        volumeMounts:
+        - name: config-volume
+          mountPath: /etc/prometheus/prometheus.yml
+          subPath: prometheus.yml
+        - name: recording-rules
+          mountPath: /etc/prometheus/rules/recording_rules.yml
+          subPath: recording_rules.yml
+        - name: alert-rules
+          mountPath: /etc/prometheus/rules/alert_rules.yml
+          subPath: alert_rules.yml
+        - name: prometheus-data
+          mountPath: /prometheus
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
+          readOnlyRootFilesystem: false
+      volumes:
+      - name: config-volume
+        configMap:
+          name: prometheus-config
+          items:
+            - key: prometheus.yml
+              path: prometheus.yml
+      - name: recording-rules
+        configMap:
+          name: prometheus-config
+          items:
+            - key: recording_rules.yml
+              path: recording_rules.yml
+      - name: alert-rules
+        configMap:
+          name: iam-audit-alerts
+          items:
+            - key: alert_rules.yml
+              path: alert_rules.yml
+  volumeClaimTemplates:
+  - metadata:
+      name: prometheus-data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      storageClassName: managed-premium
+      resources:
+        requests:
+          storage: 50Gi
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: prometheus
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/part-of: innovabiz-observability
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+    nginx.ingress.kubernetes.io/auth-type: "basic"
+    nginx.ingress.kubernetes.io/auth-secret: "prometheus-auth"
+    nginx.ingress.kubernetes.io/auth-realm: "Authentication Required"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  tls:
+  - hosts:
+    - ${PROMETHEUS_HOST}
+    secretName: prometheus-tls
+  rules:
+  - host: ${PROMETHEUS_HOST}
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: prometheus
+            port:
+              name: web
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: prometheus-auth
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/part-of: innovabiz-observability
+type: Opaque
+data:
+  auth: ${PROMETHEUS_AUTH_HASH}  # htpasswd -nb admin <password> | base64

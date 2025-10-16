@@ -1,0 +1,73 @@
+name: DevOps Integration
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'docker-compose-devops.yml'
+      - 'infrastructure/devops/**'
+      - 'docs/devops/**'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'docker-compose-devops.yml'
+      - 'infrastructure/devops/**'
+      - 'docs/devops/**'
+
+jobs:
+  devops-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Docker
+        uses: docker/setup-buildx-action@v2
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build DevOps Services
+        run: |
+          docker-compose -f docker-compose-devops.yml build
+
+      - name: Configure GitLab
+        run: |
+          docker-compose -f docker-compose-devops.yml exec gitlab /bin/configure-gitlab.sh
+
+      - name: Configure Jenkins
+        run: |
+          docker-compose -f docker-compose-devops.yml exec jenkins /bin/configure-jenkins.sh
+
+      - name: Configure SonarQube
+        run: |
+          docker-compose -f docker-compose-devops.yml exec sonarqube /bin/configure-sonarqube.sh
+
+      - name: Configure OWASP ZAP
+        run: |
+          docker-compose -f docker-compose-devops.yml exec zap /bin/configure-zap.sh
+
+      - name: Configure Snyk
+        run: |
+          docker-compose -f docker-compose-devops.yml exec snyk /bin/configure-snyk.sh
+
+      - name: Validate Configuration
+        run: |
+          docker-compose -f docker-compose-devops.yml exec devops-validator /bin/validate-config.sh
+
+      - name: Test Integration
+        run: |
+          docker-compose -f docker-compose-devops.yml exec devops-integration /bin/test-integration.sh
+
+      - name: Generate Documentation
+        run: |
+          cd docs/devops
+          make html
+
+      - name: Deploy Documentation
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: docs/devops/_build/html

@@ -1,0 +1,199 @@
+{
+  "type": "record",
+  "name": "TokenEvent",
+  "namespace": "io.innovabiz.iam.events",
+  "doc": "Esquema para eventos relacionados ao ciclo de vida de tokens no módulo IAM",
+  "fields": [
+    {
+      "name": "event_id",
+      "type": "string",
+      "doc": "Identificador único do evento, formato UUID"
+    },
+    {
+      "name": "event_type",
+      "type": {
+        "type": "enum",
+        "name": "TokenEventType",
+        "symbols": [
+          "TOKEN_ISSUED",
+          "TOKEN_REFRESHED",
+          "TOKEN_REVOKED",
+          "TOKEN_EXPIRED",
+          "TOKEN_VALIDATED",
+          "TOKEN_REJECTED"
+        ]
+      },
+      "doc": "Tipo do evento de token"
+    },
+    {
+      "name": "tenant_id",
+      "type": "string",
+      "doc": "Identificador do inquilino (tenant)"
+    },
+    {
+      "name": "user_id",
+      "type": "string",
+      "doc": "Identificador do usuário associado ao token"
+    },
+    {
+      "name": "token_id",
+      "type": "string",
+      "doc": "Identificador único do token (jti - JWT ID)"
+    },
+    {
+      "name": "token_type",
+      "type": {
+        "type": "enum",
+        "name": "TokenType",
+        "symbols": [
+          "ACCESS",
+          "REFRESH",
+          "ID",
+          "PASSWORD_RESET",
+          "EMAIL_VERIFICATION",
+          "MFA_CHALLENGE"
+        ]
+      },
+      "doc": "Tipo do token"
+    },
+    {
+      "name": "timestamp",
+      "type": "long",
+      "logicalType": "timestamp-millis",
+      "doc": "Timestamp da ocorrência do evento (UTC)"
+    },
+    {
+      "name": "token_expiry",
+      "type": "long",
+      "logicalType": "timestamp-millis",
+      "doc": "Timestamp de expiração do token (UTC)"
+    },
+    {
+      "name": "session_id",
+      "type": ["string", "null"],
+      "doc": "Identificador da sessão, se aplicável"
+    },
+    {
+      "name": "client_info",
+      "type": {
+        "type": "record",
+        "name": "ClientInfo",
+        "fields": [
+          {
+            "name": "ip_address",
+            "type": ["string", "null"],
+            "doc": "Endereço IP de origem, mascarado em regiões com GDPR/LGPD"
+          },
+          {
+            "name": "user_agent",
+            "type": ["string", "null"],
+            "doc": "User-Agent do cliente"
+          },
+          {
+            "name": "device_id",
+            "type": ["string", "null"],
+            "doc": "Identificador do dispositivo, se disponível"
+          },
+          {
+            "name": "location",
+            "type": ["string", "null"],
+            "doc": "Localização geográfica aproximada baseada no IP"
+          }
+        ]
+      },
+      "doc": "Informações sobre o cliente que realizou a operação"
+    },
+    {
+      "name": "token_metadata",
+      "type": {
+        "type": "record",
+        "name": "TokenMetadata",
+        "fields": [
+          {
+            "name": "issuer",
+            "type": "string",
+            "doc": "Emissor do token (iss claim)"
+          },
+          {
+            "name": "audience",
+            "type": {
+              "type": "array",
+              "items": "string"
+            },
+            "doc": "Público-alvo do token (aud claim)"
+          },
+          {
+            "name": "scopes",
+            "type": ["null", {
+              "type": "array",
+              "items": "string"
+            }],
+            "default": null,
+            "doc": "Escopos de acesso concedidos pelo token"
+          },
+          {
+            "name": "authentication_methods",
+            "type": ["null", {
+              "type": "array",
+              "items": "string"
+            }],
+            "default": null,
+            "doc": "Métodos de autenticação utilizados para emitir este token"
+          },
+          {
+            "name": "authentication_time",
+            "type": ["null", "long"],
+            "logicalType": "timestamp-millis",
+            "default": null,
+            "doc": "Timestamp da autenticação original do usuário"
+          },
+          {
+            "name": "security_level",
+            "type": ["null", "string"],
+            "default": null,
+            "doc": "Nível de segurança da autenticação (ex: 'low', 'medium', 'high')"
+          }
+        ]
+      },
+      "doc": "Metadados do token"
+    },
+    {
+      "name": "revocation_reason",
+      "type": ["null", {
+        "type": "enum",
+        "name": "RevocationReason",
+        "symbols": [
+          "USER_LOGOUT",
+          "ADMIN_ACTION",
+          "SECURITY_BREACH",
+          "PASSWORD_CHANGE",
+          "SESSION_TIMEOUT",
+          "SUSPICIOUS_ACTIVITY",
+          "ACCOUNT_DISABLED",
+          "USER_REQUESTED"
+        ]
+      }],
+      "default": null,
+      "doc": "Motivo da revogação, se aplicável"
+    },
+    {
+      "name": "region_code",
+      "type": "string",
+      "doc": "Código da região (EU, BR, AO, US)"
+    },
+    {
+      "name": "correlation_id",
+      "type": "string",
+      "doc": "Identificador de correlação para rastreabilidade"
+    },
+    {
+      "name": "additional_context",
+      "type": {
+        "type": "map",
+        "values": ["null", "string", "int", "boolean"]
+      },
+      "default": {},
+      "doc": "Dados contextuais adicionais específicos do evento"
+    }
+  ]
+}

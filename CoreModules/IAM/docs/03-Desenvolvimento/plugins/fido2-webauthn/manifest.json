@@ -1,0 +1,232 @@
+{
+  "id": "fido2-webauthn",
+  "name": "FIDO2/WebAuthn Authentication",
+  "version": "1.0.0",
+  "description": "Provides strong phishing-resistant authentication using FIDO2/WebAuthn standard with platform and roaming authenticators",
+  "author": "INNOVABIZ",
+  "license": "Proprietary",
+  "main": "index.js",
+  "type": "authentication-provider",
+  "category": "multifactor",
+  "assuranceLevel": 3,
+  "capabilities": {
+    "supportsPasswordless": true,
+    "supportsFederatedLogin": false,
+    "supportsCrossPlatform": true,
+    "supportsOfflineMode": false,
+    "supportsSilentAuthentication": false,
+    "requiresUserInteraction": true,
+    "isPhishingResistant": true,
+    "supportsBiometrics": true,
+    "supportsHardwareTokens": true,
+    "supportsMobileDevices": true,
+    "supportsUserVerification": true
+  },
+  "compatibility": {
+    "apiVersion": "1.0",
+    "platforms": ["web", "android", "ios", "windows", "macos", "linux"],
+    "minPlatformVersions": {
+      "web": "1.0.0",
+      "android": "1.0.0",
+      "ios": "1.0.0",
+      "windows": "1.0.0",
+      "macos": "1.0.0",
+      "linux": "1.0.0"
+    },
+    "browsers": {
+      "chrome": ">=67",
+      "firefox": ">=60",
+      "safari": ">=13",
+      "edge": ">=79"
+    }
+  },
+  "dependencies": [
+    {
+      "id": "crypto-service",
+      "version": "^1.0.0"
+    },
+    {
+      "id": "session-manager",
+      "version": "^1.0.0"
+    },
+    {
+      "id": "audit-service",
+      "version": "^1.0.0"
+    }
+  ],
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "rpId": {
+        "type": "string",
+        "description": "Relying Party ID (domain)",
+        "format": "hostname"
+      },
+      "rpName": {
+        "type": "string",
+        "description": "Human-readable Relying Party name",
+        "maxLength": 100
+      },
+      "origin": {
+        "oneOf": [
+          {
+            "type": "string",
+            "format": "uri"
+          },
+          {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uri"
+            }
+          }
+        ],
+        "description": "Allowed origin(s) for WebAuthn requests"
+      },
+      "timeout": {
+        "type": "number",
+        "description": "Authentication timeout in milliseconds",
+        "default": 60000,
+        "minimum": 15000,
+        "maximum": 300000
+      },
+      "userVerification": {
+        "type": "string",
+        "enum": ["required", "preferred", "discouraged"],
+        "description": "User verification requirement",
+        "default": "preferred"
+      },
+      "attestation": {
+        "type": "string",
+        "enum": ["none", "indirect", "direct", "enterprise"],
+        "description": "Attestation conveyance preference",
+        "default": "none"
+      },
+      "authenticatorAttachment": {
+        "type": "string",
+        "enum": ["platform", "cross-platform", null],
+        "description": "Authenticator attachment preference",
+        "default": null
+      },
+      "challengeTtl": {
+        "type": "number",
+        "description": "Challenge lifetime in seconds",
+        "default": 300,
+        "minimum": 60,
+        "maximum": 900
+      },
+      "maxAllowedCredentials": {
+        "type": "number",
+        "description": "Maximum allowed credentials per user",
+        "default": 10,
+        "minimum": 1,
+        "maximum": 50
+      },
+      "supportedAlgorithms": {
+        "type": "array",
+        "description": "Supported cryptographic algorithms",
+        "default": [-7, -257],
+        "items": {
+          "type": "number"
+        }
+      },
+      "requireResidentKey": {
+        "type": "boolean",
+        "description": "Whether to require resident keys (discoverable credentials)",
+        "default": false
+      },
+      "metadataServiceConfig": {
+        "type": "object",
+        "description": "FIDO Metadata Service configuration",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "default": false
+          },
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "apiKey": {
+            "type": "string"
+          },
+          "cacheTime": {
+            "type": "number",
+            "default": 86400
+          }
+        }
+      },
+      "regionalSettings": {
+        "type": "object",
+        "description": "Region-specific settings",
+        "properties": {
+          "EU": {
+            "type": "object",
+            "properties": {
+              "attestationRequired": {
+                "type": "boolean",
+                "default": false
+              },
+              "minAssuranceLevel": {
+                "type": "number",
+                "default": 2
+              }
+            }
+          },
+          "BR": {
+            "type": "object",
+            "properties": {
+              "attestationRequired": {
+                "type": "boolean",
+                "default": false
+              },
+              "minAssuranceLevel": {
+                "type": "number",
+                "default": 2
+              }
+            }
+          },
+          "AO": {
+            "type": "object",
+            "properties": {
+              "attestationRequired": {
+                "type": "boolean",
+                "default": false
+              },
+              "minAssuranceLevel": {
+                "type": "number",
+                "default": 1
+              },
+              "offlineAuthEnabled": {
+                "type": "boolean",
+                "default": true
+              }
+            }
+          },
+          "US": {
+            "type": "object",
+            "properties": {
+              "attestationRequired": {
+                "type": "boolean",
+                "default": false
+              },
+              "minAssuranceLevel": {
+                "type": "number",
+                "default": 3
+              },
+              "healthcareMode": {
+                "type": "boolean",
+                "default": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "required": ["rpId", "rpName", "origin"]
+  },
+  "regions": ["EU", "BR", "AO", "US"],
+  "industries": ["healthcare", "finance", "government", "enterprise", "education"],
+  "compliance": ["GDPR", "LGPD", "PNDSB", "HIPAA", "PCI-DSS", "eIDAS", "NIST-800-63-3"],
+  "tags": ["passwordless", "mfa", "biometrics", "hardware-token", "phishing-resistant"]
+}

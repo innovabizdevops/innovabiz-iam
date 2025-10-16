@@ -1,0 +1,391 @@
+"""
+@file schema.graphql
+@description Schema GraphQL para o Bureau de Crédito
+@author InnovaBiz DevOps Team
+@copyright InnovaBiz 2025
+"""
+
+"""
+Tipos de avaliação suportados pelo Bureau de Crédito
+"""
+enum AssessmentType {
+  IDENTITY      # Avaliação de identidade
+  CREDIT        # Avaliação de crédito/histórico financeiro
+  FRAUD         # Avaliação de fraude
+  COMPLIANCE    # Avaliação de conformidade regulatória
+  RISK          # Avaliação de risco geral
+  COMPREHENSIVE # Avaliação abrangente (todas as anteriores)
+}
+
+"""
+Status possíveis para uma avaliação
+"""
+enum AssessmentStatus {
+  PENDING      # Avaliação pendente de processamento
+  PROCESSING   # Avaliação em processamento
+  COMPLETED    # Avaliação concluída com sucesso
+  PARTIAL      # Avaliação parcialmente concluída (alguns serviços falharam)
+  FAILED       # Avaliação falhou completamente
+  CANCELED     # Avaliação foi cancelada
+  TIMEOUT      # Avaliação excedeu o tempo limite
+}
+
+"""
+Níveis de risco identificados
+"""
+enum RiskLevel {
+  VERY_LOW
+  LOW
+  MEDIUM
+  HIGH
+  VERY_HIGH
+  CRITICAL
+}
+
+"""
+Decisões possíveis para uma avaliação
+"""
+enum AssessmentDecision {
+  APPROVE           # Aprovar sem restrições
+  APPROVE_WITH_CONDITIONS # Aprovar com condições/restrições
+  REVIEW            # Requer revisão manual
+  REJECT            # Rejeitar
+  INSUFFICIENT_DATA # Dados insuficientes para decisão
+}
+
+"""
+Dados de identidade para avaliação
+"""
+input IdentityDataInput {
+  documentNumber: String
+  documentType: String
+  name: String
+  dateOfBirth: String
+  email: String
+  phoneNumber: String
+  address: String
+  nationality: String
+  biometricData: JSON
+  verificationLevel: Int
+}
+
+"""
+Dados financeiros para avaliação
+"""
+input CreditDataInput {
+  accountAge: Int
+  paymentHistory: String
+  creditHistory: String
+  annualIncome: Float
+  occupation: String
+  employmentStatus: String
+  assets: Float
+  liabilities: Float
+  hasPendingLoans: Boolean
+  pendingLoansAmount: Float
+}
+
+"""
+Dados do dispositivo para avaliação
+"""
+input DeviceDataInput {
+  deviceId: String!
+  deviceType: String!
+  os: String
+  osVersion: String
+  browser: String
+  browserVersion: String
+  screenResolution: String
+  deviceModel: String
+  deviceBrand: String
+  jailbroken: Boolean
+  emulator: Boolean
+  deviceLanguage: String
+  timeZone: String
+  deviceFingerprint: String
+}
+
+"""
+Dados de rede para avaliação
+"""
+input NetworkDataInput {
+  ipAddress: String!
+  isp: String
+  connectionType: String
+  hostName: String
+  asNumber: String
+  proxyDetected: Boolean
+  vpnDetected: Boolean
+  torDetected: Boolean
+  latitude: Float
+  longitude: Float
+  country: String
+  region: String
+  city: String
+}
+
+"""
+Dados de transação para avaliação
+"""
+input TransactionDataInput {
+  transactionId: String!
+  transactionType: String!
+  amount: Float!
+  currency: String!
+  timestamp: DateTime!
+  merchantId: String
+  merchantName: String
+  merchantCategory: String
+  description: String
+  paymentMethod: String
+  recipientId: String
+  sourceAccount: String
+  destinationAccount: String
+}
+
+"""
+Dados comportamentais para avaliação
+"""
+input BehavioralDataInput {
+  sessionId: String
+  sessionDuration: Int
+  clickPattern: String
+  typingSpeed: Int
+  navigationFlow: [String]
+  timeOnPage: Int
+  interactionCount: Int
+  unusualActivity: Boolean
+  activityDetails: JSON
+}
+
+"""
+Input para criação de uma avaliação
+"""
+input AssessmentRequestInput {
+  # Identificadores
+  userId: ID!
+  tenantId: ID!
+  correlationId: String
+  
+  # Configuração da avaliação
+  assessmentTypes: [AssessmentType!]!
+  creditProviders: [String]
+  identityProviders: [String]
+  complianceRules: [String]
+  
+  # Dados para avaliação
+  identityData: IdentityDataInput
+  creditData: CreditDataInput
+  deviceData: DeviceDataInput
+  networkData: NetworkDataInput
+  transactionData: TransactionDataInput
+  behavioralData: BehavioralDataInput
+  
+  # Configurações de processamento
+  timeoutMs: Int
+  forceRefresh: Boolean
+  requireAllResults: Boolean
+  failFast: Boolean
+  
+  # Dados adicionais
+  customAttributes: JSON
+}
+
+"""
+Input para criação de múltiplas avaliações em lote
+"""
+input BatchAssessmentRequestInput {
+  requests: [AssessmentRequestInput!]!
+}
+
+"""
+Detalhes de erro em uma avaliação
+"""
+type ErrorDetails {
+  errorCode: String
+  errorMessage: String
+  failedServices: [String]
+  partialResults: Boolean
+  errorSource: String
+}
+
+"""
+Resultados de identidade de uma avaliação
+"""
+type IdentityResults {
+  identityVerified: Boolean
+  verificationLevel: Int
+  verificationScore: Float
+  verifiedAttributes: [String]
+  dataQuality: Float
+}
+
+"""
+Resultados de crédito de uma avaliação
+"""
+type CreditResults {
+  creditScore: Int
+  creditRating: String
+  hasPendingDebts: Boolean
+  hasLegalIssues: Boolean
+  isBlacklisted: Boolean
+  debtToIncomeRatio: Float
+}
+
+"""
+Resultados de fraude de uma avaliação
+"""
+type FraudResults {
+  fraudDetected: Boolean
+  fraudProbability: Float
+  fraudScore: Int
+  fraudVerdict: String
+  deviceReputation: String
+  ipReputation: String
+}
+
+"""
+Resultados de conformidade de uma avaliação
+"""
+type ComplianceResults {
+  compliant: Boolean
+  complianceScore: Float
+  pepStatus: String
+  kycStatus: String
+  amlStatus: String
+  riskCategory: String
+}
+
+"""
+Resultados de risco de uma avaliação
+"""
+type RiskResults {
+  riskScore: Int
+  riskLevel: String
+  trustLevel: String
+  allowOperation: Boolean
+  requireAdditionalAuth: Boolean
+}
+
+"""
+Resposta de uma avaliação
+"""
+type AssessmentResponse {
+  # Identificadores
+  responseId: ID!
+  requestId: ID!
+  correlationId: String
+  userId: ID!
+  tenantId: ID!
+  
+  # Status
+  status: AssessmentStatus!
+  completedAt: DateTime
+  processingTimeMs: Int
+  
+  # Resultados consolidados
+  trustScore: Int
+  riskLevel: RiskLevel
+  decision: AssessmentDecision
+  confidence: Float
+  
+  # Resultados detalhados
+  identityResults: IdentityResults
+  creditResults: CreditResults
+  fraudResults: FraudResults
+  complianceResults: ComplianceResults
+  riskResults: RiskResults
+  
+  # Ações recomendadas
+  requiredActions: [String]
+  suggestedActions: [String]
+  warnings: [String]
+  
+  # Detalhes de erro
+  errorDetails: ErrorDetails
+  
+  # Metadados
+  dataSources: [String]
+}
+
+"""
+Resposta para avaliações em lote
+"""
+type BatchAssessmentResponse {
+  responses: [AssessmentResponse!]!
+  success: Int!
+  failed: Int!
+  total: Int!
+}
+
+"""
+Status de uma avaliação
+"""
+type AssessmentStatus {
+  requestId: ID!
+  status: AssessmentStatus!
+}
+
+"""
+Status de saúde do serviço
+"""
+type HealthStatus {
+  status: String!
+  timestamp: DateTime!
+}
+
+"""
+Informações sobre o serviço
+"""
+type ServiceInfo {
+  serviceName: String!
+  version: String!
+  buildTimestamp: String!
+  features: [String]!
+}
+
+"""
+Tipos escalares personalizados
+"""
+scalar DateTime
+scalar JSON
+
+"""
+Operações de consulta GraphQL
+"""
+type Query {
+  """
+  Recupera uma avaliação específica pelo ID
+  """
+  assessment(id: ID!): AssessmentResponse
+  
+  """
+  Recupera o status de uma avaliação pelo ID
+  """
+  assessmentStatus(id: ID!): AssessmentStatus
+  
+  """
+  Verifica a saúde do serviço
+  """
+  health: HealthStatus
+  
+  """
+  Recupera informações sobre o serviço
+  """
+  serviceInfo: ServiceInfo
+}
+
+"""
+Operações de mutação GraphQL
+"""
+type Mutation {
+  """
+  Solicita uma nova avaliação
+  """
+  requestAssessment(input: AssessmentRequestInput!): AssessmentResponse!
+  
+  """
+  Solicita múltiplas avaliações em lote
+  """
+  requestBatchAssessment(input: BatchAssessmentRequestInput!): BatchAssessmentResponse!
+}

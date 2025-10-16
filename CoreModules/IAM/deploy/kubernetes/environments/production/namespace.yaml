@@ -1,0 +1,13 @@
+# IAM - Namespace para ambiente de Produção
+# Este manifesto define o namespace isolado para o ambiente de Produção do IAM
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: innovabiz-iam-production
+  labels:
+    environment: production
+    module: iam
+    owner: innovabiz-platform
+    compliance-level: restricted
+    data-classification: confidential
+    criticality: high

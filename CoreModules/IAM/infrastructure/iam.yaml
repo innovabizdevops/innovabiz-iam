@@ -1,0 +1,201 @@
+version: '3.8'
+
+services:
+  # IAM Servidor de Autenticação e Autorização Centralizado
+  iam-auth-server:
+    image: innovabiz/iam-auth-server:latest
+    ports:
+      - "8084:8080"
+      - "8444:8443"
+    volumes:
+      - ./iam/config:/app/config
+      - ./iam/secrets:/app/secrets
+      - ./iam/templates:/app/templates
+      - ./iam/jwks:/app/jwks
+      - iam_data:/app/data
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://timescaledb:5432/innovabiz_iam
+      - SPRING_DATASOURCE_USERNAME=innovabiz
+      - SPRING_DATASOURCE_PASSWORD=${POSTGRES_PASSWORD:-complex_password_here}
+      - SPRING_REDIS_HOST=redis
+      - SPRING_REDIS_PORT=6379
+      - SPRING_REDIS_PASSWORD=${REDIS_PASSWORD:-complex_password_here}
+      - SERVER_PORT=8080
+      - SERVER_SSL_ENABLED=true
+      - SERVER_SSL_KEY_STORE=/app/secrets/keystore.p12
+      - SERVER_SSL_KEY_STORE_PASSWORD=${KEYSTORE_PASSWORD:-keystore_password}
+      - SERVER_SSL_KEY_ALIAS=innovabiz
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - JWT_SIGNING_KEY_PATH=/app/jwks/private_key.pem
+      - JWT_PUBLIC_KEY_PATH=/app/jwks/public_key.pem
+      - JWT_TOKEN_EXPIRATION=3600
+      - JWT_REFRESH_TOKEN_EXPIRATION=86400
+      - IAM_ADMIN_USERNAME=admin
+      - IAM_ADMIN_PASSWORD=${IAM_ADMIN_PASSWORD:-admin_password}
+      - IAM_ADMIN_EMAIL=admin@innovabiz.com
+      - MULTI_TENANT=true
+      - MULTI_REGION=true
+      - DEFAULT_REGION=${REGION:-eu}
+      - LOG_LEVEL=INFO
+      - PROMETHEUS_METRICS_EXPORT=true
+      - DOCUMENT_PRIVACY_LEVEL=PRIVATE
+      - LANGUAGES_SUPPORTED=pt,en
+      - KRAKEND_INTEGRATION=true
+      - GRAPHQL_INTEGRATION=true
+      - MCP_INTEGRATION=true
+      - OAUTH2_RESOURCE_SERVER_ENABLED=true
+      - OAUTH2_CLIENT_REGISTRATION_ENABLED=true
+      - API_KEY_SUPPORT_ENABLED=true
+      - ZERO_TRUST_MODE=true
+      - JWKS_ENDPOINT_ENABLED=true
+    depends_on:
+      - timescaledb
+      - redis
+      - kafka
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # IAM Interno - Servidor de Administração
+  iam-admin-server:
+    image: innovabiz/iam-admin-server:latest
+    ports:
+      - "8085:8080"
+    volumes:
+      - ./iam/config:/app/config
+      - ./iam/templates:/app/templates
+    environment:
+      - AUTH_SERVER_URL=http://iam-auth-server:8080
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://timescaledb:5432/innovabiz_iam
+      - SPRING_DATASOURCE_USERNAME=innovabiz
+      - SPRING_DATASOURCE_PASSWORD=${POSTGRES_PASSWORD:-complex_password_here}
+      - SERVER_PORT=8080
+      - MULTI_TENANT=true
+      - MULTI_REGION=true
+      - DEFAULT_REGION=${REGION:-eu}
+      - LOG_LEVEL=INFO
+      - DOCUMENT_PRIVACY_LEVEL=PRIVATE
+      - LANGUAGES_SUPPORTED=pt,en
+    depends_on:
+      - iam-auth-server
+      - timescaledb
+    restart: unless-stopped
+
+  # IAM Interno - UI de Administração
+  iam-admin-ui:
+    image: innovabiz/iam-admin-ui:latest
+    ports:
+      - "4300:80"
+    environment:
+      - API_URL=http://iam-admin-server:8080
+      - AUTH_SERVER_URL=http://iam-auth-server:8080
+      - DEFAULT_LANGUAGE=pt
+      - SECONDARY_LANGUAGE=en
+      - DEFAULT_REGION=${REGION:-eu}
+      - DOCUMENT_PRIVACY_LEVEL=PRIVATE
+    depends_on:
+      - iam-admin-server
+    restart: unless-stopped
+
+  # IAM Interno - Servidor de Usuários (User Profile Service)
+  iam-user-service:
+    image: innovabiz/iam-user-service:latest
+    ports:
+      - "8086:8080"
+    volumes:
+      - ./iam/config:/app/config
+    environment:
+      - AUTH_SERVER_URL=http://iam-auth-server:8080
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://timescaledb:5432/innovabiz_iam
+      - SPRING_DATASOURCE_USERNAME=innovabiz
+      - SPRING_DATASOURCE_PASSWORD=${POSTGRES_PASSWORD:-complex_password_here}
+      - SPRING_REDIS_HOST=redis
+      - SPRING_REDIS_PORT=6379
+      - SPRING_REDIS_PASSWORD=${REDIS_PASSWORD:-complex_password_here}
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - SERVER_PORT=8080
+      - MULTI_TENANT=true
+      - MULTI_REGION=true
+      - DEFAULT_REGION=${REGION:-eu}
+      - LOG_LEVEL=INFO
+      - DOCUMENT_PRIVACY_LEVEL=PRIVATE
+      - LANGUAGES_SUPPORTED=pt,en
+    depends_on:
+      - iam-auth-server
+      - timescaledb
+      - redis
+      - kafka
+    restart: unless-stopped
+
+  # IAM Interno - Portal do Usuário
+  iam-user-portal:
+    image: innovabiz/iam-user-portal:latest
+    ports:
+      - "4301:80"
+    environment:
+      - API_URL=http://iam-user-service:8080
+      - AUTH_SERVER_URL=http://iam-auth-server:8080
+      - DEFAULT_LANGUAGE=pt
+      - SECONDARY_LANGUAGE=en
+      - DEFAULT_REGION=${REGION:-eu}
+      - PRIVACY_POLICY_URL=/privacy
+      - TERMS_URL=/terms
+      - DOCUMENT_PRIVACY_LEVEL=PUBLIC
+    depends_on:
+      - iam-user-service
+    restart: unless-stopped
+
+  # IAM GraphQL Provider Service
+  iam-graphql-provider:
+    image: innovabiz/iam-graphql-provider:latest
+    ports:
+      - "4001:4000"
+    environment:
+      - PORT=4000
+      - NODE_ENV=production
+      - AUTH_SERVER_URL=http://iam-auth-server:8080
+      - GRAPHQL_PATH=/graphql
+      - GRAPHIQL_ENABLED=true
+      - FEDERATION_ENABLED=true
+      - INTROSPECTION_ENABLED=true
+      - TRACING_ENABLED=true
+      - MULTI_TENANT=true
+      - MULTI_REGION=true
+      - DEFAULT_REGION=${REGION:-eu}
+      - LOG_LEVEL=INFO
+      - DOCUMENT_PRIVACY_LEVEL=PRIVATE
+      - LANGUAGES_SUPPORTED=pt,en
+    depends_on:
+      - iam-auth-server
+    restart: unless-stopped
+
+  # IAM MCP Provider Service
+  iam-mcp-provider:
+    image: innovabiz/iam-mcp-provider:latest
+    ports:
+      - "8087:8080"
+    volumes:
+      - ./iam/mcp:/app/mcp
+    environment:
+      - PORT=8080
+      - AUTH_SERVER_URL=http://iam-auth-server:8080
+      - MCP_SCHEMA_PATH=/app/mcp/schemas
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - MULTI_TENANT=true
+      - MULTI_REGION=true
+      - DEFAULT_REGION=${REGION:-eu}
+      - LOG_LEVEL=INFO
+      - DOCUMENT_PRIVACY_LEVEL=PRIVATE
+      - LANGUAGES_SUPPORTED=pt,en
+    depends_on:
+      - iam-auth-server
+      - mcp-core
+      - kafka
+    restart: unless-stopped
+
+volumes:
+  iam_data:

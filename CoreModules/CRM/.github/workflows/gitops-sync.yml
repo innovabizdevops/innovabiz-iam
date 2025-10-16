@@ -1,0 +1,340 @@
+name: GitOps Synchronization
+
+on:
+  repository_dispatch:
+    types: [gitops-sync]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'development'
+        type: choice
+        options:
+          - development
+          - staging
+          - production
+      force_sync:
+        description: 'Force synchronization'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  ARGOCD_SERVER: argocd.innovabiz.com
+  ARGOCD_AUTH_TOKEN: ${{ secrets.ARGOCD_AUTH_TOKEN }}
+
+jobs:
+  sync-gitops:
+    name: Sync GitOps Manifests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        environment:
+          - ${{ github.event.inputs.environment || 'development' }}
+    steps:
+      - name: Checkout GitOps repository
+        uses: actions/checkout@v4
+        with:
+          repository: innovabiz/gitops-manifests
+          token: ${{ secrets.GITOPS_TOKEN }}
+          path: gitops
+          fetch-depth: 0
+
+      - name: Setup ArgoCD CLI
+        run: |
+          curl -sSL -o argocd-linux-amd64 https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+          sudo install -m 555 argocd-linux-amd64 /usr/local/bin/argocd
+          rm argocd-linux-amd64
+
+      - name: Login to ArgoCD
+        run: |
+          argocd login ${{ env.ARGOCD_SERVER }} \
+            --auth-token ${{ env.ARGOCD_AUTH_TOKEN }} \
+            --insecure
+
+      - name: Validate manifests
+        run: |
+          cd gitops/environments/${{ matrix.environment }}/crm
+
+          # Validate Kubernetes manifests
+          kubectl --dry-run=client apply -k .
+
+          # Validate Helm charts if present
+          if [ -f "Chart.yaml" ]; then
+            helm lint .
+            helm template . --debug
+          fi
+
+      - name: Sync ArgoCD application
+        run: |
+          APP_NAME="innovabiz-crm-${{ matrix.environment }}"
+
+          # Check if application exists
+          if argocd app list | grep -q "$APP_NAME"; then
+            echo "Application $APP_NAME exists, syncing..."
+
+            # Sync the application
+            if [ "${{ github.event.inputs.force_sync }}" = "true" ]; then
+              argocd app sync $APP_NAME --force --replace
+            else
+              argocd app sync $APP_NAME
+            fi
+
+            # Wait for sync to complete
+            argocd app wait $APP_NAME --timeout 600
+
+            # Get sync status
+            argocd app get $APP_NAME --output json > sync-status.json
+
+          else
+            echo "Application $APP_NAME does not exist"
+            exit 1
+          fi
+
+      - name: Verify deployment health
+        run: |
+          APP_NAME="innovabiz-crm-${{ matrix.environment }}"
+
+          # Check application health
+          HEALTH_STATUS=$(argocd app get $APP_NAME --output json | jq -r '.status.health.status')
+          SYNC_STATUS=$(argocd app get $APP_NAME --output json | jq -r '.status.sync.status')
+
+          echo "Health Status: $HEALTH_STATUS"
+          echo "Sync Status: $SYNC_STATUS"
+
+          if [ "$HEALTH_STATUS" != "Healthy" ]; then
+            echo "Application is not healthy!"
+            argocd app get $APP_NAME
+            exit 1
+          fi
+
+          if [ "$SYNC_STATUS" != "Synced" ]; then
+            echo "Application is not synced!"
+            argocd app get $APP_NAME
+            exit 1
+          fi
+
+      - name: Run post-deployment verification
+        run: |
+          # Environment-specific verification
+          case "${{ matrix.environment }}" in
+            "development")
+              BASE_URL="https://crm-dev.innovabiz.com"
+              ;;
+            "staging")
+              BASE_URL="https://crm-staging.innovabiz.com"
+              ;;
+            "production")
+              BASE_URL="https://crm.innovabiz.com"
+              ;;
+          esac
+
+          echo "Verifying deployment at $BASE_URL"
+
+          # Wait for services to be ready
+          sleep 30
+
+          # Health check
+          curl -f "$BASE_URL/health" || exit 1
+          curl -f "$BASE_URL/api/health" || exit 1
+
+          # API availability check
+          curl -f "$BASE_URL/api/docs" || exit 1
+
+          # GraphQL endpoint check
+          curl -f "$BASE_URL/graphql" \
+            -H "Content-Type: application/json" \
+            -d '{"query": "{ __schema { types { name } } }"}' || exit 1
+
+      - name: Upload sync artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gitops-sync-${{ matrix.environment }}
+          path: |
+            sync-status.json
+            *.log
+
+  # Rollback on failure
+  rollback:
+    name: Rollback on Failure
+    runs-on: ubuntu-latest
+    needs: [sync-gitops]
+    if: failure() && github.event.inputs.environment == 'production'
+    steps:
+      - name: Setup ArgoCD CLI
+        run: |
+          curl -sSL -o argocd-linux-amd64 https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+          sudo install -m 555 argocd-linux-amd64 /usr/local/bin/argocd
+          rm argocd-linux-amd64
+
+      - name: Login to ArgoCD
+        run: |
+          argocd login ${{ env.ARGOCD_SERVER }} \
+            --auth-token ${{ env.ARGOCD_AUTH_TOKEN }} \
+            --insecure
+
+      - name: Rollback production deployment
+        run: |
+          APP_NAME="innovabiz-crm-production"
+
+          # Get previous successful revision
+          PREV_REVISION=$(argocd app history $APP_NAME --output json | \
+            jq -r '.[] | select(.revision != null) | .revision' | \
+            head -n 2 | tail -n 1)
+
+          if [ -n "$PREV_REVISION" ]; then
+            echo "Rolling back to revision: $PREV_REVISION"
+            argocd app rollback $APP_NAME $PREV_REVISION
+            argocd app wait $APP_NAME --timeout 600
+          else
+            echo "No previous revision found for rollback"
+            exit 1
+          fi
+
+      - name: Verify rollback
+        run: |
+          APP_NAME="innovabiz-crm-production"
+
+          # Check application health after rollback
+          HEALTH_STATUS=$(argocd app get $APP_NAME --output json | jq -r '.status.health.status')
+
+          if [ "$HEALTH_STATUS" = "Healthy" ]; then
+            echo "Rollback successful"
+          else
+            echo "Rollback failed"
+            argocd app get $APP_NAME
+            exit 1
+          fi
+
+  # Drift Detection
+  drift-detection:
+    name: Configuration Drift Detection
+    runs-on: ubuntu-latest
+    needs: [sync-gitops]
+    if: always()
+    steps:
+      - name: Setup ArgoCD CLI
+        run: |
+          curl -sSL -o argocd-linux-amd64 https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+          sudo install -m 555 argocd-linux-amd64 /usr/local/bin/argocd
+          rm argocd-linux-amd64
+
+      - name: Login to ArgoCD
+        run: |
+          argocd login ${{ env.ARGOCD_SERVER }} \
+            --auth-token ${{ env.ARGOCD_AUTH_TOKEN }} \
+            --insecure
+
+      - name: Detect configuration drift
+        run: |
+          ENVIRONMENTS=("development" "staging" "production")
+          DRIFT_DETECTED=false
+
+          for ENV in "${ENVIRONMENTS[@]}"; do
+            APP_NAME="innovabiz-crm-$ENV"
+
+            echo "Checking drift for $APP_NAME..."
+
+            # Get application diff
+            DIFF_OUTPUT=$(argocd app diff $APP_NAME || true)
+
+            if [ -n "$DIFF_OUTPUT" ]; then
+              echo "Configuration drift detected in $ENV:"
+              echo "$DIFF_OUTPUT"
+              DRIFT_DETECTED=true
+
+              # Save drift report
+              echo "$DIFF_OUTPUT" > "drift-report-$ENV.txt"
+            else
+              echo "No drift detected in $ENV"
+            fi
+          done
+
+          if [ "$DRIFT_DETECTED" = "true" ]; then
+            echo "Configuration drift detected in one or more environments"
+            echo "drift_detected=true" >> $GITHUB_OUTPUT
+          else
+            echo "No configuration drift detected"
+            echo "drift_detected=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Upload drift reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: drift-reports
+          path: drift-report-*.txt
+
+  # Notification
+  notify:
+    name: Notify Teams
+    runs-on: ubuntu-latest
+    needs: [sync-gitops, rollback, drift-detection]
+    if: always()
+    steps:
+      - name: Prepare notification message
+        id: message
+        run: |
+          ENV="${{ github.event.inputs.environment || 'development' }}"
+          SYNC_STATUS="${{ needs.sync-gitops.result }}"
+          ROLLBACK_STATUS="${{ needs.rollback.result }}"
+          DRIFT_STATUS="${{ needs.drift-detection.result }}"
+
+          MESSAGE="GitOps Sync Report for $ENV environment:\n"
+          MESSAGE+="• Sync Status: $SYNC_STATUS\n"
+
+          if [ "$ROLLBACK_STATUS" != "skipped" ]; then
+            MESSAGE+="• Rollback Status: $ROLLBACK_STATUS\n"
+          fi
+
+          MESSAGE+="• Drift Detection: $DRIFT_STATUS\n"
+          MESSAGE+="• Triggered by: ${{ github.actor }}\n"
+          MESSAGE+="• Timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+
+          echo "message=$MESSAGE" >> $GITHUB_OUTPUT
+
+      - name: Notify Slack
+        uses: 8398a7/action-slack@v3
+        with:
+          status: custom
+          custom_payload: |
+            {
+              "text": "${{ steps.message.outputs.message }}",
+              "color": "${{ needs.sync-gitops.result == 'success' && 'good' || 'danger' }}"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      - name: Create GitHub issue on failure
+        if: needs.sync-gitops.result == 'failure' || needs.rollback.result == 'failure'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = `GitOps Sync Failed: ${{ github.event.inputs.environment || 'development' }}`;
+            const body = `
+            ## GitOps Synchronization Failed
+
+            **Environment:** ${{ github.event.inputs.environment || 'development' }}
+            **Triggered by:** ${{ github.actor }}
+            **Timestamp:** ${new Date().toISOString()}
+
+            ### Status Summary
+            - Sync Status: ${{ needs.sync-gitops.result }}
+            - Rollback Status: ${{ needs.rollback.result }}
+            - Drift Detection: ${{ needs.drift-detection.result }}
+
+            ### Action Required
+            Please investigate the deployment failure and take appropriate action.
+
+            **Workflow Run:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            `;
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: title,
+              body: body,
+              labels: ['deployment', 'gitops', 'urgent']
+            });

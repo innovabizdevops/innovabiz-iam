@@ -1,0 +1,6 @@
+# Exemplo de requirements.txt para módulo IAM
+fastapi
+uvicorn
+psycopg2-binary
+python-dotenv
+loguru

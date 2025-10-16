@@ -1,0 +1,208 @@
+{
+  "endpoints": [
+    {
+      "endpoint": "/api/v1/audit/retention-policies",
+      "method": "POST",
+      "output_encoding": "json",
+      "backend": [
+        {
+          "url_pattern": "/audit/retention-policies",
+          "encoding": "json",
+          "method": "POST",
+          "host": ["http://iam-service:8000"],
+          "disable_host_sanitize": false
+        }
+      ],
+      "input_headers": [
+        "Authorization",
+        "Content-Type",
+        "X-Tenant-ID",
+        "X-Regional-Context",
+        "X-Correlation-ID",
+        "X-Request-ID"
+      ],
+      "extra_config": {
+        "auth/validator": {
+          "alg": "RS256",
+          "jwk_url": "http://keycloak:8080/auth/realms/innovabiz/protocol/openid-connect/certs",
+          "cache": true,
+          "cache_duration": 3600,
+          "audience": ["innovabiz-platform"],
+          "roles_key": "realm_access.roles",
+          "roles": ["audit:admin"],
+          "propagate_claims": [
+            ["sub", "x-user-id"],
+            ["name", "x-user-name"],
+            ["email", "x-user-email"]
+          ]
+        },
+        "qos/ratelimit/router": {
+          "max_rate": 50,
+          "strategy": "ip"
+        },
+        "security/cors": {
+          "allow_origins": ["*"],
+          "allow_methods": ["POST", "GET", "PATCH"],
+          "allow_headers": ["Origin", "Authorization", "Content-Type"],
+          "expose_headers": ["Content-Length"],
+          "max_age": 3600
+        }
+      }
+    },
+    {
+      "endpoint": "/api/v1/audit/retention-policies",
+      "method": "GET",
+      "output_encoding": "json",
+      "backend": [
+        {
+          "url_pattern": "/audit/retention-policies",
+          "encoding": "json",
+          "method": "GET",
+          "host": ["http://iam-service:8000"],
+          "disable_host_sanitize": false
+        }
+      ],
+      "input_headers": [
+        "Authorization",
+        "Content-Type",
+        "X-Tenant-ID",
+        "X-Regional-Context",
+        "X-Correlation-ID",
+        "X-Request-ID"
+      ],
+      "input_query_strings": ["*"],
+      "querystring_params": [
+        "compliance_framework",
+        "active",
+        "policy_type",
+        "limit",
+        "offset"
+      ],
+      "extra_config": {
+        "auth/validator": {
+          "alg": "RS256",
+          "jwk_url": "http://keycloak:8080/auth/realms/innovabiz/protocol/openid-connect/certs",
+          "cache": true,
+          "cache_duration": 3600,
+          "audience": ["innovabiz-platform"],
+          "roles_key": "realm_access.roles",
+          "roles": ["audit:read"],
+          "propagate_claims": [
+            ["sub", "x-user-id"],
+            ["name", "x-user-name"],
+            ["email", "x-user-email"]
+          ]
+        },
+        "qos/ratelimit/router": {
+          "max_rate": 150,
+          "strategy": "ip"
+        },
+        "security/cors": {
+          "allow_origins": ["*"],
+          "allow_methods": ["GET"],
+          "allow_headers": ["Origin", "Authorization", "Content-Type"],
+          "expose_headers": ["Content-Length"],
+          "max_age": 3600
+        }
+      }
+    },
+    {
+      "endpoint": "/api/v1/audit/retention-policies/{policy_id}",
+      "method": "GET",
+      "output_encoding": "json",
+      "backend": [
+        {
+          "url_pattern": "/audit/retention-policies/{policy_id}",
+          "encoding": "json",
+          "method": "GET",
+          "host": ["http://iam-service:8000"],
+          "disable_host_sanitize": false
+        }
+      ],
+      "input_headers": [
+        "Authorization",
+        "Content-Type",
+        "X-Tenant-ID",
+        "X-Regional-Context",
+        "X-Correlation-ID",
+        "X-Request-ID"
+      ],
+      "extra_config": {
+        "auth/validator": {
+          "alg": "RS256",
+          "jwk_url": "http://keycloak:8080/auth/realms/innovabiz/protocol/openid-connect/certs",
+          "cache": true,
+          "cache_duration": 3600,
+          "audience": ["innovabiz-platform"],
+          "roles_key": "realm_access.roles",
+          "roles": ["audit:read"],
+          "propagate_claims": [
+            ["sub", "x-user-id"],
+            ["name", "x-user-name"],
+            ["email", "x-user-email"]
+          ]
+        },
+        "qos/ratelimit/router": {
+          "max_rate": 100,
+          "strategy": "ip"
+        },
+        "security/cors": {
+          "allow_origins": ["*"],
+          "allow_methods": ["GET"],
+          "allow_headers": ["Origin", "Authorization", "Content-Type"],
+          "expose_headers": ["Content-Length"],
+          "max_age": 3600
+        }
+      }
+    },
+    {
+      "endpoint": "/api/v1/audit/retention-policies/{policy_id}",
+      "method": "PATCH",
+      "output_encoding": "json",
+      "backend": [
+        {
+          "url_pattern": "/audit/retention-policies/{policy_id}",
+          "encoding": "json",
+          "method": "PATCH",
+          "host": ["http://iam-service:8000"],
+          "disable_host_sanitize": false
+        }
+      ],
+      "input_headers": [
+        "Authorization",
+        "Content-Type",
+        "X-Tenant-ID",
+        "X-Regional-Context",
+        "X-Correlation-ID",
+        "X-Request-ID"
+      ],
+      "extra_config": {
+        "auth/validator": {
+          "alg": "RS256",
+          "jwk_url": "http://keycloak:8080/auth/realms/innovabiz/protocol/openid-connect/certs",
+          "cache": true,
+          "cache_duration": 3600,
+          "audience": ["innovabiz-platform"],
+          "roles_key": "realm_access.roles",
+          "roles": ["audit:admin"],
+          "propagate_claims": [
+            ["sub", "x-user-id"],
+            ["name", "x-user-name"],
+            ["email", "x-user-email"]
+          ]
+        },
+        "qos/ratelimit/router": {
+          "max_rate": 50,
+          "strategy": "ip"
+        },
+        "security/cors": {
+          "allow_origins": ["*"],
+          "allow_methods": ["PATCH"],
+          "allow_headers": ["Origin", "Authorization", "Content-Type"],
+          "expose_headers": ["Content-Length"],
+          "max_age": 3600
+        }
+      }
+    }
+  ]
+}

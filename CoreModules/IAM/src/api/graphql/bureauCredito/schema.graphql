@@ -1,0 +1,253 @@
+# ==============================================================================
+# Nome: schema.graphql
+# Descrição: Schema GraphQL para integração do IAM com Bureau de Créditos
+# Autor: Equipa de Desenvolvimento INNOVABIZ
+# Data: 19/08/2025
+# ==============================================================================
+
+"""
+Tipo de vínculo com o Bureau de Créditos
+"""
+enum BureauVinculoTipo {
+  # Acesso apenas para consultas
+  CONSULTA
+  # Acesso para registro e gestão de informações
+  GESTAO
+  # Acesso administrativo completo
+  ADMIN
+  # Acesso específico para auditoria
+  AUDITORIA
+}
+
+"""
+Nível de acesso ao Bureau de Créditos
+"""
+enum BureauNivelAcesso {
+  # Acesso básico (dados limitados)
+  BASICO
+  # Acesso intermediário (maioria dos dados)
+  INTERMEDIARIO
+  # Acesso completo (todos os dados)
+  COMPLETO
+}
+
+"""
+Status de vínculo com o Bureau de Créditos
+"""
+enum BureauVinculoStatus {
+  ATIVO
+  INATIVO
+  SUSPENSO
+  PENDENTE_APROVACAO
+}
+
+"""
+Tipo de consulta ao Bureau de Créditos
+"""
+enum BureauTipoConsulta {
+  # Consulta simples (score e situação geral)
+  SIMPLES
+  # Consulta detalhada (histórico completo)
+  DETALHADA
+  # Consulta para análise de crédito
+  ANALISE_CREDITO
+  # Consulta para prevenção à fraude
+  PREVENCAO_FRAUDE
+  # Consulta para validação de identidade
+  VALIDACAO_IDENTIDADE
+  # Consulta para conformidade regulatória
+  CONFORMIDADE
+  # Consulta para monitoramento contínuo
+  MONITORAMENTO
+}
+
+"""
+Status de uma autorização de consulta
+"""
+enum BureauAutorizacaoStatus {
+  ATIVA
+  EXPIRADA
+  REVOGADA
+  PENDENTE
+}
+
+"""
+Vínculo de identidade do usuário com o Bureau de Créditos
+"""
+type BureauIdentity {
+  # ID único da identidade de integração
+  id: ID!
+  # ID do usuário no IAM
+  usuarioId: ID!
+  # ID do tenant no IAM
+  tenantId: String!
+  # ID externo no Bureau de Créditos
+  externalId: String!
+  # ID do tenant no Bureau de Créditos
+  externalTenantId: String!
+  # Tipo de vínculo
+  tipoVinculo: BureauVinculoTipo!
+  # Nível de acesso
+  nivelAcesso: BureauNivelAcesso!
+  # Status do vínculo
+  status: BureauVinculoStatus!
+  # Data de criação
+  dataCriacao: DateTime!
+  # Data da última atualização
+  dataAtualizacao: DateTime
+  # Motivo do status atual (se aplicável)
+  motivoStatus: String
+  # Detalhes adicionais (JSON)
+  detalhes: JSON
+}
+
+"""
+Autorização de consulta ao Bureau de Créditos
+"""
+type BureauAutorizacao {
+  # ID único da autorização
+  id: ID!
+  # ID da identidade vinculada
+  identityId: ID!
+  # Tipo de consulta autorizada
+  tipoConsulta: BureauTipoConsulta!
+  # Finalidade da consulta
+  finalidade: String!
+  # Justificativa para a autorização
+  justificativa: String!
+  # Data de criação da autorização
+  dataAutorizacao: DateTime!
+  # Data de validade da autorização
+  dataValidade: DateTime!
+  # Status atual da autorização
+  status: BureauAutorizacaoStatus!
+  # Usuário que autorizou a consulta
+  autorizadoPor: String!
+}
+
+"""
+Token de acesso ao Bureau de Créditos
+"""
+type BureauAccessToken {
+  # Token de acesso
+  token: String!
+  # Tipo de token (geralmente "bearer")
+  type: String!
+  # Data de expiração do token
+  expiresAt: DateTime!
+  # Token de atualização (se disponível)
+  refreshToken: String
+  # ID da identidade vinculada
+  identityId: ID!
+  # Escopos do token
+  escopos: [String!]!
+  # Finalidade do token
+  finalidade: String!
+}
+
+"""
+Entrada para criação de vínculo com Bureau de Créditos
+"""
+input CriarVinculoBureauInput {
+  # ID do usuário no IAM
+  usuarioId: ID!
+  # ID do tenant
+  tenantId: String!
+  # Tipo de vínculo a ser criado
+  tipoVinculo: BureauVinculoTipo!
+  # Nível de acesso solicitado
+  nivelAcesso: BureauNivelAcesso!
+  # Detalhes de autorização (JSON)
+  detalhesAutorizacao: JSON
+}
+
+"""
+Entrada para criação de autorização de consulta
+"""
+input CriarAutorizacaoBureauInput {
+  # ID da identidade de integração
+  identityId: ID!
+  # Tipo de consulta a ser autorizada
+  tipoConsulta: BureauTipoConsulta!
+  # Finalidade da consulta
+  finalidade: String!
+  # Justificativa para a autorização
+  justificativa: String!
+  # Duração em dias da autorização
+  duracaoDias: Int
+  # Usuário que autoriza a consulta
+  autorizadoPor: String!
+}
+
+"""
+Entrada para geração de token de acesso
+"""
+input GerarTokenBureauInput {
+  # ID da identidade de integração
+  identityId: ID!
+  # Finalidade do token
+  finalidade: String!
+  # Escopos solicitados
+  escopos: [String!]!
+}
+
+"""
+Entrada para revogação de vínculo
+"""
+input RevogarVinculoBureauInput {
+  # ID da identidade de integração
+  identityId: ID!
+  # Motivo da revogação
+  motivo: String!
+}
+
+"""
+Consultas disponíveis para Bureau de Créditos
+"""
+type BureauCreditoQueries {
+  # Buscar um vínculo específico
+  bureauIdentity(id: ID!): BureauIdentity
+  
+  # Buscar vínculos por usuário
+  bureauIdentitiesByUser(usuarioId: ID!): [BureauIdentity!]!
+  
+  # Buscar vínculos por tenant
+  bureauIdentitiesByTenant(tenantId: String!): [BureauIdentity!]!
+  
+  # Buscar autorizações para uma identidade
+  bureauAutorizacoes(identityId: ID!): [BureauAutorizacao!]!
+  
+  # Verificar se um usuário tem vínculos ativos
+  hasActiveBureauIdentity(usuarioId: ID!, tenantId: String): Boolean!
+  
+  # Verificar se um usuário tem autorizações para determinado tipo de consulta
+  hasValidBureauAutorizacao(usuarioId: ID!, tipoConsulta: BureauTipoConsulta!): Boolean!
+}
+
+"""
+Mutações disponíveis para Bureau de Créditos
+"""
+type BureauCreditoMutations {
+  # Criar um novo vínculo com Bureau de Créditos
+  criarVinculoBureau(input: CriarVinculoBureauInput!): BureauIdentity!
+  
+  # Criar uma nova autorização de consulta
+  criarAutorizacaoBureau(input: CriarAutorizacaoBureauInput!): BureauAutorizacao!
+  
+  # Gerar um token de acesso para Bureau de Créditos
+  gerarTokenBureau(input: GerarTokenBureauInput!): BureauAccessToken!
+  
+  # Revogar um vínculo com Bureau de Créditos
+  revogarVinculoBureau(input: RevogarVinculoBureauInput!): Boolean!
+}
+
+# Estender os tipos Query e Mutation do schema principal
+extend type Query {
+  # Namespace para consultas de Bureau de Créditos
+  bureauCredito: BureauCreditoQueries!
+}
+
+extend type Mutation {
+  # Namespace para mutações de Bureau de Créditos
+  bureauCredito: BureauCreditoMutations!
+}

@@ -1,0 +1,74 @@
+{
+  "report": {
+    "title": "Relatório de Conformidade HIPAA - Módulo de Saúde",
+    "summary": "Resumo Executivo",
+    "report_description": "Este relatório avalia a conformidade com a regulamentação HIPAA (Health Insurance Portability and Accountability Act) para proteção de dados de saúde (PHI - Protected Health Information) no módulo Healthcare.",
+    "tenant": "Organização",
+    "overall_score": "Pontuação Geral",
+    "compliant": "Conformes",
+    "partially_compliant": "Parcialmente Conformes",
+    "non_compliant": "Não Conformes",
+    "category_score": "Pontuação da Categoria",
+    "requirements": "Requisitos",
+    "requirement_id": "ID",
+    "requirement": "Requisito",
+    "status": "Status",
+    "recommendations": "Recomendações",
+    "reference": "Referência",
+    "generated_by": "Gerado por",
+    "report_id": "ID do Relatório",
+    "timestamp": "Data e Hora",
+    "status_compliant": "Conforme",
+    "status_partially": "Parcialmente Conforme",
+    "status_non_compliant": "Não Conforme",
+    "status_na": "Não Aplicável",
+    "ar_authentication": "Autenticação de Realidade Aumentada (AR)",
+    "ar_description": "A autenticação por Realidade Aumentada oferece fatores de segurança adicionais para proteger o acesso a informações de saúde protegidas (PHI), em conformidade com os requisitos HIPAA para controle de acesso e autenticação.",
+    "ar_factor_count": "Fatores AR Implementados",
+    "enhances_phi_security": "Melhora Segurança PHI",
+    "enabled_ar_factors": "Fatores AR Habilitados",
+    "priority_high": "Alta",
+    "priority_medium": "Média",
+    "priority_low": "Baixa"
+  },
+  "categories": {
+    "authentication": {
+      "name": "Autenticação e Controle de Acesso",
+      "description": "Verifica requisitos relacionados à autenticação, identificação e controle de acesso para dados PHI."
+    },
+    "audit": {
+      "name": "Registros de Auditoria",
+      "description": "Avalia os mecanismos de registro de atividades e monitoramento de acesso a dados PHI."
+    },
+    "integrity": {
+      "name": "Integridade dos Dados",
+      "description": "Verifica mecanismos para garantir que dados PHI não sejam alterados ou destruídos de forma indevida."
+    },
+    "emergency": {
+      "name": "Acesso de Emergência",
+      "description": "Avalia procedimentos para acesso a dados PHI em situações de emergência."
+    },
+    "transmission": {
+      "name": "Transmissão Segura",
+      "description": "Verifica mecanismos de criptografia e segurança para transmissão de dados PHI."
+    }
+  },
+  "recommendations": {
+    "mfa": {
+      "title": "Implementar Autenticação Multifator",
+      "description": "Habilite a autenticação multifator (MFA) para todos os acessos a dados PHI, preferencialmente utilizando os fatores de autenticação AR já disponíveis na plataforma."
+    },
+    "audit_logs": {
+      "title": "Aprimorar Logs de Auditoria",
+      "description": "Configure logs de auditoria detalhados para todas as atividades relacionadas a dados PHI, incluindo visualização, edição e exportação."
+    },
+    "ar_factors": {
+      "title": "Aumentar Fatores de Autenticação AR",
+      "description": "Implementar pelo menos dois fatores de autenticação AR para melhorar a segurança e conformidade com HIPAA."
+    },
+    "encryption": {
+      "title": "Reforçar Criptografia de Dados",
+      "description": "Implantar criptografia de ponta a ponta para todos os dados PHI em repouso e em trânsito."
+    }
+  }
+}

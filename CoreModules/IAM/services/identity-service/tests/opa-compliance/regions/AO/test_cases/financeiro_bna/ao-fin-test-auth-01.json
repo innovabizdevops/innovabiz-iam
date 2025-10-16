@@ -1,0 +1,68 @@
+{
+  "id": "ao-fin-test-auth-01",
+  "name": "Autenticação Forte para Operações de Alto Valor",
+  "description": "Verifica se as políticas OPA exigem autenticação forte para operações financeiras de alto valor conforme requerido pelo BNA",
+  "requirementIds": ["ao-bna-autenticacao"],
+  "policyPath": "innovabiz/iam/authz/payment_authorization",
+  "input": {
+    "user": {
+      "id": "user456",
+      "tenant_id": "tenant_ao_001",
+      "roles": ["customer"],
+      "authentication": {
+        "method": "password",
+        "factors_used": 1,
+        "auth_level": "basic",
+        "last_auth": "2025-08-05T10:15:00Z"
+      }
+    },
+    "resource": {
+      "type": "payment",
+      "id": "pmt789",
+      "amount": 1000000.00,
+      "currency": "AOA",
+      "destination_account": "ACC001234",
+      "operation_type": "transfer",
+      "risk_score": 0.75
+    },
+    "action": "authorize",
+    "context": {
+      "device": {
+        "id": "dev123",
+        "is_trusted": true,
+        "geo_location": {
+          "country": "AO",
+          "city": "Luanda"
+        }
+      },
+      "transaction_context": {
+        "high_value": true,
+        "unusual_pattern": false
+      }
+    }
+  },
+  "expectedDecision": {
+    "allow": false,
+    "reason": "strong_authentication_required",
+    "required_factors": ["biometric", "otp"],
+    "violations": [
+      {
+        "code": "AO-BNA-001",
+        "description": "Transações de alto valor requerem autenticação forte (múltiplos fatores)",
+        "reference": "Aviso BNA nº 02/20, Artigo 8º"
+      }
+    ],
+    "suggested_actions": [
+      {
+        "action": "require_additional_auth",
+        "message": "Por favor, complete a autenticação adicional para confirmar esta transação"
+      }
+    ]
+  },
+  "tags": ["financeiro", "autenticacao", "angola", "bna-02-20", "alto_valor"],
+  "context": {
+    "compliance_region": "AO",
+    "transaction_threshold": 500000.00,
+    "regulatory_framework": "bna-02-20"
+  }
+}

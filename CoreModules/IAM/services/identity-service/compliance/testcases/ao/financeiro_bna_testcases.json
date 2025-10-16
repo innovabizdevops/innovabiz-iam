@@ -1,0 +1,262 @@
+{
+  "framework_id": "financeiro-bna",
+  "region": "AO",
+  "version": "1.0.0",
+  "description": "Casos de teste para verificação de conformidade com os Regulamentos Gerais para Instituições Financeiras do BNA",
+  "testcases": [
+    {
+      "id": "tc-financeiro-bna-r01-01",
+      "requirement_id": "financeiro-bna-r01",
+      "name": "Transparência em Tarifas",
+      "description": "Verifica se a política exige transparência na comunicação de tarifas aos consumidores",
+      "policy_file": "consumer_protection.rego",
+      "input": {
+        "user": {
+          "id": "service_manager",
+          "tenant_id": "tenant_ao_1",
+          "region": "AO",
+          "roles": ["service_manager"]
+        },
+        "action": "update",
+        "resource": "service_fees",
+        "service_id": "transfer_service",
+        "fee_changes": [
+          {
+            "fee_type": "transaction_fee",
+            "old_value": 200,
+            "new_value": 350,
+            "currency": "AOA"
+          }
+        ],
+        "transparency_measures": {
+          "customer_notification": false,
+          "advance_notice_days": 0,
+          "published_on_website": false,
+          "published_in_branches": false
+        }
+      },
+      "expected_decision": {
+        "allow_update": false,
+        "reasons": ["insufficient_transparency_measures", "no_customer_notification"]
+      },
+      "tags": ["protecao_consumidor", "transparencia", "alta_prioridade"]
+    },
+    {
+      "id": "tc-financeiro-bna-r01-02",
+      "requirement_id": "financeiro-bna-r01",
+      "name": "Transparência em Tarifas Adequada",
+      "description": "Verifica se a política permite atualizações de tarifas com medidas de transparência adequadas",
+      "policy_file": "consumer_protection.rego",
+      "input": {
+        "user": {
+          "id": "service_manager",
+          "tenant_id": "tenant_ao_1",
+          "region": "AO",
+          "roles": ["service_manager"]
+        },
+        "action": "update",
+        "resource": "service_fees",
+        "service_id": "transfer_service",
+        "fee_changes": [
+          {
+            "fee_type": "transaction_fee",
+            "old_value": 200,
+            "new_value": 350,
+            "currency": "AOA"
+          }
+        ],
+        "transparency_measures": {
+          "customer_notification": true,
+          "notification_channels": ["email", "sms", "app_notification"],
+          "advance_notice_days": 30,
+          "published_on_website": true,
+          "published_in_branches": true,
+          "clear_explanation_provided": true
+        }
+      },
+      "expected_decision": {
+        "allow_update": true
+      },
+      "tags": ["protecao_consumidor", "transparencia"]
+    },
+    {
+      "id": "tc-financeiro-bna-r02-01",
+      "requirement_id": "financeiro-bna-r02",
+      "name": "Verificação de Idade Mínima",
+      "description": "Verifica se a política restringe acesso a serviços financeiros baseados na idade mínima",
+      "policy_file": "service_access.rego",
+      "input": {
+        "user": {
+          "id": "minor_user",
+          "tenant_id": "tenant_ao_1",
+          "region": "AO",
+          "birth_date": "2010-01-15",
+          "roles": ["customer"]
+        },
+        "action": "access",
+        "resource": "financial_service",
+        "service_type": "credit",
+        "current_date": "2023-07-15"
+      },
+      "expected_decision": {
+        "allow_service_access": false,
+        "reasons": ["minimum_age_requirement"]
+      },
+      "tags": ["verificacao_idade", "restricoes_servicos", "alta_prioridade"]
+    },
+    {
+      "id": "tc-financeiro-bna-r02-02",
+      "requirement_id": "financeiro-bna-r02",
+      "name": "Verificação de Idade para Conta Básica",
+      "description": "Verifica se a política permite acesso a contas básicas para jovens adultos",
+      "policy_file": "service_access.rego",
+      "input": {
+        "user": {
+          "id": "young_adult",
+          "tenant_id": "tenant_ao_1",
+          "region": "AO",
+          "birth_date": "2005-01-15",
+          "roles": ["customer"]
+        },
+        "action": "access",
+        "resource": "financial_service",
+        "service_type": "basic_account",
+        "current_date": "2023-07-15"
+      },
+      "expected_decision": {
+        "allow_service_access": true
+      },
+      "tags": ["verificacao_idade", "restricoes_servicos"]
+    },
+    {
+      "id": "tc-financeiro-bna-r03-01",
+      "requirement_id": "financeiro-bna-r03",
+      "name": "Registro de Operações Incompleto",
+      "description": "Verifica se a política rejeita operações sem registro adequado",
+      "policy_file": "operation_logging.rego",
+      "input": {
+        "user": {
+          "id": "bank_officer",
+          "tenant_id": "tenant_ao_1",
+          "region": "AO",
+          "roles": ["bank_officer"]
+        },
+        "action": "complete",
+        "resource": "financial_operation",
+        "operation_id": "op56789",
+        "operation_type": "loan_disbursement",
+        "amount": 500000,
+        "currency": "AOA",
+        "records": {
+          "customer_identification": true,
+          "operation_details": true,
+          "approval_flow": false,
+          "required_documents": false,
+          "terms_acceptance": false
+        }
+      },
+      "expected_decision": {
+        "allow_completion": false,
+        "reasons": ["incomplete_operation_records"]
+      },
+      "tags": ["registros", "operacoes", "alta_prioridade"]
+    },
+    {
+      "id": "tc-financeiro-bna-r03-02",
+      "requirement_id": "financeiro-bna-r03",
+      "name": "Registro de Operações Completo",
+      "description": "Verifica se a política permite operações com registro adequado",
+      "policy_file": "operation_logging.rego",
+      "input": {
+        "user": {
+          "id": "bank_officer",
+          "tenant_id": "tenant_ao_1",
+          "region": "AO",
+          "roles": ["bank_officer"]
+        },
+        "action": "complete",
+        "resource": "financial_operation",
+        "operation_id": "op56789",
+        "operation_type": "loan_disbursement",
+        "amount": 500000,
+        "currency": "AOA",
+        "records": {
+          "customer_identification": true,
+          "operation_details": true,
+          "approval_flow": true,
+          "required_documents": true,
+          "terms_acceptance": true,
+          "audit_trail_complete": true
+        }
+      },
+      "expected_decision": {
+        "allow_completion": true
+      },
+      "tags": ["registros", "operacoes"]
+    },
+    {
+      "id": "tc-financeiro-bna-r04-01",
+      "requirement_id": "financeiro-bna-r04",
+      "name": "Relatório Regulatório Incompleto",
+      "description": "Verifica se a política rejeita submissão de relatórios incompletos",
+      "policy_file": "regulatory_reporting.rego",
+      "input": {
+        "user": {
+          "id": "compliance_officer",
+          "tenant_id": "tenant_ao_1",
+          "region": "AO",
+          "roles": ["compliance_officer"]
+        },
+        "action": "submit",
+        "resource": "regulatory_report",
+        "report_id": "rep12345",
+        "report_type": "monthly_financial_position",
+        "reporting_period": "2023-06",
+        "submission_date": "2023-07-10",
+        "completeness": {
+          "required_sections": ["assets", "liabilities", "liquidity_ratios", "capital_adequacy"],
+          "completed_sections": ["assets", "liabilities"]
+        }
+      },
+      "expected_decision": {
+        "allow_submission": false,
+        "reasons": ["incomplete_required_sections"]
+      },
+      "tags": ["reportes", "regulatorio"]
+    },
+    {
+      "id": "tc-financeiro-bna-r04-02",
+      "requirement_id": "financeiro-bna-r04",
+      "name": "Relatório Regulatório Completo",
+      "description": "Verifica se a política permite submissão de relatórios completos",
+      "policy_file": "regulatory_reporting.rego",
+      "input": {
+        "user": {
+          "id": "compliance_officer",
+          "tenant_id": "tenant_ao_1",
+          "region": "AO",
+          "roles": ["compliance_officer"]
+        },
+        "action": "submit",
+        "resource": "regulatory_report",
+        "report_id": "rep12345",
+        "report_type": "monthly_financial_position",
+        "reporting_period": "2023-06",
+        "submission_date": "2023-07-10",
+        "completeness": {
+          "required_sections": ["assets", "liabilities", "liquidity_ratios", "capital_adequacy"],
+          "completed_sections": ["assets", "liabilities", "liquidity_ratios", "capital_adequacy"]
+        },
+        "validations": {
+          "internal_review": true,
+          "data_reconciliation": true,
+          "approval_by_management": true
+        }
+      },
+      "expected_decision": {
+        "allow_submission": true
+      },
+      "tags": ["reportes", "regulatorio"]
+    }
+  ]
+}

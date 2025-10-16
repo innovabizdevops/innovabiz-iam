@@ -1,0 +1,166 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: observability-portal-frontend
+  namespace: innovabiz-observability
+  labels:
+    app: observability-portal
+    component: frontend
+    innovabiz.com/module: iam
+    innovabiz.com/component: observability-portal
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: observability-portal
+      component: frontend
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: observability-portal
+        component: frontend
+        innovabiz.com/module: iam
+        innovabiz.com/component: observability-portal
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - observability-portal
+                - key: component
+                  operator: In
+                  values:
+                  - frontend
+              topologyKey: kubernetes.io/hostname
+      securityContext:
+        fsGroup: 1000
+        runAsUser: 1000
+        runAsNonRoot: true
+      containers:
+      - name: frontend
+        image: innovabiz/observability-portal-frontend:2.0.0
+        imagePullPolicy: Always
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: ["ALL"]
+        ports:
+        - name: http
+          containerPort: 8080
+          protocol: TCP
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: API_URL
+          value: "http://observability-portal-backend:8080"
+        - name: INNOVABIZ_REGION
+          valueFrom:
+            configMapKeyRef:
+              name: innovabiz-global-config
+              key: region
+        - name: INNOVABIZ_ENVIRONMENT
+          valueFrom:
+            configMapKeyRef:
+              name: innovabiz-global-config
+              key: environment
+        - name: TELEMETRY_ENABLED
+          value: "true"
+        - name: THEME
+          valueFrom:
+            configMapKeyRef:
+              name: observability-portal-frontend-config
+              key: theme
+        - name: FEATURE_FLAGS
+          valueFrom:
+            configMapKeyRef:
+              name: observability-portal-frontend-config
+              key: featureFlags
+        - name: LOCALE_DEFAULT
+          valueFrom:
+            configMapKeyRef:
+              name: observability-portal-frontend-config
+              key: localeDefault
+        volumeMounts:
+        - name: config-volume
+          mountPath: /usr/share/nginx/html/config
+          readOnly: true
+        - name: tmp-volume
+          mountPath: /tmp
+        resources:
+          requests:
+            cpu: 200m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+      volumes:
+      - name: config-volume
+        configMap:
+          name: observability-portal-frontend-config
+      - name: tmp-volume
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: observability-portal-frontend
+  namespace: innovabiz-observability
+  labels:
+    app: observability-portal
+    component: frontend
+    innovabiz.com/module: iam
+    innovabiz.com/component: observability-portal
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 80
+    targetPort: http
+    protocol: TCP
+  selector:
+    app: observability-portal
+    component: frontend
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: observability-portal-frontend-pdb
+  namespace: innovabiz-observability
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: observability-portal
+      component: frontend

@@ -1,0 +1,153 @@
+# IAM - ConfigMap para ambiente de Staging
+# Este manifesto define as configurações não-sensíveis do IAM em ambiente de Staging
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: iam-config
+  namespace: innovabiz-iam-staging
+  labels:
+    app: iam-service
+    module: iam
+    environment: staging
+data:
+  # Configurações gerais da aplicação
+  app-config.json: |
+    {
+      "apiVersion": "v1",
+      "server": {
+        "cors": {
+          "enabled": true,
+          "origins": ["https://staging.innovabiz.app", "https://api-staging.innovabiz.app"],
+          "methods": ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+          "headers": ["Authorization", "Content-Type", "X-Tenant-ID", "X-Request-ID", "X-API-Key"]
+        },
+        "rateLimit": {
+          "enabled": true,
+          "windowMs": 60000,
+          "max": 100,
+          "standardHeaders": true,
+          "legacyHeaders": false
+        },
+        "security": {
+          "helmet": {
+            "enabled": true,
+            "contentSecurityPolicy": {
+              "enabled": true,
+              "directives": {
+                "defaultSrc": ["'self'"],
+                "scriptSrc": ["'self'", "https://staging-static.innovabiz.app"],
+                "styleSrc": ["'self'", "https://staging-static.innovabiz.app", "'unsafe-inline'"],
+                "imgSrc": ["'self'", "data:", "https://staging-static.innovabiz.app"],
+                "connectSrc": ["'self'", "https://api-staging.innovabiz.app"]
+              }
+            }
+          }
+        },
+        "features": {
+          "webauthn": true,
+          "biometrics": true,
+          "adaptiveAuth": true,
+          "multiTenancy": true,
+          "multiContext": true
+        }
+      },
+      "logging": {
+        "level": "info",
+        "format": "json",
+        "includeTraceId": true,
+        "redactSensitiveData": true,
+        "sensitiveFields": ["password", "token", "secret", "credential", "biometric", "pin"]
+      },
+      "metrics": {
+        "enabled": true,
+        "defaultLabels": {
+          "service": "iam",
+          "environment": "staging"
+        },
+        "prometheus": {
+          "enabled": true,
+          "defaultMetrics": true,
+          "collectGcMetrics": true,
+          "collectProcessMetrics": true
+        }
+      },
+      "tenantDefaults": {
+        "passwordPolicy": {
+          "minLength": 10,
+          "requireLowercase": true,
+          "requireUppercase": true,
+          "requireNumbers": true,
+          "requireSpecialChars": true,
+          "preventPasswordReuse": 5,
+          "expirationDays": 90
+        },
+        "sessionPolicy": {
+          "idleTimeoutMinutes": 30,
+          "absoluteTimeoutMinutes": 240,
+          "refreshTokenValidityDays": 7
+        },
+        "mfaPolicy": {
+          "enabled": true,
+          "requiredMethods": 1,
+          "allowedMethods": ["totp", "webauthn", "sms", "email"]
+        }
+      }
+    }
+  
+  # Configurações de integração com outros módulos
+  iam-integration-config: |
+    risk-management-url: "http://risk-management-service.innovabiz-risk-management-staging.svc.cluster.local"
+    payment-gateway-url: "http://payment-gateway-service.innovabiz-payment-gateway-staging.svc.cluster.local"
+    mobile-money-url: "http://mobile-money-service.innovabiz-mobile-money-staging.svc.cluster.local"
+    e-commerce-url: "http://ecommerce-service.innovabiz-ecommerce-staging.svc.cluster.local"
+    datacore-url: "http://datacore-service.innovabiz-datacore-staging.svc.cluster.local"
+    bureau-credito-url: "http://bureau-credito-service.innovabiz-bureau-staging.svc.cluster.local"
+  
+  # Configurações de observabilidade
+  observability-config: |
+    otlp-endpoint: "http://otel-collector.observability.svc.cluster.local:4318"
+    otel-enabled: "true"
+    metrics-enabled: "true"
+    tracing-enabled: "true"
+    tracing-sampling-rate: "0.1"
+    logs-enabled: "true"
+
+  # Mapeamento de jurisdições para requisitos de compliance
+  compliance-mapping.json: |
+    {
+      "Angola": {
+        "regulator": "BNA",
+        "requirements": ["KYC_Enhanced", "AML_Verification", "Transaction_Monitoring", "Biometric_Authentication"],
+        "retentionPeriodDays": 3650,
+        "passwordComplexity": "high",
+        "mfaRequired": true
+      },
+      "Brasil": {
+        "regulator": "BACEN",
+        "requirements": ["LGPD_Compliance", "Open_Banking", "PIX_Integration", "Biometric_Authentication"],
+        "retentionPeriodDays": 1825,
+        "passwordComplexity": "high",
+        "mfaRequired": true
+      },
+      "SADC": {
+        "regulator": "Various",
+        "requirements": ["KYC_Standard", "AML_Basic", "Transaction_Monitoring"],
+        "retentionPeriodDays": 2555,
+        "passwordComplexity": "medium",
+        "mfaRequired": true
+      },
+      "EU": {
+        "regulator": "EBA",
+        "requirements": ["GDPR_Compliance", "PSD2_SCA", "Transaction_Monitoring", "Consent_Management"],
+        "retentionPeriodDays": 730,
+        "passwordComplexity": "high",
+        "mfaRequired": true
+      },
+      "USA": {
+        "regulator": "Various",
+        "requirements": ["KYC_Enhanced", "AML_Advanced", "Transaction_Monitoring", "SOX_Compliance"],
+        "retentionPeriodDays": 2555,
+        "passwordComplexity": "high",
+        "mfaRequired": true
+      }
+    }

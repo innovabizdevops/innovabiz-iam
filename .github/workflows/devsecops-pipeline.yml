@@ -1,0 +1,24 @@
+name: DevSecOps Pipeline
+
+on: [push, pull_request]
+
+jobs:
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: SAST - CodeQL
+        uses: github/codeql-action/init@v2
+        with:
+          languages: python, javascript
+      - name: Run CodeQL Analysis
+        uses: github/codeql-action/analyze@v2
+      - name: DAST - OWASP ZAP
+        uses: zaproxy/action-full-scan@v0.7.0
+        with:
+          target: 'https://your-app-url'
+      - name: Upload evidências
+        run: |
+          mkdir -p evidencias/DevSecOps
+          cp *.sarif evidencias/DevSecOps/
+          cp zap-report.html evidencias/DevSecOps/

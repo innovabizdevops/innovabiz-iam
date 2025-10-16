@@ -1,0 +1,87 @@
+name: Gerar relatório mensal de auditoria
+
+on:
+  schedule:
+    - cron: '0 2 1 * *'  # Executa no dia 1 de cada mês às 02:00 UTC
+  workflow_dispatch:
+
+jobs:
+  generate_report:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar dependências Python
+        run: pip install pandas
+
+      - name: Gerar relatório mensal
+        shell: pwsh
+        run: |
+          python ./scripts/generate_monthly_audit_report.py
+
+      - name: Checar não conformidade e incidentes
+        id: check_alert
+        shell: python
+        run: |
+          import json, os
+          alert = False
+          message = ''
+          # Compliance
+          compliance_path = './reports/compliance_report.json'
+          if os.path.exists(compliance_path):
+              with open(compliance_path, 'r', encoding='utf-8') as f:
+                  compliance = json.load(f)
+              for k, v in compliance.items():
+                  if v != 'OK':
+                      alert = True
+                      message += f'Não conformidade em {k}: {v}\n'
+          # Segurança
+          security_path = './reports/security_report.json'
+          if os.path.exists(security_path):
+              with open(security_path, 'r', encoding='utf-8') as f:
+                  sec = json.load(f)
+              if sec['sast']['critical'] > 0 or sec['dast']['critical'] > 0 or sec['sca']['critical'] > 0:
+                  alert = True
+                  message += 'Falhas críticas de segurança detectadas!\n'
+          # Incidentes
+          incidentes_dir = './reports/incidentes/'
+          if os.path.exists(incidentes_dir):
+              incidentes = [f for f in os.listdir(incidentes_dir) if f.endswith('.md') and f != 'template_incidente.md']
+              if incidentes:
+                  alert = True
+                  message += f'Incidentes registrados: {len(incidentes)}\n'
+          print(f'::set-output name=alert::{str(alert).lower()}')
+          print(f'::set-output name=message::{message}')
+
+      - name: Alerta automático Slack (não conformidade/incidente)
+        if: steps.check_alert.outputs.alert == 'true'
+        run: |
+          curl -X POST -H 'Content-type: application/json' --data '{"text":"[ALERTA] Não conformidade de compliance, falha crítica de segurança ou incidente detectado no relatório mensal.\n${{ steps.check_alert.outputs.message }}"}' ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      - name: Alerta automático por e-mail (não conformidade/incidente)
+        if: steps.check_alert.outputs.alert == 'true'
+        shell: python
+        env:
+          SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+        run: |
+          import smtplib
+          from email.mime.text import MIMEText
+          import os
+          msg = MIMEText(f"${{ steps.check_alert.outputs.message }}")
+          msg['Subject'] = "[ALERTA] Não conformidade/Incidente - Relatório Mensal"
+          msg['From'] = os.environ['SMTP_USER']
+          msg['To'] = os.environ['EMAIL_TO']
+          with smtplib.SMTP(os.environ['SMTP_SERVER'], int(os.environ['SMTP_PORT'])) as s:
+              s.starttls()
+              s.login(os.environ['SMTP_USER'], os.environ['SMTP_PASS'])
+              s.send_message(msg)
+
+      - name: Upload relatório gerado
+        uses: actions/upload-artifact@v4
+        with:
+          name: monthly_audit_report
+          path: ./reports/monthly_audit_report_*.md

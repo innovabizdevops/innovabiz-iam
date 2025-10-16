@@ -1,0 +1,384 @@
+---
+# INNOVABIZ IAM Audit Service - Loki Deployment
+# Versão: 1.0.0
+# Ano: 2025
+# Ambiente: Multi-plataforma, Multi-dimensional e Multi-Contexto
+# Alinhado com: ISO 20000, ITIL v4, ISO 27001, NIST SP 800-53
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: loki-config
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: loki
+    app.kubernetes.io/part-of: innovabiz-observability
+    app.kubernetes.io/component: logging
+    innovabiz.com/module: iam-audit
+    innovabiz.com/tier: observability
+data:
+  loki.yaml: |
+    auth_enabled: true
+
+    server:
+      http_listen_port: 3100
+      grpc_listen_port: 9096
+      log_level: info
+
+    common:
+      path_prefix: /loki
+      storage:
+        filesystem:
+          chunks_directory: /loki/chunks
+          rules_directory: /loki/rules
+      replication_factor: 1
+      ring:
+        instance_addr: 127.0.0.1
+        kvstore:
+          store: inmemory
+
+    schema_config:
+      configs:
+        - from: 2023-01-01
+          store: tsdb
+          object_store: filesystem
+          schema: v12
+          index:
+            prefix: index_
+            period: 24h
+
+    ruler:
+      alertmanager_url: http://alertmanager:9093
+      enable_alertmanager_v2: true
+      enable_api: true
+      ring:
+        kvstore:
+          store: inmemory
+      rule_path: /loki/rules
+      storage:
+        type: local
+        local:
+          directory: /loki/rules
+      
+    query_scheduler:
+      max_outstanding_requests_per_tenant: 2048
+      
+    querier:
+      max_concurrent: 16
+      engine:
+        timeout: 3m
+        
+    frontend:
+      compress_responses: true
+      log_queries_longer_than: 5s
+      tenant_query_timeout: 3m
+      
+    limits_config:
+      retention_period: 15d
+      enforce_metric_name: false
+      max_query_parallelism: 16
+      max_query_length: 12000h
+      max_query_series: 10000
+      max_streams_per_user: 0
+      max_global_streams_per_user: 0
+      ingestion_rate_mb: 8
+      ingestion_burst_size_mb: 16
+      per_stream_rate_limit: 5MB
+      per_stream_rate_limit_burst: 10MB
+      
+    chunk_store_config:
+      max_look_back_period: 168h
+      
+    table_manager:
+      retention_deletes_enabled: true
+      retention_period: 336h
+      
+    compactor:
+      working_directory: /loki/compactor
+      shared_store: filesystem
+      compaction_interval: 5m
+      
+    analytics:
+      reporting_enabled: false
+
+    tracing:
+      enabled: true
+      
+    distributor:
+      ring:
+        kvstore:
+          store: inmemory
+          
+    ingester:
+      chunk_idle_period: 30m
+      chunk_target_size: 1536000
+      max_chunk_age: 1h
+      lifecycler:
+        ring:
+          kvstore:
+            store: inmemory
+          replication_factor: 1
+        final_sleep: 0s
+      wal:
+        enabled: true
+        dir: /loki/wal
+        
+    storage_config:
+      tsdb_shipper:
+        active_index_directory: /loki/tsdb-index
+        cache_location: /loki/tsdb-cache
+        cache_ttl: 24h
+        shared_store: filesystem
+        
+    runtime_config:
+      file: /etc/loki/runtime-config/runtime-config.yaml
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: loki-runtime-config
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: loki
+    app.kubernetes.io/part-of: innovabiz-observability
+data:
+  runtime-config.yaml: |
+    # Configurações dinâmicas que podem ser atualizadas em tempo de execução
+    
+    # Configurações específicas por tenant
+    tenant_configs:
+      # Configuração padrão para todos os tenants
+      defaults:
+        ingestion_rate_strategy: local
+        ingestion_rate_mb: 4
+        ingestion_burst_size_mb: 8
+        max_streams_per_user: 0
+        max_line_size: 256000
+        
+      # Configurações para tenants específicos
+      overrides:
+        # Tenant VIP com limites maiores
+        tenant1:
+          ingestion_rate_mb: 8
+          ingestion_burst_size_mb: 16
+          max_line_size: 512000
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: loki
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: loki
+    app.kubernetes.io/part-of: innovabiz-observability
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: loki
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: loki
+    app.kubernetes.io/part-of: innovabiz-observability
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "3100"
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 3100
+    protocol: TCP
+    targetPort: http
+  - name: grpc
+    port: 9096
+    protocol: TCP
+    targetPort: grpc
+  selector:
+    app.kubernetes.io/name: loki
+    app.kubernetes.io/part-of: innovabiz-observability
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: loki
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: loki
+    app.kubernetes.io/part-of: innovabiz-observability
+    app.kubernetes.io/component: logging
+    innovabiz.com/module: iam-audit
+    innovabiz.com/tier: observability
+spec:
+  serviceName: loki
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: loki
+      app.kubernetes.io/part-of: innovabiz-observability
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: loki
+        app.kubernetes.io/part-of: innovabiz-observability
+        app.kubernetes.io/component: logging
+        innovabiz.com/module: iam-audit
+        innovabiz.com/tier: observability
+      annotations:
+        checksum/config: "${CONFIG_HASH}"
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "3100"
+    spec:
+      serviceAccountName: loki
+      securityContext:
+        fsGroup: 10001
+        runAsGroup: 10001
+        runAsNonRoot: true
+        runAsUser: 10001
+      terminationGracePeriodSeconds: 300
+      containers:
+      - name: loki
+        image: grafana/loki:2.9.2
+        imagePullPolicy: IfNotPresent
+        args:
+        - -config.file=/etc/loki/loki.yaml
+        - -config.expand-env=true
+        ports:
+        - name: http
+          containerPort: 3100
+          protocol: TCP
+        - name: grpc
+          containerPort: 9096
+          protocol: TCP
+        - name: http-metrics
+          containerPort: 3100
+          protocol: TCP
+        env:
+        - name: JAEGER_AGENT_HOST
+          value: "jaeger-agent"
+        - name: JAEGER_ENDPOINT
+          value: "http://jaeger-collector:14268/api/traces"
+        - name: JAEGER_SAMPLER_TYPE
+          value: "const"
+        - name: JAEGER_SAMPLER_PARAM
+          value: "1"
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
+          readOnlyRootFilesystem: true
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: http
+          initialDelaySeconds: 30
+          timeoutSeconds: 1
+        livenessProbe:
+          httpGet:
+            path: /ready
+            port: http
+          initialDelaySeconds: 300
+          timeoutSeconds: 1
+        resources:
+          limits:
+            cpu: 1000m
+            memory: 1Gi
+          requests:
+            cpu: 100m
+            memory: 256Mi
+        volumeMounts:
+        - name: config
+          mountPath: /etc/loki/loki.yaml
+          subPath: loki.yaml
+        - name: runtime-config
+          mountPath: /etc/loki/runtime-config
+        - name: storage
+          mountPath: /loki
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: config
+        configMap:
+          name: loki-config
+      - name: runtime-config
+        configMap:
+          name: loki-runtime-config
+      - name: tmp
+        emptyDir: {}
+  volumeClaimTemplates:
+  - metadata:
+      name: storage
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      storageClassName: managed-premium
+      resources:
+        requests:
+          storage: 50Gi
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: loki
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: loki
+    app.kubernetes.io/part-of: innovabiz-observability
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/auth-type: "basic"
+    nginx.ingress.kubernetes.io/auth-secret: "loki-auth"
+    nginx.ingress.kubernetes.io/auth-realm: "Authentication Required"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  tls:
+  - hosts:
+    - ${LOKI_HOST}
+    secretName: loki-tls
+  rules:
+  - host: ${LOKI_HOST}
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: loki
+            port:
+              name: http
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: loki-auth
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: loki
+    app.kubernetes.io/part-of: innovabiz-observability
+type: Opaque
+data:
+  auth: ${LOKI_AUTH_HASH}  # htpasswd -nb admin <password> | base64
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: loki
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: loki
+    app.kubernetes.io/part-of: innovabiz-observability
+    release: prometheus-operator
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: loki
+      app.kubernetes.io/part-of: innovabiz-observability
+  namespaceSelector:
+    matchNames:
+      - iam-system
+  endpoints:
+  - port: http
+    interval: 15s
+    path: /metrics

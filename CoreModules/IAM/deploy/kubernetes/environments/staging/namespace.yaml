@@ -1,0 +1,12 @@
+# IAM - Namespace para ambiente de Staging
+# Este manifesto define o namespace isolado para o ambiente de Staging do IAM
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: innovabiz-iam-staging
+  labels:
+    environment: staging
+    module: iam
+    owner: innovabiz-platform
+    compliance-level: restricted
+    data-classification: confidential

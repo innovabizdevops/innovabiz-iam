@@ -1,0 +1,439 @@
+openapi: 3.0.3
+info:
+  title: INNOVABIZ IAM API
+  description: API para gerenciamento de identidade e acesso da plataforma INNOVABIZ
+  version: 1.0.0
+  contact:
+    name: INNOVABIZ Development Team
+    email: innovabizdevops@gmail.com
+  license:
+    name: Proprietary
+servers:
+  - url: 'https://api.innovabiz.com/v1'
+    description: Produção
+  - url: 'https://api.staging.innovabiz.com/v1'
+    description: Homologação
+  - url: 'https://api.dev.innovabiz.com/v1'
+    description: Desenvolvimento
+  - url: 'http://localhost:8080/v1'
+    description: Local
+
+tags:
+  - name: Authentication
+    description: Operações de autenticação
+  - name: Users
+    description: Operações de gerenciamento de usuários
+  - name: Roles
+    description: Operações de gerenciamento de papéis
+  - name: Permissions
+    description: Operações de gerenciamento de permissões
+  - name: Organizations
+    description: Operações de gerenciamento de organizações
+  - name: Federation
+    description: Operações de federação de identidade
+  - name: MFA
+    description: Operações de autenticação multi-fator
+  - name: AR/VR
+    description: Operações de autenticação e autorização para AR/VR
+  - name: Healthcare
+    description: Operações específicas para o setor de saúde
+  - name: Compliance
+    description: Operações de conformidade regulatória
+
+paths:
+  /auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: Autenticar usuário por credenciais
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - username
+                - password
+                - organization_code
+              properties:
+                username:
+                  type: string
+                  description: Email ou nome de usuário
+                password:
+                  type: string
+                  format: password
+                  description: Senha do usuário
+                organization_code:
+                  type: string
+                  description: Código da organização
+      responses:
+        '200':
+          description: Autenticação bem-sucedida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: Parâmetros inválidos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Credenciais inválidas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Usuário bloqueado ou inativo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  
+  /auth/mfa/initiate:
+    post:
+      tags:
+        - Authentication
+        - MFA
+      summary: Iniciar processo de autenticação multi-fator
+      operationId: initiateMfa
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - auth_token
+                - method_type
+              properties:
+                auth_token:
+                  type: string
+                  description: Token de autenticação recebido no login inicial
+                method_type:
+                  type: string
+                  enum: [totp, sms, email, push_notification, ar_spatial_gesture, ar_gaze_pattern, ar_spatial_password, backup_codes]
+                  description: Método MFA a ser utilizado
+      responses:
+        '200':
+          description: Processo MFA iniciado com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MfaInitiateResponse'
+        '400':
+          description: Parâmetros inválidos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Token inválido ou expirado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  
+  /auth/mfa/verify:
+    post:
+      tags:
+        - Authentication
+        - MFA
+      summary: Verificar código MFA
+      operationId: verifyMfa
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - mfa_token
+                - verification_code
+              properties:
+                mfa_token:
+                  type: string
+                  description: Token MFA recebido na iniciação do processo
+                verification_code:
+                  type: string
+                  description: Código de verificação MFA informado pelo usuário
+                trust_device:
+                  type: boolean
+                  description: Indica se o dispositivo deve ser registrado como confiável
+                  default: false
+      responses:
+        '200':
+          description: Verificação MFA bem-sucedida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: Parâmetros inválidos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Código inválido ou token expirado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  
+  /auth/logout:
+    post:
+      tags:
+        - Authentication
+      summary: Encerrar sessão do usuário
+      operationId: logout
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Logout bem-sucedido
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+        '401':
+          description: Não autenticado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  
+  /auth/federation/providers:
+    get:
+      tags:
+        - Authentication
+        - Federation
+      summary: Listar provedores de identidade disponíveis
+      operationId: listIdentityProviders
+      parameters:
+        - name: organization_code
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Lista de provedores de identidade
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  providers:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/IdentityProviderSummary'
+        '400':
+          description: Parâmetros inválidos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  
+  /auth/federation/initiate/{provider_id}:
+    get:
+      tags:
+        - Authentication
+        - Federation
+      summary: Iniciar processo de autenticação federada
+      operationId: initiateFederatedAuth
+      parameters:
+        - name: provider_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: organization_code
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: redirect_uri
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uri
+      responses:
+        '302':
+          description: Redirecionamento para o provedor de identidade
+          headers:
+            Location:
+              schema:
+                type: string
+                format: uri
+        '400':
+          description: Parâmetros inválidos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  
+  /auth/federation/callback/{provider_id}:
+    get:
+      tags:
+        - Authentication
+        - Federation
+      summary: Callback de autenticação federada
+      operationId: federatedAuthCallback
+      parameters:
+        - name: provider_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: code
+          in: query
+          schema:
+            type: string
+        - name: state
+          in: query
+          schema:
+            type: string
+        - name: SAMLResponse
+          in: query
+          schema:
+            type: string
+      responses:
+        '302':
+          description: Redirecionamento após autenticação bem-sucedida
+          headers:
+            Location:
+              schema:
+                type: string
+                format: uri
+        '400':
+          description: Parâmetros inválidos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Falha na autenticação federada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /users:
+    get:
+      tags:
+        - Users
+      summary: Listar usuários
+      operationId: listUsers
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, inactive, suspended, locked]
+        - name: sort
+          in: query
+          schema:
+            type: string
+            default: "created_at:desc"
+      responses:
+        '200':
+          description: Lista de usuários
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  users:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/UserSummary'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          description: Não autenticado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Sem permissão
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      tags:
+        - Users
+      summary: Criar usuário
+      operationId: createUser
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserCreate'
+      responses:
+        '201':
+          description: Usuário criado com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          description: Parâmetros inválidos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Não autenticado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Sem permissão
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflito - usuário já existe
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'

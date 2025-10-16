@@ -1,0 +1,63 @@
+name: MCP Integration
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'infrastructure/mcp/**'
+      - 'docs/mcp/**'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'infrastructure/mcp/**'
+      - 'docs/mcp/**'
+
+jobs:
+  mcp-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v3
+        with:
+          python-version: '3.9'
+
+      - name: Install Dependencies
+        run: |
+          pip install -r infrastructure/mcp/requirements.txt
+
+      - name: Configure MCP
+        run: |
+          docker-compose -f docker-compose.yml exec mcp-core /bin/configure-mcp.sh
+
+      - name: Validate Configuration
+        run: |
+          docker-compose -f docker-compose.yml exec mcp-core /bin/validate-config.sh
+
+      - name: Test Integration
+        run: |
+          docker-compose -f docker-compose.yml exec mcp-core /bin/test-integration.sh
+
+      - name: Test KrakenD Integration
+        run: |
+          docker-compose -f docker-compose.yml exec krakend-integration-handler /bin/test-mcp.sh
+
+      - name: Test IAM Integration
+        run: |
+          docker-compose -f docker-compose.yml exec iam-auth-server /app/bin/test-mcp.sh
+
+      - name: Validate Security
+        run: |
+          docker-compose -f docker-compose.yml exec mcp-core /bin/validate-security.sh
+
+      - name: Generate Documentation
+        run: |
+          cd docs/mcp
+          make html
+
+      - name: Deploy Documentation
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: docs/mcp/_build/html

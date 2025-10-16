@@ -1,0 +1,74 @@
+name: KrakenD Integration
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'infrastructure/krakend/**'
+      - 'docs/krakend/**'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'infrastructure/krakend/**'
+      - 'docs/krakend/**'
+
+jobs:
+  krakend-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Go
+        uses: actions/setup-go@v3
+        with:
+          go-version: '1.17'
+
+      - name: Cache Go modules
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/go/pkg/mod
+            /tmp/go-build
+          key: ${{ runner.os }}-go-${{ hashFiles('**.go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Configure KrakenD
+        run: |
+          docker-compose -f docker-compose.yml exec krakend /bin/configure-krakend.sh
+
+      - name: Validate Configuration
+        run: |
+          docker-compose -f docker-compose.yml exec krakend krakend config check -c /etc/krakend/krakend.json
+          docker-compose -f docker-compose.yml exec krakend krakend config validate -c /etc/krakend/krakend.json
+
+      - name: Test Integration
+        run: |
+          docker-compose -f docker-compose.yml exec krakend-integration-handler /bin/test-integration.sh
+
+      - name: Test MCP Integration
+        run: |
+          docker-compose -f docker-compose.yml exec krakend-integration-handler /bin/test-mcp.sh
+
+      - name: Test GraphQL
+        run: |
+          docker-compose -f docker-compose.yml exec graphql-federation /bin/test-graphql.sh
+
+      - name: Validate Security
+        run: |
+          docker-compose -f docker-compose.yml exec krakend /bin/validate-security.sh
+
+      - name: Validate IAM Integration
+        run: |
+          docker-compose -f docker-compose.yml exec krakend-integration-handler /bin/validate-iam.sh
+
+      - name: Generate Documentation
+        run: |
+          cd docs/krakend
+          make html
+
+      - name: Deploy Documentation
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: docs/krakend/_build/html

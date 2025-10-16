@@ -1,0 +1,951 @@
+"""
+Schema GraphQL principal do módulo IAM INNOVABIZ
+Este schema implementa os tipos, queries, mutations e diretivas necessárias
+para o gerenciamento completo de identidades e acessos no sistema.
+"""
+
+scalar DateTime
+scalar UUID
+scalar JSON
+scalar JSONObject
+scalar Upload
+
+"""
+Diretiva para controle de autenticação e autorização.
+Aplicada em campos para restringir acesso baseado em roles e permissões.
+"""
+directive @auth(
+  """Lista de permissões requeridas para acessar o campo"""
+  requires: [String!] = [], 
+  
+  """Se verdadeiro, permite acesso se o usuário atual for o proprietário do recurso"""
+  allowSameUser: Boolean = false,
+  
+  """Se verdadeiro, verifica se o tenant do usuário corresponde ao recurso"""
+  checkTenant: Boolean = true
+) on FIELD_DEFINITION
+
+"""
+Diretiva para validação de input usando o validador customizado.
+"""
+directive @validateInput on FIELD_DEFINITION
+
+"""
+Diretiva para marcar campos sensíveis que requerem cuidados especiais.
+"""
+directive @sensitive on FIELD_DEFINITION | OBJECT
+
+"""
+Diretiva para redação de dados em logs para conformidade e segurança.
+"""
+directive @redact(
+  """Texto a ser usado para substituir o valor original"""
+  replacement: String = "[REDACTED]"
+) on FIELD_DEFINITION
+
+"""
+Input para paginação usado em queries que retornam listas.
+"""
+input PaginationInput {
+  """Número da página (começando em 0)"""
+  page: Int = 0
+  
+  """Número de itens por página"""
+  perPage: Int = 20
+  
+  """Campo para ordenação"""
+  sortBy: String
+  
+  """Direção da ordenação (ASC ou DESC)"""
+  sortDirection: SortDirection = ASC
+}
+
+"""
+Direção de ordenação para queries paginadas.
+"""
+enum SortDirection {
+  ASC
+  DESC
+}
+
+"""
+Status possíveis para um usuário no sistema.
+"""
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  PENDING
+  LOCKED
+}
+
+"""
+Tipo de autenticação utilizada.
+"""
+enum AuthType {
+  PASSWORD
+  SSO
+  CERTIFICATE
+  BIOMETRIC
+  MFA
+  WEBAUTHN
+}
+
+"""
+Papel de um membro dentro de um grupo.
+"""
+enum GroupMemberRole {
+  MEMBER
+  ADMIN
+  OWNER
+  AUDITOR
+  CONTRIBUTOR
+}
+
+"""
+Nível de confidencialidade para recursos.
+"""
+enum ConfidentialityLevel {
+  PUBLIC
+  INTERNAL
+  CONFIDENTIAL
+  RESTRICTED
+}
+
+"""
+Filtro para busca de usuários.
+"""
+input UserFilter {
+  """Nome de usuário (busca parcial)"""
+  username: String
+  
+  """E-mail (busca parcial)"""
+  email: String
+  
+  """Status do usuário"""
+  status: UserStatus
+  
+  """ID do tenant"""
+  tenantId: UUID
+  
+  """IDs de grupos que o usuário pertence"""
+  groupIds: [UUID!]
+  
+  """IDs de roles atribuídos ao usuário"""
+  roleIds: [UUID!]
+  
+  """Busca por campos customizados"""
+  attributes: JSON
+}
+
+"""
+Filtro para busca de grupos.
+"""
+input GroupFilter {
+  """Nome do grupo (busca parcial)"""
+  name: String
+  
+  """Código do grupo (busca exata)"""
+  code: String
+  
+  """ID do tenant"""
+  tenantId: UUID
+  
+  """IDs dos grupos pais"""
+  parentGroupIds: [UUID!]
+  
+  """Busca por campos customizados"""
+  attributes: JSON
+}
+
+"""
+Filtro para busca de roles.
+"""
+input RoleFilter {
+  """Nome da role (busca parcial)"""
+  name: String
+  
+  """Código da role (busca exata)"""
+  code: String
+  
+  """ID do tenant"""
+  tenantId: UUID
+}
+
+"""
+Filtro para busca de tenants.
+"""
+input TenantFilter {
+  """Nome do tenant (busca parcial)"""
+  name: String
+  
+  """Código do tenant (busca exata)"""
+  code: String
+  
+  """Região do tenant"""
+  region: String
+  
+  """Status do tenant"""
+  status: String
+}
+
+"""
+Filtro para eventos de segurança.
+"""
+input SecurityEventFilter {
+  """Tipo de evento"""
+  eventType: String
+  
+  """Severidade mínima"""
+  minSeverity: String
+  
+  """ID do usuário relacionado"""
+  userId: UUID
+  
+  """ID do tenant"""
+  tenantId: UUID
+  
+  """Período de início"""
+  startTime: DateTime
+  
+  """Período de fim"""
+  endTime: DateTime
+}
+
+"""
+Input para login de usuário.
+"""
+input LoginInput {
+  """Nome de usuário ou e-mail"""
+  username: String!
+  
+  """Senha"""
+  password: String!
+  
+  """Código MFA (se aplicável)"""
+  mfaCode: String
+  
+  """Tipo de autenticação"""
+  authType: AuthType = PASSWORD
+}
+
+"""
+Input para refresh de token.
+"""
+input RefreshTokenInput {
+  """Token de refresh"""
+  refreshToken: String!
+}
+
+"""
+Input para criação de usuário.
+"""
+input CreateUserInput {
+  """Nome de usuário (único)"""
+  username: String!
+  
+  """E-mail (único)"""
+  email: String!
+  
+  """Senha inicial"""
+  password: String
+  
+  """Primeiro nome"""
+  firstName: String!
+  
+  """Sobrenome"""
+  lastName: String!
+  
+  """Status inicial"""
+  status: UserStatus = PENDING
+  
+  """ID do tenant"""
+  tenantId: UUID!
+  
+  """Roles iniciais"""
+  roleIds: [UUID!]
+  
+  """Grupos iniciais"""
+  groupIds: [UUID!]
+  
+  """Atributos adicionais"""
+  attributes: JSON
+}
+
+"""
+Input para atualização de usuário.
+"""
+input UpdateUserInput {
+  """E-mail (único)"""
+  email: String
+  
+  """Primeiro nome"""
+  firstName: String
+  
+  """Sobrenome"""
+  lastName: String
+  
+  """Status do usuário"""
+  status: UserStatus
+  
+  """Atributos adicionais"""
+  attributes: JSON
+}
+
+"""
+Input para criação de grupo.
+"""
+input CreateGroupInput {
+  """Nome do grupo"""
+  name: String!
+  
+  """Código do grupo (único dentro do tenant)"""
+  code: String!
+  
+  """Descrição do grupo"""
+  description: String
+  
+  """ID do tenant"""
+  tenantId: UUID!
+  
+  """IDs dos grupos pais"""
+  parentGroupIds: [UUID!]
+  
+  """Atributos adicionais"""
+  attributes: JSON
+}
+
+"""
+Input para atualização de grupo.
+"""
+input UpdateGroupInput {
+  """Nome do grupo"""
+  name: String
+  
+  """Descrição do grupo"""
+  description: String
+  
+  """Atributos adicionais"""
+  attributes: JSON
+}
+
+"""
+Tipo para usuário no sistema.
+"""
+type User {
+  """Identificador único do usuário"""
+  id: ID!
+  
+  """Nome de usuário único"""
+  username: String!
+  
+  """E-mail do usuário"""
+  email: String! @redact
+  
+  """Primeiro nome"""
+  firstName: String
+  
+  """Sobrenome"""
+  lastName: String
+  
+  """Nome completo (calculado)"""
+  fullName: String
+  
+  """Status atual"""
+  status: UserStatus!
+  
+  """ID do tenant"""
+  tenantId: ID!
+  
+  """Data de criação"""
+  createdAt: DateTime!
+  
+  """Data da última atualização"""
+  updatedAt: DateTime
+  
+  """Data do último login"""
+  lastLogin: DateTime
+  
+  """Grupos que o usuário pertence"""
+  groups: [GroupMembership!]!
+  
+  """Roles atribuídas"""
+  roles: [Role!]!
+  
+  """Permissões efetivas (combinadas de roles e grupos)"""
+  permissions: [Permission!]!
+  
+  """Atributos customizados"""
+  attributes: JSONObject
+  
+  """Perfil de segurança (acesso restrito)"""
+  securityProfile: UserSecurityProfile @auth(requires: ["IAM:ReadSecurity"])
+}
+
+"""
+Tipo para perfil de segurança do usuário.
+"""
+type UserSecurityProfile @sensitive {
+  """Tentativas de login falhas consecutivas"""
+  failedLoginAttempts: Int!
+  
+  """Última alteração de senha"""
+  lastPasswordChange: DateTime
+  
+  """Exige alteração de senha no próximo login"""
+  requirePasswordChange: Boolean!
+  
+  """MFA está habilitado"""
+  mfaEnabled: Boolean!
+  
+  """Métodos MFA configurados"""
+  mfaMethods: [String!]
+  
+  """Sessões ativas"""
+  activeSessions: Int!
+  
+  """Histórico de login (últimas entradas)"""
+  loginHistory: [LoginHistoryEntry!]
+}
+
+"""
+Entrada de histórico de login.
+"""
+type LoginHistoryEntry {
+  """Data e hora"""
+  timestamp: DateTime!
+  
+  """Endereço IP"""
+  ipAddress: String!
+  
+  """Agente de usuário"""
+  userAgent: String
+  
+  """Localização aproximada"""
+  location: String
+  
+  """Status (sucesso/falha)"""
+  status: String!
+  
+  """Método de autenticação usado"""
+  authMethod: String!
+}
+
+"""
+Tipo para grupo.
+"""
+type Group {
+  """Identificador único do grupo"""
+  id: ID!
+  
+  """Nome do grupo"""
+  name: String!
+  
+  """Código único do grupo (no tenant)"""
+  code: String!
+  
+  """Descrição"""
+  description: String
+  
+  """ID do tenant"""
+  tenantId: ID!
+  
+  """Data de criação"""
+  createdAt: DateTime!
+  
+  """Data da última atualização"""
+  updatedAt: DateTime
+  
+  """Membros do grupo"""
+  members: [GroupMembership!]!
+  
+  """Grupos pais"""
+  parentGroups: [Group!]!
+  
+  """Grupos filhos"""
+  childGroups: [Group!]!
+  
+  """Roles atribuídas ao grupo"""
+  roles: [Role!]!
+  
+  """Permissões efetivas"""
+  permissions: [Permission!]!
+  
+  """Atributos customizados"""
+  attributes: JSONObject
+}
+
+"""
+Tipo para hierarquia de grupos.
+"""
+type GroupHierarchy {
+  """Grupo raiz"""
+  root: Group!
+  
+  """Níveis da hierarquia"""
+  levels: Int!
+  
+  """Estrutura completa"""
+  tree: JSONObject!
+}
+
+"""
+Associação de usuário a grupo.
+"""
+type GroupMembership {
+  """ID do grupo"""
+  groupId: ID!
+  
+  """Grupo"""
+  group: Group!
+  
+  """ID do usuário"""
+  userId: ID!
+  
+  """Usuário"""
+  user: User!
+  
+  """Papel do usuário no grupo"""
+  role: GroupMemberRole!
+  
+  """Data de associação"""
+  joinedAt: DateTime!
+}
+
+"""
+Evento de alteração de membros de grupo.
+"""
+type GroupMembershipEvent {
+  """ID do grupo"""
+  groupId: ID!
+  
+  """Tipo de evento"""
+  eventType: String!
+  
+  """ID do usuário"""
+  userId: ID!
+  
+  """Papel atribuído (se aplicável)"""
+  role: GroupMemberRole
+  
+  """Data do evento"""
+  timestamp: DateTime!
+}
+
+"""
+Tipo para role.
+"""
+type Role {
+  """Identificador único da role"""
+  id: ID!
+  
+  """Nome da role"""
+  name: String!
+  
+  """Código único da role (no tenant)"""
+  code: String!
+  
+  """Descrição"""
+  description: String
+  
+  """ID do tenant"""
+  tenantId: ID!
+  
+  """Data de criação"""
+  createdAt: DateTime!
+  
+  """Permissões associadas"""
+  permissions: [Permission!]!
+}
+
+"""
+Tipo para permissão.
+"""
+type Permission {
+  """Identificador único"""
+  id: ID!
+  
+  """Nome da permissão"""
+  name: String!
+  
+  """Código único"""
+  code: String!
+  
+  """Descrição"""
+  description: String
+  
+  """Recurso associado"""
+  resource: String!
+  
+  """Ação permitida"""
+  action: String!
+}
+
+"""
+Tipo para tenant.
+"""
+type Tenant {
+  """Identificador único"""
+  id: ID!
+  
+  """Nome do tenant"""
+  name: String!
+  
+  """Código único"""
+  code: String!
+  
+  """Descrição"""
+  description: String
+  
+  """Região primária"""
+  primaryRegion: String!
+  
+  """Regiões secundárias"""
+  secondaryRegions: [String!]
+  
+  """Status do tenant"""
+  status: String!
+  
+  """Plano contratado"""
+  plan: String!
+  
+  """Data de criação"""
+  createdAt: DateTime!
+  
+  """Data de ativação"""
+  activatedAt: DateTime
+  
+  """Configurações específicas"""
+  settings: JSONObject
+  
+  """Contatos administrativos"""
+  adminContacts: [TenantContact!]
+}
+
+"""
+Contato administrativo de tenant.
+"""
+type TenantContact {
+  """Nome"""
+  name: String!
+  
+  """E-mail"""
+  email: String!
+  
+  """Telefone"""
+  phone: String
+  
+  """Tipo de contato"""
+  type: String!
+}
+
+"""
+Resultado de autenticação.
+"""
+type AuthPayload {
+  """Usuário autenticado"""
+  user: User!
+  
+  """Token de acesso"""
+  accessToken: String!
+  
+  """Token de refresh"""
+  refreshToken: String!
+  
+  """Tempo de validade em segundos"""
+  expiresIn: Int!
+  
+  """Tipo de token"""
+  tokenType: String!
+}
+
+"""
+Estatísticas de usuários.
+"""
+type UserStatistics {
+  """Total de usuários"""
+  totalUsers: Int!
+  
+  """Ativos"""
+  activeUsers: Int!
+  
+  """Bloqueados"""
+  lockedUsers: Int!
+  
+  """Pendentes"""
+  pendingUsers: Int!
+  
+  """Distribuição por status"""
+  statusDistribution: JSONObject!
+  
+  """Distribuição por região"""
+  regionDistribution: JSONObject!
+  
+  """Distribuição por data de registro (últimos 30 dias)"""
+  registrationTrend: JSONObject!
+  
+  """Distribuição por último login"""
+  lastLoginDistribution: JSONObject!
+}
+
+"""
+Estatísticas de grupo.
+"""
+type GroupStatistics {
+  """Total de membros"""
+  totalMembers: Int!
+  
+  """Distribuição por papel"""
+  roleDistribution: JSONObject!
+  
+  """Membros ativos recentemente (7 dias)"""
+  activeMembers: Int!
+  
+  """Crescimento (últimos 30 dias)"""
+  growthRate: Float!
+}
+
+"""
+Conexão paginada de usuários.
+"""
+type UserConnection {
+  """Número total de usuários"""
+  totalCount: Int!
+  
+  """Página atual"""
+  page: Int!
+  
+  """Itens por página"""
+  perPage: Int!
+  
+  """Itens na lista"""
+  items: [User!]!
+}
+
+"""
+Conexão paginada de grupos.
+"""
+type GroupConnection {
+  """Número total de grupos"""
+  totalCount: Int!
+  
+  """Página atual"""
+  page: Int!
+  
+  """Itens por página"""
+  perPage: Int!
+  
+  """Itens na lista"""
+  items: [Group!]!
+}
+
+"""
+Conexão paginada de roles.
+"""
+type RoleConnection {
+  """Número total de roles"""
+  totalCount: Int!
+  
+  """Página atual"""
+  page: Int!
+  
+  """Itens por página"""
+  perPage: Int!
+  
+  """Itens na lista"""
+  items: [Role!]!
+}
+
+"""
+Conexão paginada de tenants.
+"""
+type TenantConnection {
+  """Número total de tenants"""
+  totalCount: Int!
+  
+  """Página atual"""
+  page: Int!
+  
+  """Itens por página"""
+  perPage: Int!
+  
+  """Itens na lista"""
+  items: [Tenant!]!
+}
+
+"""
+Evento de segurança.
+"""
+type SecurityEvent {
+  """Identificador único"""
+  id: ID!
+  
+  """Tipo de evento"""
+  eventType: String!
+  
+  """Severidade"""
+  severity: String!
+  
+  """ID do usuário relacionado"""
+  userId: ID
+  
+  """ID do tenant"""
+  tenantId: ID!
+  
+  """Data e hora"""
+  timestamp: DateTime!
+  
+  """Descrição"""
+  description: String!
+  
+  """Endereço IP"""
+  ipAddress: String
+  
+  """Metadata adicional"""
+  metadata: JSONObject
+}
+
+"""
+Queries principais do módulo IAM.
+"""
+type Query {
+  # Usuários
+  """Busca usuário por ID"""
+  user(id: ID!): User @auth(requires: ["IAM:ReadUser"])
+  
+  """Lista usuários com filtros e paginação"""
+  users(filter: UserFilter, pagination: PaginationInput): UserConnection! @auth(requires: ["IAM:ReadUser"])
+  
+  """Retorna o perfil do usuário atual"""
+  me: User! @auth
+  
+  # Grupos
+  """Busca grupo por ID"""
+  group(id: ID!): Group @auth(requires: ["IAM:ReadGroup"])
+  
+  """Lista grupos com filtros e paginação"""
+  groups(filter: GroupFilter, pagination: PaginationInput): GroupConnection! @auth(requires: ["IAM:ReadGroup"])
+  
+  # Hierarquia de Grupos
+  """Retorna a estrutura hierárquica a partir de um grupo raiz"""
+  groupHierarchy(rootGroupId: ID!): GroupHierarchy @auth(requires: ["IAM:ReadGroup"])
+  
+  # Roles e Permissões
+  """Busca role por ID"""
+  role(id: ID!): Role @auth(requires: ["IAM:ReadRole"])
+  
+  """Lista roles com filtros e paginação"""
+  roles(filter: RoleFilter, pagination: PaginationInput): RoleConnection! @auth(requires: ["IAM:ReadRole"])
+  
+  """Busca permissão por ID"""
+  permission(id: ID!): Permission @auth(requires: ["IAM:ReadPermission"])
+  
+  # Tenant
+  """Busca tenant por ID"""
+  tenant(id: ID!): Tenant @auth(requires: ["IAM:ReadTenant"])
+  
+  """Lista tenants com filtros e paginação"""
+  tenants(filter: TenantFilter, pagination: PaginationInput): TenantConnection! @auth(requires: ["IAM:ReadTenant"])
+  
+  # Verificações de Acesso
+  """Verifica se o usuário tem uma permissão específica"""
+  checkPermission(permission: String!, resourceId: ID): Boolean! @auth
+  
+  """Verifica se o usuário tem um papel específico"""
+  checkRole(role: String!): Boolean! @auth
+  
+  # Estatísticas e Métricas
+  """Estatísticas de usuários"""
+  userStatistics(tenantId: ID): UserStatistics! @auth(requires: ["IAM:ReadStatistics"])
+  
+  """Estatísticas de grupo"""
+  groupStatistics(groupId: ID): GroupStatistics! @auth(requires: ["IAM:ReadStatistics"])
+}
+
+"""
+Mutations principais do módulo IAM.
+"""
+type Mutation {
+  # Autenticação
+  """Login de usuário"""
+  login(input: LoginInput!): AuthPayload!
+  
+  """Refresh de token"""
+  refreshToken(input: RefreshTokenInput!): AuthPayload!
+  
+  """Logout de usuário"""
+  logout: Boolean!
+  
+  # Usuários
+  """Criação de usuário"""
+  createUser(input: CreateUserInput!): User! @auth(requires: ["IAM:CreateUser"]) @validateInput
+  
+  """Atualização de usuário"""
+  updateUser(id: ID!, input: UpdateUserInput!): User! @auth(requires: ["IAM:UpdateUser"]) @validateInput
+  
+  """Exclusão de usuário"""
+  deleteUser(id: ID!): Boolean! @auth(requires: ["IAM:DeleteUser"])
+  
+  """Alteração de senha (próprio usuário)"""
+  changePassword(oldPassword: String!, newPassword: String!): Boolean! @auth @validateInput
+  
+  """Reset de senha (administrativo)"""
+  resetPassword(userId: ID!, temporaryPassword: String): String! @auth(requires: ["IAM:ResetPassword"])
+  
+  # Grupos
+  """Criação de grupo"""
+  createGroup(input: CreateGroupInput!): Group! @auth(requires: ["IAM:CreateGroup"]) @validateInput
+  
+  """Atualização de grupo"""
+  updateGroup(id: ID!, input: UpdateGroupInput!): Group! @auth(requires: ["IAM:UpdateGroup"]) @validateInput
+  
+  """Exclusão de grupo"""
+  deleteGroup(id: ID!): Boolean! @auth(requires: ["IAM:DeleteGroup"])
+  
+  # Membros de Grupo
+  """Adicionar membro ao grupo"""
+  addGroupMember(groupId: ID!, userId: ID!, role: GroupMemberRole): GroupMembership! @auth(requires: ["IAM:UpdateGroup"])
+  
+  """Remover membro do grupo"""
+  removeGroupMember(groupId: ID!, userId: ID!): Boolean! @auth(requires: ["IAM:UpdateGroup"])
+  
+  """Atualizar papel do membro no grupo"""
+  updateGroupMemberRole(groupId: ID!, userId: ID!, role: GroupMemberRole!): GroupMembership! @auth(requires: ["IAM:UpdateGroup"])
+  
+  # Hierarquia de Grupos
+  """Adicionar grupo filho a um grupo pai"""
+  addGroupToParent(childId: ID!, parentId: ID!): Boolean! @auth(requires: ["IAM:UpdateGroup"])
+  
+  """Remover grupo filho de um grupo pai"""
+  removeGroupFromParent(childId: ID!, parentId: ID!): Boolean! @auth(requires: ["IAM:UpdateGroup"])
+  
+  # Roles e Permissões
+  """Atribuir role a usuário"""
+  assignRoleToUser(userId: ID!, roleId: ID!): Boolean! @auth(requires: ["IAM:AssignRole"])
+  
+  """Revogar role de usuário"""
+  revokeRoleFromUser(userId: ID!, roleId: ID!): Boolean! @auth(requires: ["IAM:RevokeRole"])
+  
+  """Atribuir role a grupo"""
+  assignRoleToGroup(groupId: ID!, roleId: ID!): Boolean! @auth(requires: ["IAM:AssignRole"])
+  
+  """Revogar role de grupo"""
+  revokeRoleFromGroup(groupId: ID!, roleId: ID!): Boolean! @auth(requires: ["IAM:RevokeRole"])
+}
+
+"""
+Subscriptions para eventos em tempo real.
+"""
+type Subscription {
+  """Notificação de atualização de usuário"""
+  userUpdated(id: ID): User! @auth(requires: ["IAM:ReadUser"])
+  
+  """Notificação de atualização de grupo"""
+  groupUpdated(id: ID): Group! @auth(requires: ["IAM:ReadGroup"])
+  
+  """Notificação de alterações em membros de grupo"""
+  groupMembershipChanged(groupId: ID!): GroupMembershipEvent! @auth(requires: ["IAM:ReadGroup"])
+  
+  """Eventos de segurança em tempo real"""
+  securityEvent(filter: SecurityEventFilter): SecurityEvent! @auth(requires: ["IAM:ReadSecurityEvents"])
+}

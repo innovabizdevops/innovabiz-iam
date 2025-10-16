@@ -1,0 +1,422 @@
+---
+# INNOVABIZ IAM Audit Service - OpenTelemetry Collector Deployment
+# Versão: 1.0.0
+# Ano: 2025
+# Ambiente: Multi-plataforma, Multi-dimensional e Multi-Contexto
+# Alinhado com: NIST Cybersecurity Framework, SOC 2, ISO 27001
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-collector-config
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: otel-collector
+    app.kubernetes.io/part-of: innovabiz-observability
+    app.kubernetes.io/component: collector
+    innovabiz.com/module: iam-audit
+    innovabiz.com/tier: observability
+data:
+  collector-config.yaml: |
+    # Configuração do OpenTelemetry Collector importada do arquivo
+    # config/observability/opentelemetry/collector-config.yaml
+    # A configuração real será montada pelo ConfigMap
+    # Ver documentação em: /CoreModules/IAM/src/observability/README.md
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: otel-collector
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: otel-collector
+    app.kubernetes.io/part-of: innovabiz-observability
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: otel-collector
+  labels:
+    app.kubernetes.io/name: otel-collector
+    app.kubernetes.io/part-of: innovabiz-observability
+rules:
+  - apiGroups: [""]
+    resources:
+      - events
+      - namespaces
+      - namespaces/status
+      - nodes
+      - nodes/spec
+      - pods
+      - pods/status
+      - services
+      - resourcequotas
+      - replicationcontrollers
+      - limitranges
+      - persistentvolumeclaims
+      - persistentvolumes
+      - configmaps
+      - secrets
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources:
+      - daemonsets
+      - deployments
+      - replicasets
+      - statefulsets
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["extensions"]
+    resources:
+      - daemonsets
+      - deployments
+      - replicasets
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["batch"]
+    resources:
+      - jobs
+      - cronjobs
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: otel-collector
+  labels:
+    app.kubernetes.io/name: otel-collector
+    app.kubernetes.io/part-of: innovabiz-observability
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: otel-collector
+subjects:
+  - kind: ServiceAccount
+    name: otel-collector
+    namespace: iam-system
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: otel-collector-secrets
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: otel-collector
+    app.kubernetes.io/part-of: innovabiz-observability
+type: Opaque
+stringData:
+  elastic-credentials: ${ELASTIC_USERNAME}:${ELASTIC_PASSWORD}
+  basic-auth-password: ${BASIC_AUTH_PASSWORD}
+  aws-credentials: |
+    [default]
+    aws_access_key_id = ${AWS_ACCESS_KEY_ID}
+    aws_secret_access_key = ${AWS_SECRET_ACCESS_KEY}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-collector
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: otel-collector
+    app.kubernetes.io/part-of: innovabiz-observability
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8888"
+    prometheus.io/path: "/metrics"
+spec:
+  type: ClusterIP
+  ports:
+  - name: otlp-grpc
+    port: 4317
+    protocol: TCP
+    targetPort: 4317
+  - name: otlp-http
+    port: 4318
+    protocol: TCP
+    targetPort: 4318
+  - name: jaeger-grpc
+    port: 14250
+    protocol: TCP
+    targetPort: 14250
+  - name: jaeger-thrift
+    port: 14268
+    protocol: TCP
+    targetPort: 14268
+  - name: zipkin
+    port: 9411
+    protocol: TCP
+    targetPort: 9411
+  - name: metrics
+    port: 8888
+    protocol: TCP
+    targetPort: 8888
+  - name: healthcheck
+    port: 13133
+    protocol: TCP
+    targetPort: 13133
+  selector:
+    app.kubernetes.io/name: otel-collector
+    app.kubernetes.io/part-of: innovabiz-observability
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: otel-collector
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: otel-collector
+    app.kubernetes.io/part-of: innovabiz-observability
+    app.kubernetes.io/component: collector
+    innovabiz.com/module: iam-audit
+    innovabiz.com/tier: observability
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: otel-collector
+      app.kubernetes.io/part-of: innovabiz-observability
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: otel-collector
+        app.kubernetes.io/part-of: innovabiz-observability
+        app.kubernetes.io/component: collector
+        innovabiz.com/module: iam-audit
+        innovabiz.com/tier: observability
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8888"
+        prometheus.io/path: "/metrics"
+        config-hash: "${CONFIG_HASH}"
+    spec:
+      serviceAccountName: otel-collector
+      securityContext:
+        fsGroup: 1000
+        runAsUser: 1000
+        runAsNonRoot: true
+      terminationGracePeriodSeconds: 30
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app.kubernetes.io/name
+                  operator: In
+                  values:
+                  - otel-collector
+              topologyKey: kubernetes.io/hostname
+      containers:
+      - name: otel-collector
+        image: otel/opentelemetry-collector-contrib:0.96.0
+        imagePullPolicy: IfNotPresent
+        args:
+        - --config=/conf/collector-config.yaml
+        env:
+        - name: ENVIRONMENT
+          valueFrom:
+            configMapKeyRef:
+              name: iam-env-config
+              key: ENVIRONMENT
+        - name: VERSION
+          valueFrom:
+            configMapKeyRef:
+              name: iam-env-config
+              key: SERVICE_VERSION
+        - name: HOSTNAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: ELASTIC_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: otel-collector-secrets
+              key: elastic-credentials
+              optional: false
+        - name: ELASTIC_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: otel-collector-secrets
+              key: elastic-credentials
+              optional: false
+        - name: BASIC_AUTH_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: otel-collector-secrets
+              key: basic-auth-password
+              optional: false
+        - name: AWS_REGION
+          value: "${AWS_REGION}"
+        - name: AWS_ROLE_ARN
+          value: "${AWS_ROLE_ARN}"
+        - name: HIGH_VALUE_TENANTS
+          value: "tenant1,tenant2,tenant3"
+        - name: DEPLOYMENT_NAME
+          value: "${DEPLOYMENT_NAME}"
+        - name: GOGC
+          value: "80"
+        ports:
+        - containerPort: 4317
+          name: otlp-grpc
+          protocol: TCP
+        - containerPort: 4318
+          name: otlp-http
+          protocol: TCP
+        - containerPort: 14250
+          name: jaeger-grpc
+          protocol: TCP
+        - containerPort: 14268
+          name: jaeger-thrift
+          protocol: TCP
+        - containerPort: 9411
+          name: zipkin
+          protocol: TCP
+        - containerPort: 8888
+          name: metrics
+          protocol: TCP
+        - containerPort: 13133
+          name: healthcheck
+          protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /
+            port: healthcheck
+          initialDelaySeconds: 15
+          timeoutSeconds: 5
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /
+            port: healthcheck
+          initialDelaySeconds: 5
+          timeoutSeconds: 5
+          periodSeconds: 30
+        volumeMounts:
+        - name: collector-config
+          mountPath: /conf
+          readOnly: true
+        - name: certs
+          mountPath: /etc/otel/certs
+          readOnly: true
+        - name: aws-credentials
+          mountPath: /home/otelcol/.aws
+          readOnly: true
+        - name: auth
+          mountPath: /etc/otel/auth
+          readOnly: true
+        - name: otel-collector-logs
+          mountPath: /var/log/otel-collector
+        resources:
+          limits:
+            cpu: 1000m
+            memory: 2Gi
+          requests:
+            cpu: 200m
+            memory: 400Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
+          readOnlyRootFilesystem: true
+      volumes:
+      - name: collector-config
+        configMap:
+          name: otel-collector-config
+          items:
+            - key: collector-config.yaml
+              path: collector-config.yaml
+      - name: certs
+        secret:
+          secretName: otel-certs
+          defaultMode: 0400
+      - name: aws-credentials
+        secret:
+          secretName: otel-collector-secrets
+          items:
+            - key: aws-credentials
+              path: credentials
+          defaultMode: 0400
+      - name: auth
+        secret:
+          secretName: otel-auth
+          defaultMode: 0400
+      - name: otel-collector-logs
+        emptyDir: {}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: otel-collector
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: otel-collector
+    app.kubernetes.io/part-of: innovabiz-observability
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: otel-collector
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 80
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+    scaleUp:
+      stabilizationWindowSeconds: 60
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: otel-collector
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: otel-collector
+    app.kubernetes.io/part-of: innovabiz-observability
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: otel-collector
+      app.kubernetes.io/part-of: innovabiz-observability
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: otel-collector
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: otel-collector
+    app.kubernetes.io/part-of: innovabiz-observability
+    release: prometheus-operator
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: otel-collector
+      app.kubernetes.io/part-of: innovabiz-observability
+  namespaceSelector:
+    matchNames:
+      - iam-system
+  endpoints:
+  - port: metrics
+    interval: 15s
+    path: /metrics
+    honorLabels: true

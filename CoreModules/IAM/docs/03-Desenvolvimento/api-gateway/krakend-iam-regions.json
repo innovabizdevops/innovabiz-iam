@@ -1,0 +1,274 @@
+{
+  "regional_configs": {
+    "EU": {
+      "description": "Configurações específicas para a União Europeia (Portugal)",
+      "compliance": {
+        "gdpr": true,
+        "eidas": true,
+        "privacy_by_default": true
+      },
+      "auth_settings": {
+        "session_duration": 1800,
+        "refresh_token_expiry": 2592000,
+        "password_requirements": {
+          "min_length": 12,
+          "require_uppercase": true,
+          "require_lowercase": true,
+          "require_numbers": true,
+          "require_special_chars": true,
+          "max_age_days": 90,
+          "history_check": 10
+        },
+        "mfa_policy": "recommended",
+        "failed_attempts_limit": 5,
+        "cooldown_period": 900,
+        "jwe_encryption": true,
+        "cookie_settings": {
+          "secure": true,
+          "http_only": true,
+          "same_site": "Strict"
+        },
+        "ip_geolocation_verification": true,
+        "privacy_notices": {
+          "login": true,
+          "registration": true,
+          "password_reset": true,
+          "device_tracking": true,
+          "data_retention": true
+        }
+      },
+      "rate_limits": {
+        "login": {
+          "max_rate": 10,
+          "burst": 20,
+          "period": "minute"
+        },
+        "mfa_verify": {
+          "max_rate": 5,
+          "burst": 10,
+          "period": "minute"
+        },
+        "password_reset": {
+          "max_rate": 3,
+          "burst": 5,
+          "period": "hour"
+        }
+      },
+      "logging": {
+        "mask_personal_data": true,
+        "retention_period": 90,
+        "log_auth_attempts": true
+      },
+      "headers": {
+        "required": ["X-Tenant-Id", "X-Region-Code"],
+        "privacy_policy_version": "X-Privacy-Policy-Version"
+      }
+    },
+    "BR": {
+      "description": "Configurações específicas para o Brasil",
+      "compliance": {
+        "lgpd": true,
+        "icp_brasil": true,
+        "privacy_by_default": true
+      },
+      "auth_settings": {
+        "session_duration": 2700,
+        "refresh_token_expiry": 2592000,
+        "password_requirements": {
+          "min_length": 10,
+          "require_uppercase": true,
+          "require_lowercase": true,
+          "require_numbers": true,
+          "require_special_chars": true,
+          "max_age_days": 60,
+          "history_check": 5
+        },
+        "mfa_policy": "recommended",
+        "failed_attempts_limit": 5,
+        "cooldown_period": 600,
+        "jwe_encryption": true,
+        "cookie_settings": {
+          "secure": true,
+          "http_only": true,
+          "same_site": "Strict"
+        },
+        "ip_geolocation_verification": true,
+        "privacy_notices": {
+          "login": true,
+          "registration": true,
+          "password_reset": true,
+          "device_tracking": true,
+          "data_retention": true
+        }
+      },
+      "rate_limits": {
+        "login": {
+          "max_rate": 15,
+          "burst": 30,
+          "period": "minute"
+        },
+        "mfa_verify": {
+          "max_rate": 5,
+          "burst": 10,
+          "period": "minute"
+        },
+        "password_reset": {
+          "max_rate": 3,
+          "burst": 5,
+          "period": "hour"
+        }
+      },
+      "logging": {
+        "mask_personal_data": true,
+        "retention_period": 60,
+        "log_auth_attempts": true
+      },
+      "headers": {
+        "required": ["X-Tenant-Id", "X-Region-Code"],
+        "privacy_policy_version": "X-Privacy-Policy-Version"
+      }
+    },
+    "AO": {
+      "description": "Configurações específicas para Angola",
+      "compliance": {
+        "pndsb": true,
+        "privacy_by_default": false
+      },
+      "auth_settings": {
+        "session_duration": 3600,
+        "refresh_token_expiry": 2592000,
+        "password_requirements": {
+          "min_length": 8,
+          "require_uppercase": true,
+          "require_lowercase": true,
+          "require_numbers": true,
+          "require_special_chars": false,
+          "max_age_days": 90,
+          "history_check": 3
+        },
+        "mfa_policy": "optional",
+        "failed_attempts_limit": 7,
+        "cooldown_period": 600,
+        "jwe_encryption": true,
+        "cookie_settings": {
+          "secure": true,
+          "http_only": true,
+          "same_site": "Lax"
+        },
+        "ip_geolocation_verification": false,
+        "privacy_notices": {
+          "login": true,
+          "registration": true,
+          "password_reset": true,
+          "device_tracking": false,
+          "data_retention": false
+        },
+        "offline_authentication": {
+          "enabled": true,
+          "max_offline_period": 2592000
+        }
+      },
+      "rate_limits": {
+        "login": {
+          "max_rate": 20,
+          "burst": 30,
+          "period": "minute"
+        },
+        "mfa_verify": {
+          "max_rate": 10,
+          "burst": 15,
+          "period": "minute"
+        },
+        "password_reset": {
+          "max_rate": 5,
+          "burst": 10,
+          "period": "hour"
+        }
+      },
+      "logging": {
+        "mask_personal_data": true,
+        "retention_period": 90,
+        "log_auth_attempts": true
+      },
+      "headers": {
+        "required": ["X-Tenant-Id", "X-Region-Code"]
+      }
+    },
+    "US": {
+      "description": "Configurações específicas para os Estados Unidos",
+      "compliance": {
+        "nist": true,
+        "soc2": true,
+        "hipaa": true,
+        "privacy_by_default": false
+      },
+      "auth_settings": {
+        "session_duration": 7200,
+        "refresh_token_expiry": 5184000,
+        "password_requirements": {
+          "min_length": 8,
+          "require_uppercase": true,
+          "require_lowercase": true,
+          "require_numbers": true,
+          "require_special_chars": true,
+          "max_age_days": 120,
+          "history_check": 5
+        },
+        "mfa_policy": "configurable",
+        "failed_attempts_limit": 10,
+        "cooldown_period": 300,
+        "jwe_encryption": true,
+        "cookie_settings": {
+          "secure": true,
+          "http_only": true,
+          "same_site": "Lax"
+        },
+        "ip_geolocation_verification": true,
+        "privacy_notices": {
+          "login": true,
+          "registration": true,
+          "password_reset": true,
+          "device_tracking": true,
+          "data_retention": true
+        },
+        "sector_specific": {
+          "healthcare": {
+            "hipaa_compliant": true,
+            "audit_trail_retention": 365,
+            "session_duration": 3600
+          },
+          "finance": {
+            "glba_compliant": true,
+            "audit_trail_retention": 730
+          }
+        }
+      },
+      "rate_limits": {
+        "login": {
+          "max_rate": 30,
+          "burst": 50,
+          "period": "minute"
+        },
+        "mfa_verify": {
+          "max_rate": 15,
+          "burst": 20,
+          "period": "minute"
+        },
+        "password_reset": {
+          "max_rate": 5,
+          "burst": 10,
+          "period": "hour"
+        }
+      },
+      "logging": {
+        "mask_personal_data": true,
+        "retention_period": 365,
+        "log_auth_attempts": true
+      },
+      "headers": {
+        "required": ["X-Tenant-Id", "X-Region-Code"],
+        "privacy_policy_version": "X-Privacy-Policy-Version"
+      }
+    }
+  }
+}

@@ -1,0 +1,368 @@
+# INNOVABIZ IAM WebAuthn Default Values
+# Configuração padrão para deploy Kubernetes
+
+# ========================================
+# APPLICATION CONFIGURATION
+# ========================================
+app:
+  name: webauthn
+  version: "1.0.0"
+  environment: production
+
+# ========================================
+# IMAGE CONFIGURATION
+# ========================================
+image:
+  repository: ghcr.io/innovabiz/iam-webauthn
+  tag: "1.0.0"
+  pullPolicy: IfNotPresent
+  pullSecrets: []
+
+# ========================================
+# DEPLOYMENT CONFIGURATION
+# ========================================
+replicaCount: 3
+
+deployment:
+  annotations: {}
+  labels: {}
+  
+  # Rolling update strategy
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+
+  # Pod configuration
+  podAnnotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "3000"
+    prometheus.io/path: "/metrics"
+    
+  podLabels: {}
+  
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1001
+    runAsGroup: 1001
+    fsGroup: 1001
+    
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    runAsNonRoot: true
+    runAsUser: 1001
+    capabilities:
+      drop:
+        - ALL
+
+# ========================================
+# SERVICE CONFIGURATION
+# ========================================
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 3000
+  annotations: {}
+  labels: {}
+
+# ========================================
+# INGRESS CONFIGURATION
+# ========================================
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+    nginx.ingress.kubernetes.io/rate-limit-window: "1m"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    
+  hosts:
+    - host: api.innovabiz.com
+      paths:
+        - path: /api/v1/webauthn
+          pathType: Prefix
+          
+  tls:
+    - secretName: webauthn-tls
+      hosts:
+        - api.innovabiz.com
+
+# ========================================
+# RESOURCE LIMITS
+# ========================================
+resources:
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+  requests:
+    cpu: 500m
+    memory: 512Mi
+
+# ========================================
+# AUTOSCALING
+# ========================================
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+  
+  # Custom metrics (optional)
+  customMetrics: []
+  # - type: Pods
+  #   pods:
+  #     metric:
+  #       name: webauthn_requests_per_second
+  #     target:
+  #       type: AverageValue
+  #       averageValue: "100"
+
+# ========================================
+# HEALTH CHECKS
+# ========================================
+healthChecks:
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: 3000
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+    
+  readinessProbe:
+    httpGet:
+      path: /ready
+      port: 3000
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
+
+# ========================================
+# ENVIRONMENT VARIABLES
+# ========================================
+env:
+  # Application
+  NODE_ENV: production
+  PORT: "3000"
+  LOG_LEVEL: info
+  
+  # WebAuthn Configuration
+  WEBAUTHN_RP_NAME: "INNOVABIZ"
+  WEBAUTHN_RP_ID: "innovabiz.com"
+  WEBAUTHN_ORIGIN: "https://app.innovabiz.com"
+  WEBAUTHN_TIMEOUT: "60000"
+  
+  # Security
+  JWT_ALGORITHM: "RS256"
+  RATE_LIMIT_WINDOW: "60000"
+  RATE_LIMIT_MAX: "100"
+  
+  # Monitoring
+  METRICS_ENABLED: "true"
+  TRACING_ENABLED: "true"
+
+# ========================================
+# SECRETS
+# ========================================
+secrets:
+  # Database credentials
+  DATABASE_URL: ""
+  DATABASE_PASSWORD: ""
+  
+  # Redis credentials
+  REDIS_URL: ""
+  REDIS_PASSWORD: ""
+  
+  # Kafka credentials
+  KAFKA_BROKERS: ""
+  KAFKA_USERNAME: ""
+  KAFKA_PASSWORD: ""
+  
+  # JWT secrets
+  JWT_PRIVATE_KEY: ""
+  JWT_PUBLIC_KEY: ""
+  
+  # External services
+  PROMETHEUS_URL: ""
+  JAEGER_ENDPOINT: ""
+
+# ========================================
+# CONFIGMAPS
+# ========================================
+configMaps:
+  app-config: |
+    {
+      "webauthn": {
+        "rpName": "INNOVABIZ",
+        "rpId": "innovabiz.com",
+        "timeout": 60000,
+        "userVerification": "required",
+        "authenticatorSelection": {
+          "authenticatorAttachment": "platform",
+          "userVerification": "required",
+          "residentKey": "preferred"
+        }
+      },
+      "security": {
+        "rateLimiting": {
+          "windowMs": 60000,
+          "max": 100
+        },
+        "cors": {
+          "origin": ["https://app.innovabiz.com"],
+          "credentials": true
+        }
+      }
+    }
+
+# ========================================
+# PERSISTENT VOLUMES
+# ========================================
+persistence:
+  enabled: false
+  storageClass: ""
+  accessMode: ReadWriteOnce
+  size: 1Gi
+  annotations: {}
+
+# ========================================
+# SERVICE ACCOUNT
+# ========================================
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+  automountServiceAccountToken: false
+
+# ========================================
+# RBAC
+# ========================================
+rbac:
+  create: true
+  rules: []
+
+# ========================================
+# POD DISRUPTION BUDGET
+# ========================================
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 2
+  # maxUnavailable: 1
+
+# ========================================
+# NETWORK POLICIES
+# ========================================
+networkPolicy:
+  enabled: true
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 3000
+  egress:
+    - to: []
+      ports:
+        - protocol: TCP
+          port: 5432  # PostgreSQL
+        - protocol: TCP
+          port: 6379  # Redis
+        - protocol: TCP
+          port: 9092  # Kafka
+
+# ========================================
+# MONITORING
+# ========================================
+monitoring:
+  serviceMonitor:
+    enabled: true
+    interval: 30s
+    scrapeTimeout: 10s
+    labels: {}
+    annotations: {}
+    
+  prometheusRule:
+    enabled: true
+    labels: {}
+    annotations: {}
+    rules:
+      - alert: WebAuthnHighErrorRate
+        expr: rate(webauthn_errors_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High error rate in WebAuthn service"
+          
+      - alert: WebAuthnHighLatency
+        expr: histogram_quantile(0.95, rate(webauthn_request_duration_seconds_bucket[5m])) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High latency in WebAuthn service"
+
+# ========================================
+# EXTERNAL DEPENDENCIES
+# ========================================
+postgresql:
+  enabled: true
+  auth:
+    postgresPassword: "postgres-password"
+    database: "webauthn"
+  primary:
+    persistence:
+      enabled: true
+      size: 10Gi
+
+redis:
+  enabled: true
+  auth:
+    enabled: true
+    password: "redis-password"
+  master:
+    persistence:
+      enabled: true
+      size: 1Gi
+
+kafka:
+  enabled: true
+  auth:
+    clientProtocol: sasl
+    interBrokerProtocol: sasl
+  persistence:
+    enabled: true
+    size: 5Gi
+
+# ========================================
+# NODE SELECTOR & TOLERATIONS
+# ========================================
+nodeSelector: {}
+
+tolerations: []
+
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - webauthn
+          topologyKey: kubernetes.io/hostname

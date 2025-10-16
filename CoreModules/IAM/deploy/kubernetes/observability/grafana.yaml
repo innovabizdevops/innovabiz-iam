@@ -1,0 +1,452 @@
+---
+# INNOVABIZ IAM Audit Service - Grafana Deployment
+# Versão: 1.0.0
+# Ano: 2025
+# Ambiente: Multi-plataforma, Multi-dimensional e Multi-Contexto
+# Alinhado com: ISO 20000, ITIL v4, NIST SP 800-53, ISO 27001
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasources
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: grafana
+    app.kubernetes.io/part-of: innovabiz-observability
+    app.kubernetes.io/component: visualization
+    innovabiz.com/module: iam-audit
+    innovabiz.com/tier: observability
+data:
+  datasources.yaml: |
+    apiVersion: 1
+    datasources:
+    - name: Prometheus
+      type: prometheus
+      url: http://prometheus:9090
+      access: proxy
+      isDefault: true
+      jsonData:
+        timeInterval: 15s
+        queryTimeout: 30s
+        httpMethod: POST
+        manageAlerts: true
+        alertmanagerUid: alertmanager
+      version: 1
+      editable: true
+
+    - name: Jaeger
+      type: jaeger
+      url: http://jaeger-query:16686
+      access: proxy
+      isDefault: false
+      jsonData:
+        nodeGraph:
+          enabled: true
+      version: 1
+      editable: true
+    
+    - name: Loki
+      type: loki
+      url: http://loki:3100
+      access: proxy
+      isDefault: false
+      jsonData:
+        maxLines: 5000
+        derivedFields:
+          - name: traceID
+            matcherRegex: '"traceID":"(\w+)"'
+            url: "$${__value.raw}"
+            datasourceUid: jaeger
+      version: 1
+      editable: true
+    
+    - name: Elasticsearch
+      type: elasticsearch
+      url: https://elasticsearch:9200
+      access: proxy
+      isDefault: false
+      database: innovabiz-audit-logs-*
+      jsonData:
+        timeField: "@timestamp"
+        esVersion: 8.0.0
+        logMessageField: message
+        logLevelField: level
+        maxConcurrentShardRequests: 5
+        interval: Daily
+      secureJsonData:
+        basicAuth: true
+        basicAuthUser: ${ELASTIC_USERNAME}
+        basicAuthPassword: ${ELASTIC_PASSWORD}
+      version: 1
+      editable: true
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-providers
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: grafana
+    app.kubernetes.io/part-of: innovabiz-observability
+    app.kubernetes.io/component: visualization
+    innovabiz.com/module: iam-audit
+    innovabiz.com/tier: observability
+data:
+  dashboard-providers.yaml: |
+    apiVersion: 1
+    providers:
+    - name: 'default'
+      orgId: 1
+      folder: 'IAM Audit Service'
+      type: file
+      disableDeletion: false
+      updateIntervalSeconds: 60
+      allowUiUpdates: false
+      options:
+        path: /var/lib/grafana/dashboards/default
+        foldersFromFilesStructure: true
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-config
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: grafana
+    app.kubernetes.io/part-of: innovabiz-observability
+    app.kubernetes.io/component: visualization
+    innovabiz.com/module: iam-audit
+    innovabiz.com/tier: observability
+data:
+  grafana.ini: |
+    [server]
+    protocol = http
+    domain = ${GRAFANA_HOST}
+    root_url = https://${GRAFANA_HOST}
+    enforce_domain = false
+    enable_gzip = true
+    router_logging = true
+    
+    [security]
+    admin_user = admin
+    admin_password = ${GRAFANA_ADMIN_PASSWORD}
+    disable_initial_admin_creation = false
+    secret_key = ${GRAFANA_SECRET_KEY}
+    disable_gravatar = true
+    cookie_secure = true
+    cookie_samesite = strict
+    allow_embedding = false
+    strict_transport_security = true
+    strict_transport_security_max_age_seconds = 31536000
+    strict_transport_security_preload = true
+    strict_transport_security_subdomains = true
+    x_content_type_options = true
+    x_xss_protection = true
+    content_security_policy = true
+    content_security_policy_template = "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' wss://${GRAFANA_HOST};"
+    
+    [users]
+    allow_sign_up = false
+    verify_email_enabled = true
+    login_hint = "Entre com suas credenciais INNOVABIZ"
+    default_theme = light
+    auto_assign_org = true
+    auto_assign_org_role = Editor
+    
+    [auth]
+    oauth_auto_login = false
+    disable_login_form = false
+    
+    [auth.proxy]
+    enabled = false
+    
+    [auth.basic]
+    enabled = true
+    
+    [auth.ldap]
+    enabled = false
+    
+    [auth.generic_oauth]
+    enabled = true
+    name = OAuth
+    allow_sign_up = true
+    client_id = ${OAUTH_CLIENT_ID}
+    client_secret = ${OAUTH_CLIENT_SECRET}
+    scopes = openid profile email
+    auth_url = ${OAUTH_AUTH_URL}
+    token_url = ${OAUTH_TOKEN_URL}
+    api_url = ${OAUTH_API_URL}
+    team_ids_attribute_path = team_ids
+    role_attribute_path = role
+    
+    [smtp]
+    enabled = true
+    host = ${SMTP_HOST}:${SMTP_PORT}
+    user = ${SMTP_USER}
+    password = ${SMTP_PASSWORD}
+    from_address = ${SMTP_FROM_ADDRESS}
+    from_name = INNOVABIZ IAM Audit Alerts
+    
+    [dashboards]
+    versions_to_keep = 20
+    min_refresh_interval = 5s
+    
+    [alerting]
+    enabled = true
+    execute_alerts = true
+    evaluation_timeout = 30s
+    notification_timeout = 30s
+    max_attempts = 3
+    min_interval = 10s
+    error_or_timeout = alerting
+    
+    [unified_alerting]
+    enabled = true
+    evaluation_timeout = 30s
+    max_attempts = 3
+    min_interval = 10s
+    
+    [metrics]
+    enabled = true
+    basic_auth_username = metrics
+    basic_auth_password = ${METRICS_PASSWORD}
+    
+    [tracing]
+    enabled = true
+    address = otel-collector:4317
+    sampling_rate = 1.0
+    
+    [log]
+    level = info
+    mode = console
+    
+    [paths]
+    data = /var/lib/grafana
+    logs = /var/log/grafana
+    plugins = /var/lib/grafana/plugins
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: grafana
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: grafana
+    app.kubernetes.io/part-of: innovabiz-observability
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: grafana
+    app.kubernetes.io/part-of: innovabiz-observability
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "3000"
+spec:
+  type: ClusterIP
+  ports:
+  - name: web
+    port: 3000
+    targetPort: web
+  selector:
+    app.kubernetes.io/name: grafana
+    app.kubernetes.io/part-of: innovabiz-observability
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: grafana
+    app.kubernetes.io/part-of: innovabiz-observability
+    app.kubernetes.io/component: visualization
+    innovabiz.com/module: iam-audit
+    innovabiz.com/tier: observability
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: grafana
+      app.kubernetes.io/part-of: innovabiz-observability
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: grafana
+        app.kubernetes.io/part-of: innovabiz-observability
+        app.kubernetes.io/component: visualization
+        innovabiz.com/module: iam-audit
+        innovabiz.com/tier: observability
+      annotations:
+        checksum/config: "${CONFIG_HASH}"
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "3000"
+    spec:
+      serviceAccountName: grafana
+      securityContext:
+        fsGroup: 472
+        runAsUser: 472
+        runAsGroup: 472
+        runAsNonRoot: true
+      containers:
+      - name: grafana
+        image: grafana/grafana:10.1.4
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: web
+          containerPort: 3000
+          protocol: TCP
+        env:
+        - name: GF_INSTALL_PLUGINS
+          value: "grafana-piechart-panel,grafana-worldmap-panel,marcusolsson-json-datasource,marcusolsson-dynamictext-panel,frser-memcached-datasource,grafana-kubernetes-app,grafana-clock-panel,grafana-polystat-panel,natel-discrete-panel"
+        - name: GF_SECURITY_ADMIN_USER
+          value: "${GRAFANA_ADMIN_USER}"
+        - name: GF_SECURITY_ADMIN_PASSWORD
+          value: "${GRAFANA_ADMIN_PASSWORD}"
+        - name: GF_PATHS_PROVISIONING
+          value: "/etc/grafana/provisioning"
+        - name: GF_FEATURE_TOGGLES_ENABLE
+          value: "traceToMetrics,metricsSummary,traceQLEditor,correlations"
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /api/health
+            port: web
+            scheme: HTTP
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 5
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /api/health
+            port: web
+            scheme: HTTP
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 5
+          initialDelaySeconds: 60
+        resources:
+          limits:
+            cpu: 500m
+            memory: 1Gi
+          requests:
+            cpu: 100m
+            memory: 256Mi
+        volumeMounts:
+        - name: grafana-data
+          mountPath: /var/lib/grafana
+        - name: grafana-config
+          mountPath: /etc/grafana/grafana.ini
+          subPath: grafana.ini
+        - name: grafana-datasources
+          mountPath: /etc/grafana/provisioning/datasources/datasources.yaml
+          subPath: datasources.yaml
+        - name: grafana-dashboard-providers
+          mountPath: /etc/grafana/provisioning/dashboards/dashboard-providers.yaml
+          subPath: dashboard-providers.yaml
+        - name: iam-audit-dashboards
+          mountPath: /var/lib/grafana/dashboards/default
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: false
+      volumes:
+      - name: grafana-config
+        configMap:
+          name: grafana-config
+          defaultMode: 420
+      - name: grafana-datasources
+        configMap:
+          name: grafana-datasources
+          defaultMode: 420
+      - name: grafana-dashboard-providers
+        configMap:
+          name: grafana-dashboard-providers
+          defaultMode: 420
+      - name: grafana-data
+        persistentVolumeClaim:
+          claimName: grafana-data
+      - name: iam-audit-dashboards
+        configMap:
+          name: iam-audit-dashboards
+          defaultMode: 420
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: grafana-data
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: grafana
+    app.kubernetes.io/part-of: innovabiz-observability
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: managed-premium
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: grafana
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: grafana
+    app.kubernetes.io/part-of: innovabiz-observability
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/proxy-buffer-size: "8k"
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
+spec:
+  tls:
+  - hosts:
+    - ${GRAFANA_HOST}
+    secretName: grafana-tls
+  rules:
+  - host: ${GRAFANA_HOST}
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: grafana
+            port:
+              name: web
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: grafana
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: grafana
+    app.kubernetes.io/part-of: innovabiz-observability
+    release: prometheus-operator
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: grafana
+      app.kubernetes.io/part-of: innovabiz-observability
+  namespaceSelector:
+    matchNames:
+      - iam-system
+  endpoints:
+  - port: web
+    interval: 15s
+    path: /metrics
+    scheme: http

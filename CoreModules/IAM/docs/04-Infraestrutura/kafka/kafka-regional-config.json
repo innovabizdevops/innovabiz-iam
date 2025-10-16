@@ -1,0 +1,215 @@
+{
+  "regions": {
+    "EU": {
+      "description": "Configurações para a União Europeia (Portugal)",
+      "kafka_settings": {
+        "log.retention.hours": 168,
+        "retention.ms": 604800000,
+        "log.cleanup.policy": "delete",
+        "max.connections.per.ip": 2000,
+        "compression.type": "lz4",
+        "ssl.protocol": "TLSv1.3",
+        "ssl.enabled.protocols": "TLSv1.3",
+        "ssl.client.auth": "required",
+        "sasl.enabled.mechanisms": "PLAIN,SCRAM-SHA-256,SCRAM-SHA-512"
+      },
+      "compliance": {
+        "gdpr": {
+          "data_masking": true,
+          "data_encryption": true,
+          "pii_tracking": true,
+          "right_to_be_forgotten_topics": [
+            "iam-user-deletion-requests",
+            "iam-data-subject-requests"
+          ],
+          "retention_policies": {
+            "auth_logs": 180,
+            "personal_data": 90,
+            "consent_tracking": 730
+          },
+          "audit_settings": {
+            "extensive_logging": true,
+            "data_access_tracking": true
+          }
+        },
+        "eidas": {
+          "enabled": true,
+          "authentication_level_topics": [
+            "iam-eidas-auth-level-low",
+            "iam-eidas-auth-level-substantial",
+            "iam-eidas-auth-level-high"
+          ]
+        }
+      },
+      "data_residency": {
+        "primary_region": "eu-central-1",
+        "backup_regions": ["eu-west-1"],
+        "cross_region_replication": false
+      }
+    },
+    "BR": {
+      "description": "Configurações para o Brasil",
+      "kafka_settings": {
+        "log.retention.hours": 168,
+        "retention.ms": 604800000,
+        "log.cleanup.policy": "delete",
+        "max.connections.per.ip": 1500,
+        "compression.type": "lz4",
+        "ssl.protocol": "TLSv1.3",
+        "ssl.enabled.protocols": "TLSv1.3",
+        "ssl.client.auth": "required",
+        "sasl.enabled.mechanisms": "PLAIN,SCRAM-SHA-256"
+      },
+      "compliance": {
+        "lgpd": {
+          "data_masking": true,
+          "data_encryption": true,
+          "pii_tracking": true,
+          "right_to_be_forgotten_topics": [
+            "iam-user-deletion-requests",
+            "iam-data-subject-requests"
+          ],
+          "retention_policies": {
+            "auth_logs": 180,
+            "personal_data": 90,
+            "consent_tracking": 730
+          },
+          "audit_settings": {
+            "extensive_logging": true,
+            "data_access_tracking": true
+          }
+        },
+        "icp_brasil": {
+          "enabled": true,
+          "certificate_validation_topics": [
+            "iam-icp-cert-validation",
+            "iam-icp-revocation-check"
+          ]
+        }
+      },
+      "data_residency": {
+        "primary_region": "sa-east-1",
+        "backup_regions": [],
+        "cross_region_replication": false
+      }
+    },
+    "AO": {
+      "description": "Configurações para Angola",
+      "kafka_settings": {
+        "log.retention.hours": 336,
+        "retention.ms": 1209600000,
+        "log.cleanup.policy": "delete",
+        "max.connections.per.ip": 1000,
+        "compression.type": "lz4",
+        "ssl.protocol": "TLSv1.2",
+        "ssl.enabled.protocols": "TLSv1.2,TLSv1.3",
+        "ssl.client.auth": "requested",
+        "sasl.enabled.mechanisms": "PLAIN"
+      },
+      "compliance": {
+        "pndsb": {
+          "data_masking": true,
+          "data_encryption": true,
+          "pii_tracking": false,
+          "right_to_be_forgotten_topics": [
+            "iam-user-deletion-requests"
+          ],
+          "retention_policies": {
+            "auth_logs": 365,
+            "personal_data": 365,
+            "consent_tracking": 365
+          },
+          "audit_settings": {
+            "extensive_logging": false,
+            "data_access_tracking": false
+          }
+        }
+      },
+      "data_residency": {
+        "primary_region": "af-south-1",
+        "backup_regions": [],
+        "cross_region_replication": false
+      },
+      "offline_capabilities": {
+        "enabled": true,
+        "offline_sync_topics": [
+          "iam-offline-auth-events",
+          "iam-offline-sync"
+        ]
+      }
+    },
+    "US": {
+      "description": "Configurações para os Estados Unidos",
+      "kafka_settings": {
+        "log.retention.hours": 168,
+        "retention.ms": 604800000,
+        "log.cleanup.policy": "delete",
+        "max.connections.per.ip": 3000,
+        "compression.type": "lz4",
+        "ssl.protocol": "TLSv1.3",
+        "ssl.enabled.protocols": "TLSv1.3",
+        "ssl.client.auth": "required",
+        "sasl.enabled.mechanisms": "PLAIN,SCRAM-SHA-256,SCRAM-SHA-512"
+      },
+      "compliance": {
+        "nist": {
+          "data_masking": true,
+          "data_encryption": true,
+          "pii_tracking": false,
+          "encryption_standards": "FIPS 140-2",
+          "audit_settings": {
+            "extensive_logging": true,
+            "data_access_tracking": true
+          }
+        },
+        "soc2": {
+          "enabled": true,
+          "audit_trail_topics": [
+            "iam-soc2-audit-trail",
+            "iam-security-events"
+          ]
+        },
+        "hipaa": {
+          "enabled": true,
+          "phi_tracking": true,
+          "specialized_topics": [
+            "iam-healthcare-auth-events"
+          ],
+          "retention_policies": {
+            "auth_logs": 730,
+            "phi_data": 730
+          }
+        }
+      },
+      "data_residency": {
+        "primary_region": "us-east-1",
+        "backup_regions": ["us-west-1"],
+        "cross_region_replication": true
+      },
+      "sector_specific": {
+        "healthcare": {
+          "enabled": true,
+          "specialized_topics": [
+            "iam-healthcare-auth-events",
+            "iam-phi-access-logs"
+          ],
+          "data_handling": {
+            "phi_encryption": true,
+            "access_based_topic_segregation": true
+          }
+        },
+        "finance": {
+          "enabled": true,
+          "specialized_topics": [
+            "iam-finance-auth-events",
+            "iam-finance-compliance-events"
+          ],
+          "data_handling": {
+            "pci_dss_compliance": true,
+            "transaction_monitoring": true
+          }
+        }
+      }
+    }
+  }
+}

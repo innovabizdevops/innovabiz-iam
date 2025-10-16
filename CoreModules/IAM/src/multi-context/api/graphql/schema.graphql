@@ -1,0 +1,312 @@
+# schema.graphql
+# Esquema GraphQL para serviço de identidade multi-contexto
+# InnovaBiz DevOps Team
+# Copyright InnovaBiz 2025
+
+# Diretiva para especificar campos que requerem autenticação
+directive @auth on FIELD_DEFINITION
+
+# Diretiva para especificar níveis de permissão necessários
+directive @requires(role: String!, policy: String) on FIELD_DEFINITION
+
+# Tipos de escalar personalizados
+scalar DateTime
+scalar UUID
+scalar JSON
+
+# Enums para Status de Contexto
+enum ContextStatus {
+  ACTIVE
+  SUSPENDED
+  LOCKED
+  INACTIVE
+  DELETED
+}
+
+# Enums para Níveis de Verificação
+enum VerificationLevel {
+  UNVERIFIED
+  BASIC
+  STANDARD
+  ADVANCED
+  HIGH
+}
+
+# Enums para Status de Verificação de Atributo
+enum VerificationStatus {
+  UNVERIFIED
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+# Enums para Níveis de Sensibilidade
+enum SensitivityLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+# Entrada para paginação
+input PaginationInput {
+  page: Int! = 0
+  pageSize: Int! = 20
+}
+
+# Entrada para ordenação
+input SortingInput {
+  field: String! = "createdAt"
+  direction: String! = "desc" # "asc" ou "desc"
+}
+
+# Entrada para filtros de contexto
+input ContextFiltersInput {
+  userId: String
+  tenantId: String
+  status: ContextStatus
+  contextType: String
+  minTrustScore: Float
+  minVerificationLevel: VerificationLevel
+  tags: [String!]
+  createdAfter: DateTime
+  createdBefore: DateTime
+  includeInactive: Boolean = false
+  includeDeleted: Boolean = false
+}
+
+# Entrada para filtros de atributo
+input AttributeFiltersInput {
+  contextId: UUID
+  keyPattern: String
+  sensitivityLevel: SensitivityLevel
+  verificationStatus: VerificationStatus
+  createdAfter: DateTime
+  createdBefore: DateTime
+}
+
+# Entrada para busca avançada de atributos
+input AttributeSearchFiltersInput {
+  contextIds: [UUID!]
+  userId: String
+  tenantId: String
+  searchText: String!
+  sensitivityLevels: [SensitivityLevel!]
+  verificationStatuses: [VerificationStatus!]
+  contextTypes: [String!]
+  includeInactive: Boolean = false
+  createdAfter: DateTime
+  createdBefore: DateTime
+}
+
+# Entrada para criação de contexto de identidade
+input CreateContextInput {
+  userId: String!
+  tenantId: String!
+  contextType: String!
+  displayName: String!
+  description: String
+  verificationLevel: VerificationLevel! = UNVERIFIED
+  tags: [String!]
+  initialAttributes: [CreateAttributeInput!]
+  metadata: JSON
+}
+
+# Entrada para criação de atributo
+input CreateAttributeInput {
+  contextId: UUID!
+  attributeKey: String!
+  attributeValue: String!
+  sensitivityLevel: SensitivityLevel! = MEDIUM
+  verificationStatus: VerificationStatus! = UNVERIFIED
+  verificationSource: String
+  metadata: JSON
+}
+
+# Entrada para atualização de atributo
+input UpdateAttributeInput {
+  attributeId: UUID!
+  attributeValue: String
+  sensitivityLevel: SensitivityLevel
+  verificationStatus: VerificationStatus
+  verificationSource: String
+  metadata: JSON
+  reason: String!
+}
+
+# Entrada para verificação de atributo
+input VerifyAttributeInput {
+  attributeId: UUID!
+  verificationStatus: VerificationStatus!
+  verificationSource: String!
+  notes: String
+  evidenceMetadata: JSON
+}
+
+# Entrada para atualização de nível de verificação de contexto
+input UpdateContextVerificationLevelInput {
+  contextId: UUID!
+  verificationLevel: VerificationLevel!
+  reason: String!
+  verificationSource: String!
+  metadata: JSON
+}
+
+# Entrada para atualização de pontuação de confiança de contexto
+input UpdateContextTrustScoreInput {
+  contextId: UUID!
+  trustScore: Float!
+  reason: String!
+  source: String!
+  metadata: JSON
+}
+
+# Tipo para resultado de paginação de contextos
+type ContextsResult {
+  contexts: [IdentityContext!]!
+  totalCount: Int!
+  pageCount: Int!
+  currentPage: Int!
+  pageSize: Int!
+  hasMore: Boolean!
+}
+
+# Tipo para resultado de paginação de atributos
+type AttributesResult {
+  attributes: [ContextAttribute!]!
+  totalCount: Int!
+  pageCount: Int!
+  currentPage: Int!
+  pageSize: Int!
+  hasMore: Boolean!
+}
+
+# Tipo para contexto de identidade
+type IdentityContext {
+  id: UUID!
+  userId: String!
+  tenantId: String!
+  contextType: String!
+  displayName: String!
+  description: String
+  status: ContextStatus!
+  verificationLevel: VerificationLevel!
+  trustScore: Float!
+  tags: [String!]!
+  attributes: [ContextAttribute!]
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  metadata: JSON
+}
+
+# Tipo para atributo contextual
+type ContextAttribute {
+  id: UUID!
+  contextId: UUID!
+  attributeKey: String!
+  attributeValue: String!
+  sensitivityLevel: SensitivityLevel!
+  verificationStatus: VerificationStatus!
+  verificationSource: String
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  metadata: JSON
+  context: IdentityContext
+}
+
+# Tipo para histórico de verificação
+type VerificationHistory {
+  timestamp: DateTime!
+  status: VerificationStatus!
+  source: String
+  notes: String
+  requestedBy: String
+  evidence: JSON
+}
+
+# Query root
+type Query {
+  # Buscar contexto por ID
+  context(id: UUID!): IdentityContext @auth
+  
+  # Listar contextos com filtros e paginação
+  contexts(
+    filters: ContextFiltersInput,
+    pagination: PaginationInput,
+    sorting: SortingInput,
+    includeAttributes: Boolean = false
+  ): ContextsResult! @auth
+  
+  # Buscar atributo por ID
+  attribute(id: UUID!): ContextAttribute @auth
+  
+  # Listar atributos de um contexto
+  attributes(
+    filters: AttributeFiltersInput,
+    pagination: PaginationInput,
+    sorting: SortingInput
+  ): AttributesResult! @auth
+  
+  # Busca avançada de atributos
+  searchAttributes(
+    filters: AttributeSearchFiltersInput!,
+    pagination: PaginationInput,
+    sorting: SortingInput
+  ): AttributesResult! @auth @requires(role: "admin")
+  
+  # Obter histórico de verificações de um atributo
+  attributeVerificationHistory(attributeId: UUID!): [VerificationHistory!]! @auth
+  
+  # Obter histórico de verificações de um contexto
+  contextVerificationHistory(contextId: UUID!): [VerificationHistory!]! @auth
+}
+
+# Mutation root
+type Mutation {
+  # Criar um novo contexto de identidade
+  createContext(input: CreateContextInput!): IdentityContext! @auth
+  
+  # Atualizar status de um contexto
+  updateContextStatus(
+    contextId: UUID!, 
+    status: ContextStatus!, 
+    reason: String!
+  ): IdentityContext! @auth @requires(role: "admin")
+  
+  # Atualizar nível de verificação de um contexto
+  updateContextVerificationLevel(
+    input: UpdateContextVerificationLevelInput!
+  ): IdentityContext! @auth @requires(role: "verifier")
+  
+  # Atualizar pontuação de confiança de um contexto
+  updateContextTrustScore(
+    input: UpdateContextTrustScoreInput!
+  ): IdentityContext! @auth @requires(role: "trust_evaluator")
+  
+  # Criar um novo atributo contextual
+  createAttribute(input: CreateAttributeInput!): ContextAttribute! @auth
+  
+  # Atualizar um atributo contextual
+  updateAttribute(input: UpdateAttributeInput!): ContextAttribute! @auth
+  
+  # Verificar um atributo contextual
+  verifyAttribute(input: VerifyAttributeInput!): ContextAttribute! @auth @requires(role: "verifier")
+  
+  # Excluir um atributo contextual (marcação lógica)
+  deleteAttribute(
+    attributeId: UUID!, 
+    reason: String!
+  ): Boolean! @auth
+}
+
+# Subscription root para notificações em tempo real
+type Subscription {
+  # Notificação quando um contexto é atualizado
+  contextUpdated(contextId: UUID!): IdentityContext @auth
+  
+  # Notificação quando um atributo é verificado
+  attributeVerified(contextId: UUID): ContextAttribute @auth
+  
+  # Notificação quando a pontuação de confiança muda
+  trustScoreChanged(contextId: UUID!): IdentityContext @auth
+}

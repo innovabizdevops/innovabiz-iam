@@ -1,0 +1,204 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: observability-portal-federation
+  namespace: innovabiz-observability
+  labels:
+    app: observability-portal
+    component: federation
+    innovabiz.com/module: iam
+    innovabiz.com/component: observability-portal
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: observability-portal
+      component: federation
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: observability-portal
+        component: federation
+        innovabiz.com/module: iam
+        innovabiz.com/component: observability-portal
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - observability-portal
+                - key: component
+                  operator: In
+                  values:
+                  - federation
+              topologyKey: kubernetes.io/hostname
+      securityContext:
+        fsGroup: 1000
+        runAsUser: 1000
+        runAsNonRoot: true
+      containers:
+      - name: federation
+        image: innovabiz/observability-portal-federation:2.0.0
+        imagePullPolicy: Always
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: ["ALL"]
+        ports:
+        - name: http
+          containerPort: 8080
+          protocol: TCP
+        - name: metrics
+          containerPort: 9090
+          protocol: TCP
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: LOG_LEVEL
+          value: "info"
+        - name: INNOVABIZ_REGION
+          valueFrom:
+            configMapKeyRef:
+              name: innovabiz-global-config
+              key: region
+        - name: INNOVABIZ_ENVIRONMENT
+          valueFrom:
+            configMapKeyRef:
+              name: innovabiz-global-config
+              key: environment
+        - name: PROMETHEUS_URL
+          valueFrom:
+            configMapKeyRef:
+              name: observability-portal-config
+              key: prometheus.url
+        - name: ELASTICSEARCH_URL
+          valueFrom:
+            configMapKeyRef:
+              name: observability-portal-config
+              key: elasticsearch.url
+        - name: LOKI_URL
+          valueFrom:
+            configMapKeyRef:
+              name: observability-portal-config
+              key: loki.url
+        - name: GRAFANA_URL
+          valueFrom:
+            configMapKeyRef:
+              name: observability-portal-config
+              key: grafana.url
+        - name: KIBANA_URL
+          valueFrom:
+            configMapKeyRef:
+              name: observability-portal-config
+              key: kibana.url
+        - name: JAEGER_URL
+          valueFrom:
+            configMapKeyRef:
+              name: observability-portal-config
+              key: jaeger.url
+        - name: PROMETHEUS_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: observability-credentials
+              key: prometheus-auth-token
+        - name: ELASTICSEARCH_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: observability-credentials
+              key: elasticsearch-username
+        - name: ELASTICSEARCH_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: observability-credentials
+              key: elasticsearch-password
+        - name: LOKI_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: observability-credentials
+              key: loki-auth-token
+        - name: JAEGER_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: observability-credentials
+              key: jaeger-auth-token
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: observability-portal
+              key: redis-password
+        volumeMounts:
+        - name: config-volume
+          mountPath: /app/config
+          readOnly: true
+        - name: tmp-volume
+          mountPath: /tmp
+        resources:
+          requests:
+            cpu: 300m
+            memory: 384Mi
+          limits:
+            cpu: 700m
+            memory: 768Mi
+        livenessProbe:
+          httpGet:
+            path: /health/live
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health/ready
+            port: http
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+      volumes:
+      - name: config-volume
+        configMap:
+          name: observability-portal-federation-config
+      - name: tmp-volume
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: observability-portal-federation
+  namespace: innovabiz-observability
+  labels:
+    app: observability-portal
+    component: federation
+    innovabiz.com/module: iam
+    innovabiz.com/component: observability-portal
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 8080
+    targetPort: http
+    protocol: TCP
+  - name: metrics
+    port: 9090
+    targetPort: metrics
+    protocol: TCP
+  selector:
+    app: observability-portal
+    component: federation

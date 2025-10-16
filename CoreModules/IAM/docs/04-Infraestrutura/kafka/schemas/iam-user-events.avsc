@@ -1,0 +1,390 @@
+{
+  "type": "record",
+  "name": "UserEvent",
+  "namespace": "io.innovabiz.iam.events",
+  "doc": "Esquema para eventos relacionados a operações de usuários no módulo IAM",
+  "fields": [
+    {
+      "name": "event_id",
+      "type": "string",
+      "doc": "Identificador único do evento, formato UUID"
+    },
+    {
+      "name": "event_type",
+      "type": {
+        "type": "enum",
+        "name": "UserEventType",
+        "symbols": [
+          "USER_CREATED",
+          "USER_UPDATED",
+          "USER_DELETED",
+          "USER_ACTIVATED",
+          "USER_DEACTIVATED",
+          "USER_EMAIL_VERIFIED",
+          "USER_PHONE_VERIFIED",
+          "USER_PASSWORD_CHANGED",
+          "USER_AUTH_METHOD_ADDED",
+          "USER_AUTH_METHOD_UPDATED",
+          "USER_AUTH_METHOD_REMOVED",
+          "USER_ROLE_ASSIGNED",
+          "USER_ROLE_REMOVED",
+          "USER_GROUP_ASSIGNED",
+          "USER_GROUP_REMOVED",
+          "USER_LOGIN_ATTEMPTED",
+          "USER_LOGGED_IN",
+          "USER_LOGGED_OUT",
+          "USER_ACCOUNT_LOCKED",
+          "USER_ACCOUNT_UNLOCKED",
+          "USER_DATA_EXPORT_REQUESTED",
+          "USER_DATA_DELETION_REQUESTED",
+          "USER_DATA_DELETION_COMPLETED",
+          "USER_CONSENT_PROVIDED",
+          "USER_CONSENT_REVOKED",
+          "USER_PROFILE_UPDATED",
+          "USER_SECURITY_PREFERENCES_UPDATED"
+        ]
+      },
+      "doc": "Tipo do evento de usuário"
+    },
+    {
+      "name": "tenant_id",
+      "type": "string",
+      "doc": "Identificador do inquilino (tenant)"
+    },
+    {
+      "name": "user_id",
+      "type": "string",
+      "doc": "Identificador do usuário"
+    },
+    {
+      "name": "timestamp",
+      "type": "long",
+      "logicalType": "timestamp-millis",
+      "doc": "Timestamp da ocorrência do evento (UTC)"
+    },
+    {
+      "name": "actor",
+      "type": {
+        "type": "record",
+        "name": "Actor",
+        "fields": [
+          {
+            "name": "actor_type",
+            "type": {
+              "type": "enum",
+              "name": "ActorType",
+              "symbols": [
+                "USER",
+                "ADMIN",
+                "SYSTEM",
+                "SERVICE",
+                "API"
+              ]
+            },
+            "doc": "Tipo de ator que realizou a operação"
+          },
+          {
+            "name": "actor_id",
+            "type": ["string", "null"],
+            "doc": "Identificador do ator, pode ser nulo para SYSTEM"
+          },
+          {
+            "name": "actor_name",
+            "type": ["string", "null"],
+            "doc": "Nome/descrição do ator, mascarado em algumas regiões"
+          },
+          {
+            "name": "actor_role",
+            "type": ["string", "null"],
+            "doc": "Papel do ator no sistema"
+          },
+          {
+            "name": "service_name",
+            "type": ["string", "null"],
+            "doc": "Nome do serviço, se o ator for SERVICE ou API"
+          }
+        ]
+      },
+      "doc": "Informações sobre o ator que realizou a operação"
+    },
+    {
+      "name": "client_info",
+      "type": {
+        "type": "record",
+        "name": "ClientInfo",
+        "fields": [
+          {
+            "name": "ip_address",
+            "type": ["string", "null"],
+            "doc": "Endereço IP de origem, mascarado em regiões com GDPR/LGPD"
+          },
+          {
+            "name": "user_agent",
+            "type": ["string", "null"],
+            "doc": "User-Agent do cliente"
+          },
+          {
+            "name": "device_id",
+            "type": ["string", "null"],
+            "doc": "Identificador do dispositivo, se disponível"
+          },
+          {
+            "name": "location",
+            "type": ["string", "null"],
+            "doc": "Localização geográfica aproximada baseada no IP"
+          }
+        ]
+      },
+      "doc": "Informações sobre o cliente que realizou a operação"
+    },
+    {
+      "name": "operation_details",
+      "type": {
+        "type": "record",
+        "name": "OperationDetails",
+        "fields": [
+          {
+            "name": "resource_type",
+            "type": ["string", "null"],
+            "doc": "Tipo de recurso afetado (ex: 'user', 'auth_method')"
+          },
+          {
+            "name": "resource_id",
+            "type": ["string", "null"],
+            "doc": "Identificador do recurso afetado, se aplicável"
+          },
+          {
+            "name": "operation",
+            "type": ["string", "null"],
+            "doc": "Operação realizada (ex: 'create', 'update', 'delete')"
+          },
+          {
+            "name": "affected_fields",
+            "type": ["null", {
+              "type": "array",
+              "items": "string"
+            }],
+            "default": null,
+            "doc": "Campos afetados pela operação"
+          },
+          {
+            "name": "previous_values",
+            "type": ["null", {
+              "type": "map",
+              "values": ["null", "string"]
+            }],
+            "default": null,
+            "doc": "Valores anteriores dos campos afetados, mascarados se sensíveis"
+          },
+          {
+            "name": "new_values",
+            "type": ["null", {
+              "type": "map",
+              "values": ["null", "string"]
+            }],
+            "default": null,
+            "doc": "Novos valores dos campos afetados, mascarados se sensíveis"
+          }
+        ]
+      },
+      "doc": "Detalhes da operação realizada"
+    },
+    {
+      "name": "status",
+      "type": {
+        "type": "enum",
+        "name": "OperationStatus",
+        "symbols": [
+          "SUCCESS",
+          "FAILURE",
+          "PENDING",
+          "PARTIAL_SUCCESS"
+        ]
+      },
+      "doc": "Status da operação"
+    },
+    {
+      "name": "error_info",
+      "type": ["null", {
+        "type": "record",
+        "name": "ErrorInfo",
+        "fields": [
+          {
+            "name": "error_code",
+            "type": "string",
+            "doc": "Código de erro padronizado"
+          },
+          {
+            "name": "error_message",
+            "type": "string",
+            "doc": "Mensagem descritiva do erro"
+          },
+          {
+            "name": "error_details",
+            "type": ["string", "null"],
+            "doc": "Detalhes técnicos do erro, para debugging"
+          }
+        ]
+      }],
+      "default": null,
+      "doc": "Informações de erro, se aplicável"
+    },
+    {
+      "name": "region_code",
+      "type": "string",
+      "doc": "Código da região (EU, BR, AO, US)"
+    },
+    {
+      "name": "correlation_id",
+      "type": "string",
+      "doc": "Identificador de correlação para rastreabilidade"
+    },
+    {
+      "name": "gdpr_compliance",
+      "type": ["null", {
+        "type": "record",
+        "name": "GdprCompliance",
+        "fields": [
+          {
+            "name": "data_minimized",
+            "type": "boolean",
+            "doc": "Indica se os dados pessoais foram minimizados"
+          },
+          {
+            "name": "legal_basis",
+            "type": {
+              "type": "enum",
+              "name": "LegalBasis",
+              "symbols": [
+                "CONSENT",
+                "CONTRACT",
+                "LEGAL_OBLIGATION",
+                "VITAL_INTERESTS",
+                "PUBLIC_INTEREST",
+                "LEGITIMATE_INTERESTS"
+              ]
+            },
+            "doc": "Base legal para o processamento"
+          },
+          {
+            "name": "purpose",
+            "type": "string",
+            "doc": "Finalidade do processamento"
+          },
+          {
+            "name": "retention_period",
+            "type": ["null", "int"],
+            "default": null,
+            "doc": "Período de retenção em dias"
+          }
+        ]
+      }],
+      "default": null,
+      "doc": "Informações de compliance com GDPR, aplicável na região EU"
+    },
+    {
+      "name": "lgpd_compliance",
+      "type": ["null", {
+        "type": "record",
+        "name": "LgpdCompliance",
+        "fields": [
+          {
+            "name": "data_minimized",
+            "type": "boolean",
+            "doc": "Indica se os dados pessoais foram minimizados"
+          },
+          {
+            "name": "legal_basis",
+            "type": {
+              "type": "enum",
+              "name": "LgpdLegalBasis",
+              "symbols": [
+                "CONSENTIMENTO",
+                "OBRIGACAO_LEGAL",
+                "EXECUCAO_CONTRATO",
+                "EXERCICIO_DIREITOS",
+                "PROTECAO_VIDA",
+                "TUTELA_SAUDE",
+                "LEGITIMO_INTERESSE",
+                "PROTECAO_CREDITO",
+                "PREVENCAO_FRAUDE"
+              ]
+            },
+            "doc": "Base legal para o processamento segundo LGPD"
+          },
+          {
+            "name": "purpose",
+            "type": "string",
+            "doc": "Finalidade do processamento"
+          },
+          {
+            "name": "retention_period",
+            "type": ["null", "int"],
+            "default": null,
+            "doc": "Período de retenção em dias"
+          }
+        ]
+      }],
+      "default": null,
+      "doc": "Informações de compliance com LGPD, aplicável na região BR"
+    },
+    {
+      "name": "sector_specific",
+      "type": ["null", {
+        "type": "record",
+        "name": "SectorSpecific",
+        "fields": [
+          {
+            "name": "sector",
+            "type": {
+              "type": "enum",
+              "name": "Sector",
+              "symbols": [
+                "HEALTHCARE",
+                "FINANCE",
+                "TELECOM",
+                "EDUCATION",
+                "GOVERNMENT",
+                "RETAIL",
+                "OTHER"
+              ]
+            },
+            "doc": "Setor específico"
+          },
+          {
+            "name": "hipaa_compliance",
+            "type": ["null", "boolean"],
+            "default": null,
+            "doc": "Indica se a operação está em conformidade com HIPAA"
+          },
+          {
+            "name": "pci_dss_compliance",
+            "type": ["null", "boolean"],
+            "default": null,
+            "doc": "Indica se a operação está em conformidade com PCI DSS"
+          },
+          {
+            "name": "sector_metadata",
+            "type": ["null", {
+              "type": "map",
+              "values": ["null", "string"]
+            }],
+            "default": null,
+            "doc": "Metadados específicos do setor"
+          }
+        ]
+      }],
+      "default": null,
+      "doc": "Informações específicas de setor, aplicável principalmente na região US"
+    },
+    {
+      "name": "additional_context",
+      "type": {
+        "type": "map",
+        "values": ["null", "string", "int", "boolean"]
+      },
+      "default": {},
+      "doc": "Dados contextuais adicionais específicos do evento"
+    }
+  ]
+}

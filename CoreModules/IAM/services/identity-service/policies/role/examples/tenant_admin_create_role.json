@@ -1,0 +1,34 @@
+{
+  "user": {
+    "id": "00000000-0000-0000-0000-000000000002",
+    "tenant_id": "20000000-0000-0000-0000-000000000001",
+    "username": "tenant.admin",
+    "roles": ["TENANT_ADMIN"],
+    "permissions": ["tenant:manage", "role:*"]
+  },
+  "resource": {
+    "tenant_id": "20000000-0000-0000-0000-000000000001",
+    "data": {
+      "name": "CUSTOM_MANAGER",
+      "description": "Função de gerente customizada",
+      "type": "CUSTOM",
+      "status": "ACTIVE",
+      "metadata": {
+        "domain": "finance",
+        "risk_level": "medium",
+        "created_by": "tenant.admin"
+      }
+    }
+  },
+  "method": "POST",
+  "context": {
+    "requests_per_minute": 3,
+    "geo": {
+      "country": "AO",
+      "region": "Luanda"
+    },
+    "timestamp": "2025-08-05T11:30:00Z",
+    "client_ip": "192.168.1.120",
+    "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"
+  }
+}

@@ -1,0 +1,264 @@
+groups:
+- name: innovabiz_mongodb_alerts
+  rules:
+  # Alertas de Disponibilidade
+  - alert: MongoDBInstanceDown
+    expr: mongodb_up == 0
+    for: 1m
+    labels:
+      severity: critical
+      service: mongodb
+      category: availability
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "MongoDB Instância Indisponível"
+      description: "Instância {{ $labels.instance }} está offline há pelo menos 1 minuto. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/mongodb-instance-down"
+      dashboard_url: "https://grafana.innovabiz.com/d/innovabiz-mongodb?var-tenant_id={{ $labels.tenant_id }}&var-region_id={{ $labels.region_id }}&var-environment={{ $labels.environment }}&var-instance={{ $labels.instance }}"
+
+  - alert: MongoDBTooManyConnections
+    expr: mongodb_connections_current / mongodb_connections_available > 0.8
+    for: 5m
+    labels:
+      severity: warning
+      service: mongodb
+      category: availability
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Muitas Conexões Ativas"
+      description: "Mais de 80% das conexões disponíveis estão em uso na instância {{ $labels.instance }}. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/mongodb-too-many-connections"
+
+  - alert: MongoDBConnectionsRejected
+    expr: increase(mongodb_connections_rejected_total[5m]) > 0
+    for: 2m
+    labels:
+      severity: warning
+      service: mongodb
+      category: availability
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Conexões Rejeitadas"
+      description: "Conexões sendo rejeitadas na instância {{ $labels.instance }}. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/mongodb-connections-rejected"
+
+  # Alertas de Performance
+  - alert: MongoDBHighOperationLatency
+    expr: rate(mongodb_op_latencies_latency_total[5m]) / rate(mongodb_op_latencies_ops_total[5m]) > 100000
+    for: 5m
+    labels:
+      severity: warning
+      service: mongodb
+      category: performance
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Alta Latência de Operações"
+      description: "Latência média de operações {{ $labels.type }} acima de 100ms na instância {{ $labels.instance }}. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/mongodb-high-operation-latency"
+
+  - alert: MongoDBHighQueuedOperations
+    expr: mongodb_global_lock_current_queue_total > 50
+    for: 5m
+    labels:
+      severity: warning
+      service: mongodb
+      category: performance
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Muitas Operações em Fila"
+      description: "Mais de 50 operações {{ $labels.type }} em fila na instância {{ $labels.instance }}. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/mongodb-high-queued-operations"
+
+  - alert: MongoDBSlowQueries
+    expr: rate(mongodb_op_counters_total{type="query"}[5m]) > 1000 and rate(mongodb_op_latencies_latency_total{type="reads"}[5m]) / rate(mongodb_op_latencies_ops_total{type="reads"}[5m]) > 50000
+    for: 10m
+    labels:
+      severity: info
+      service: mongodb
+      category: performance
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Consultas Lentas Detectadas"
+      description: "Alto volume de consultas com latência elevada na instância {{ $labels.instance }}. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/mongodb-slow-queries"
+
+  # Alertas de Recursos
+  - alert: MongoDBHighCPUUsage
+    expr: 100 * (1 - avg by(instance, tenant_id, region_id, environment) (irate(node_cpu_seconds_total{mode="idle"}[5m]))) > 80
+    for: 15m
+    labels:
+      severity: warning
+      service: mongodb
+      category: resource
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Alto Uso de CPU"
+      description: "Uso de CPU acima de 80% por 15 minutos na instância {{ $labels.instance }}. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/mongodb-high-cpu"
+
+  - alert: MongoDBHighMemoryUsage
+    expr: 100 * (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) > 85
+    for: 15m
+    labels:
+      severity: warning
+      service: mongodb
+      category: resource
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Alto Uso de Memória"
+      description: "Uso de memória acima de 85% por 15 minutos na instância {{ $labels.instance }}. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/mongodb-high-memory"
+
+  - alert: MongoDBDiskSpaceWarning
+    expr: (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) * 100 < 20
+    for: 15m
+    labels:
+      severity: warning
+      service: mongodb
+      category: resource
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Espaço em Disco Baixo"
+      description: "Menos de 20% de espaço livre no disco da instância {{ $labels.instance }}. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/mongodb-low-disk-space"
+
+  - alert: MongoDBDiskSpaceCritical
+    expr: (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) * 100 < 10
+    for: 5m
+    labels:
+      severity: critical
+      service: mongodb
+      category: resource
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Espaço em Disco Crítico"
+      description: "Menos de 10% de espaço livre no disco da instância {{ $labels.instance }}. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/mongodb-critical-disk-space"
+
+  # Alertas de Replicação
+  - alert: MongoDBReplicationLag
+    expr: mongodb_replset_member_replication_lag > 10
+    for: 5m
+    labels:
+      severity: warning
+      service: mongodb
+      category: replication
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Lag de Replicação Elevado"
+      description: "Lag de replicação acima de 10 segundos no membro {{ $labels.name }} do replica set {{ $labels.set }}. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/mongodb-replication-lag"
+
+  - alert: MongoDBReplicaSetMemberDown
+    expr: mongodb_replset_member_health == 0
+    for: 2m
+    labels:
+      severity: critical
+      service: mongodb
+      category: replication
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Membro do Replica Set Indisponível"
+      description: "Membro {{ $labels.name }} do replica set {{ $labels.set }} está indisponível. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/mongodb-replica-member-down"
+
+  - alert: MongoDBNoPrimary
+    expr: sum by (set, tenant_id, region_id, environment) (mongodb_replset_member_state{state="1"}) == 0
+    for: 1m
+    labels:
+      severity: critical
+      service: mongodb
+      category: replication
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Replica Set Sem Primary"
+      description: "Replica set {{ $labels.set }} não possui nenhum membro primary. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/mongodb-no-primary"
+
+  # Alertas de Segurança e Governança
+  - alert: MongoDBUnauthorizedAccess
+    expr: increase(mongodb_network_num_requests_total{type="unauthorized"}[5m]) > 10
+    for: 5m
+    labels:
+      severity: warning
+      service: mongodb
+      category: security
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Tentativas de Acesso Não Autorizado"
+      description: "Mais de 10 tentativas de acesso não autorizado nos últimos 5 minutos na instância {{ $labels.instance }}. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/mongodb-unauthorized-access"
+
+  - alert: MongoDBDatabaseSizeGrowth
+    expr: increase(mongodb_database_size_bytes[1h]) > 1073741824
+    for: 1h
+    labels:
+      severity: info
+      service: mongodb
+      category: governance
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Crescimento Rápido do Banco de Dados"
+      description: "Banco de dados {{ $labels.database }} cresceu mais de 1GB na última hora na instância {{ $labels.instance }}. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/mongodb-database-growth"
+
+  # Alertas de SLA/SLO
+  - alert: MongoDBAvailabilitySLOViolation
+    expr: avg_over_time(mongodb_up[5m]) < 0.999
+    for: 10m
+    labels:
+      severity: warning
+      service: mongodb
+      category: slo
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Violação de SLO de Disponibilidade"
+      description: "SLO de disponibilidade violado - disponibilidade < 99.9% nos últimos 10 minutos. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/mongodb-availability-slo-violation"
+
+  - alert: MongoDBPerformanceSLOViolation
+    expr: rate(mongodb_op_latencies_latency_total{type="reads"}[5m]) / rate(mongodb_op_latencies_ops_total{type="reads"}[5m]) > 100000
+    for: 15m
+    labels:
+      severity: warning
+      service: mongodb
+      category: slo
+      tenant_id: '{{ $labels.tenant_id }}'
+      region_id: '{{ $labels.region_id }}'
+      environment: '{{ $labels.environment }}'
+    annotations:
+      summary: "Violação de SLO de Performance"
+      description: "SLO de performance violado - latência de leitura > 100ms por mais de 15 minutos. Tenant: {{ $labels.tenant_id }}, Região: {{ $labels.region_id }}, Ambiente: {{ $labels.environment }}"
+      runbook_url: "https://innovabiz.com/docs/observability/runbooks/mongodb-performance-slo-violation"

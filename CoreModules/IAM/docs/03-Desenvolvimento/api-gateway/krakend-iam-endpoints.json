@@ -1,0 +1,705 @@
+{
+  "endpoints": [
+    {
+      "endpoint": "/v1/auth/login",
+      "method": "POST",
+      "output_encoding": "json",
+      "input_headers": [
+        "Content-Type",
+        "X-Tenant-Id",
+        "X-Region-Code",
+        "X-Device-Id",
+        "X-Client-Version",
+        "X-Correlation-ID",
+        "User-Agent"
+      ],
+      "input_query_strings": [
+        "flow",
+        "method"
+      ],
+      "extra_config": {
+        "qos/ratelimit/router": {
+          "max_rate": 100,
+          "client_max_rate": 10,
+          "strategy": "ip"
+        },
+        "validation/json-schema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "required": [
+            "username"
+          ],
+          "properties": {
+            "username": {
+              "type": "string",
+              "minLength": 3
+            },
+            "password": {
+              "type": "string"
+            },
+            "method_code": {
+              "type": "string"
+            },
+            "tenant_id": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "backend": [
+        {
+          "url_pattern": "/api/auth/login",
+          "encoding": "json",
+          "sd": "static",
+          "method": "POST",
+          "host": [
+            "http://iam-auth-service:8000"
+          ],
+          "disable_host_sanitize": false,
+          "target": "",
+          "extra_config": {
+            "modifier/martian": {
+              "header.Modifier": {
+                "scope": ["request", "response"],
+                "name": "X-Correlation-ID",
+                "value": "{\"header\":[\"X-Correlation-ID\"]}"
+              }
+            },
+            "qos/circuit-breaker": {
+              "interval": 60,
+              "timeout": 10,
+              "max_errors": 5,
+              "log_status_change": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "endpoint": "/v1/auth/mfa/challenge",
+      "method": "POST",
+      "output_encoding": "json",
+      "input_headers": [
+        "Content-Type",
+        "Authorization",
+        "X-Tenant-Id",
+        "X-Region-Code",
+        "X-Device-Id",
+        "X-Correlation-ID"
+      ],
+      "input_query_strings": [
+        "method"
+      ],
+      "extra_config": {
+        "auth/validator": {
+          "alg": "RS256",
+          "jwk_url": "http://iam-service:8000/auth/jwks",
+          "disable_jwk_security": false,
+          "cache": true,
+          "audience": ["innovabiz-platform"],
+          "roles_key": "roles",
+          "roles": ["user"],
+          "propagate_claims": [
+            ["sub", "x-user-id"],
+            ["tid", "x-tenant-id"]
+          ]
+        }
+      },
+      "backend": [
+        {
+          "url_pattern": "/api/auth/mfa/challenge",
+          "encoding": "json",
+          "sd": "static",
+          "method": "POST",
+          "host": [
+            "http://iam-auth-service:8000"
+          ],
+          "disable_host_sanitize": false,
+          "target": ""
+        }
+      ]
+    },
+    {
+      "endpoint": "/v1/auth/mfa/verify",
+      "method": "POST",
+      "output_encoding": "json",
+      "input_headers": [
+        "Content-Type",
+        "Authorization",
+        "X-Tenant-Id",
+        "X-Region-Code",
+        "X-Device-Id",
+        "X-Correlation-ID"
+      ],
+      "extra_config": {
+        "validation/json-schema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "required": [
+            "challenge_id",
+            "code"
+          ],
+          "properties": {
+            "challenge_id": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "code": {
+              "type": "string",
+              "minLength": 4
+            },
+            "method_code": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "backend": [
+        {
+          "url_pattern": "/api/auth/mfa/verify",
+          "encoding": "json",
+          "sd": "static",
+          "method": "POST",
+          "host": [
+            "http://iam-auth-service:8000"
+          ],
+          "disable_host_sanitize": false,
+          "target": ""
+        }
+      ]
+    },
+    {
+      "endpoint": "/v1/auth/token/refresh",
+      "method": "POST",
+      "output_encoding": "json",
+      "input_headers": [
+        "Content-Type",
+        "X-Tenant-Id",
+        "X-Region-Code",
+        "X-Device-Id",
+        "X-Correlation-ID"
+      ],
+      "extra_config": {
+        "validation/json-schema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "required": [
+            "refresh_token"
+          ],
+          "properties": {
+            "refresh_token": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "backend": [
+        {
+          "url_pattern": "/api/auth/token/refresh",
+          "encoding": "json",
+          "sd": "static",
+          "method": "POST",
+          "host": [
+            "http://iam-auth-service:8000"
+          ],
+          "disable_host_sanitize": false,
+          "target": ""
+        }
+      ]
+    },
+    {
+      "endpoint": "/v1/auth/token/revoke",
+      "method": "POST",
+      "output_encoding": "json",
+      "input_headers": [
+        "Content-Type",
+        "Authorization",
+        "X-Tenant-Id",
+        "X-Region-Code",
+        "X-Device-Id",
+        "X-Correlation-ID"
+      ],
+      "extra_config": {
+        "auth/validator": {
+          "alg": "RS256",
+          "jwk_url": "http://iam-service:8000/auth/jwks",
+          "disable_jwk_security": false,
+          "cache": true,
+          "audience": ["innovabiz-platform"],
+          "roles_key": "roles",
+          "roles": ["user"]
+        }
+      },
+      "backend": [
+        {
+          "url_pattern": "/api/auth/token/revoke",
+          "encoding": "json",
+          "sd": "static",
+          "method": "POST",
+          "host": [
+            "http://iam-auth-service:8000"
+          ],
+          "disable_host_sanitize": false,
+          "target": ""
+        }
+      ]
+    },
+    {
+      "endpoint": "/v1/auth/password/reset-request",
+      "method": "POST",
+      "output_encoding": "json",
+      "input_headers": [
+        "Content-Type",
+        "X-Tenant-Id",
+        "X-Region-Code",
+        "X-Correlation-ID"
+      ],
+      "extra_config": {
+        "qos/ratelimit/router": {
+          "max_rate": 20,
+          "client_max_rate": 5,
+          "strategy": "ip"
+        },
+        "validation/json-schema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "required": [
+            "username"
+          ],
+          "properties": {
+            "username": {
+              "type": "string",
+              "minLength": 3
+            },
+            "tenant_id": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "backend": [
+        {
+          "url_pattern": "/api/auth/password/reset-request",
+          "encoding": "json",
+          "sd": "static",
+          "method": "POST",
+          "host": [
+            "http://iam-auth-service:8000"
+          ],
+          "disable_host_sanitize": false,
+          "target": ""
+        }
+      ]
+    },
+    {
+      "endpoint": "/v1/auth/password/reset",
+      "method": "POST",
+      "output_encoding": "json",
+      "input_headers": [
+        "Content-Type",
+        "X-Tenant-Id",
+        "X-Region-Code",
+        "X-Correlation-ID"
+      ],
+      "extra_config": {
+        "qos/ratelimit/router": {
+          "max_rate": 20,
+          "client_max_rate": 5,
+          "strategy": "ip"
+        },
+        "validation/json-schema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "required": [
+            "token",
+            "new_password"
+          ],
+          "properties": {
+            "token": {
+              "type": "string"
+            },
+            "new_password": {
+              "type": "string",
+              "minLength": 8
+            }
+          }
+        }
+      },
+      "backend": [
+        {
+          "url_pattern": "/api/auth/password/reset",
+          "encoding": "json",
+          "sd": "static",
+          "method": "POST",
+          "host": [
+            "http://iam-auth-service:8000"
+          ],
+          "disable_host_sanitize": false,
+          "target": ""
+        }
+      ]
+    },
+    {
+      "endpoint": "/v1/auth/password/change",
+      "method": "POST",
+      "output_encoding": "json",
+      "input_headers": [
+        "Content-Type",
+        "Authorization",
+        "X-Tenant-Id",
+        "X-Region-Code",
+        "X-Correlation-ID"
+      ],
+      "extra_config": {
+        "auth/validator": {
+          "alg": "RS256",
+          "jwk_url": "http://iam-service:8000/auth/jwks",
+          "disable_jwk_security": false,
+          "cache": true,
+          "audience": ["innovabiz-platform"],
+          "roles_key": "roles",
+          "roles": ["user"]
+        },
+        "validation/json-schema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "required": [
+            "current_password",
+            "new_password"
+          ],
+          "properties": {
+            "current_password": {
+              "type": "string"
+            },
+            "new_password": {
+              "type": "string",
+              "minLength": 8
+            }
+          }
+        }
+      },
+      "backend": [
+        {
+          "url_pattern": "/api/auth/password/change",
+          "encoding": "json",
+          "sd": "static",
+          "method": "POST",
+          "host": [
+            "http://iam-auth-service:8000"
+          ],
+          "disable_host_sanitize": false,
+          "target": ""
+        }
+      ]
+    },
+    {
+      "endpoint": "/v1/auth/methods",
+      "method": "GET",
+      "output_encoding": "json",
+      "input_headers": [
+        "X-Tenant-Id",
+        "X-Region-Code",
+        "X-Correlation-ID"
+      ],
+      "input_query_strings": [
+        "category",
+        "active",
+        "factor"
+      ],
+      "backend": [
+        {
+          "url_pattern": "/api/auth/methods",
+          "encoding": "json",
+          "sd": "static",
+          "method": "GET",
+          "host": [
+            "http://iam-auth-service:8000"
+          ],
+          "disable_host_sanitize": false,
+          "target": ""
+        }
+      ]
+    },
+    {
+      "endpoint": "/v1/auth/flows",
+      "method": "GET",
+      "output_encoding": "json",
+      "input_headers": [
+        "X-Tenant-Id",
+        "X-Region-Code",
+        "X-Correlation-ID"
+      ],
+      "input_query_strings": [
+        "security_level",
+        "adaptive"
+      ],
+      "backend": [
+        {
+          "url_pattern": "/api/auth/flows",
+          "encoding": "json",
+          "sd": "static",
+          "method": "GET",
+          "host": [
+            "http://iam-auth-service:8000"
+          ],
+          "disable_host_sanitize": false,
+          "target": ""
+        }
+      ]
+    },
+    {
+      "endpoint": "/v1/auth/me",
+      "method": "GET",
+      "output_encoding": "json",
+      "input_headers": [
+        "Authorization",
+        "X-Tenant-Id",
+        "X-Region-Code",
+        "X-Correlation-ID"
+      ],
+      "extra_config": {
+        "auth/validator": {
+          "alg": "RS256",
+          "jwk_url": "http://iam-service:8000/auth/jwks",
+          "disable_jwk_security": false,
+          "cache": true,
+          "audience": ["innovabiz-platform"],
+          "roles_key": "roles",
+          "roles": ["user"],
+          "propagate_claims": [
+            ["sub", "x-user-id"],
+            ["tid", "x-tenant-id"]
+          ]
+        }
+      },
+      "backend": [
+        {
+          "url_pattern": "/api/users/me",
+          "encoding": "json",
+          "sd": "static",
+          "method": "GET",
+          "host": [
+            "http://iam-user-service:8000"
+          ],
+          "disable_host_sanitize": false,
+          "target": ""
+        }
+      ]
+    },
+    {
+      "endpoint": "/v1/auth/me/methods",
+      "method": "GET",
+      "output_encoding": "json",
+      "input_headers": [
+        "Authorization",
+        "X-Tenant-Id",
+        "X-Region-Code",
+        "X-Correlation-ID"
+      ],
+      "extra_config": {
+        "auth/validator": {
+          "alg": "RS256",
+          "jwk_url": "http://iam-service:8000/auth/jwks",
+          "disable_jwk_security": false,
+          "cache": true,
+          "audience": ["innovabiz-platform"],
+          "roles_key": "roles",
+          "roles": ["user"],
+          "propagate_claims": [
+            ["sub", "x-user-id"],
+            ["tid", "x-tenant-id"]
+          ]
+        }
+      },
+      "backend": [
+        {
+          "url_pattern": "/api/users/me/methods",
+          "encoding": "json",
+          "sd": "static",
+          "method": "GET",
+          "host": [
+            "http://iam-user-service:8000"
+          ],
+          "disable_host_sanitize": false,
+          "target": ""
+        }
+      ]
+    },
+    {
+      "endpoint": "/v1/auth/me/methods/{method_id}",
+      "method": "PUT",
+      "output_encoding": "json",
+      "input_headers": [
+        "Content-Type",
+        "Authorization",
+        "X-Tenant-Id",
+        "X-Region-Code",
+        "X-Device-Id",
+        "X-Correlation-ID"
+      ],
+      "extra_config": {
+        "auth/validator": {
+          "alg": "RS256",
+          "jwk_url": "http://iam-service:8000/auth/jwks",
+          "disable_jwk_security": false,
+          "cache": true,
+          "audience": ["innovabiz-platform"],
+          "roles_key": "roles",
+          "roles": ["user"],
+          "propagate_claims": [
+            ["sub", "x-user-id"],
+            ["tid", "x-tenant-id"]
+          ]
+        }
+      },
+      "backend": [
+        {
+          "url_pattern": "/api/users/me/methods/{method_id}",
+          "encoding": "json",
+          "sd": "static",
+          "method": "PUT",
+          "host": [
+            "http://iam-user-service:8000"
+          ],
+          "disable_host_sanitize": false,
+          "target": ""
+        }
+      ]
+    },
+    {
+      "endpoint": "/v1/auth/me/methods/{method_id}",
+      "method": "DELETE",
+      "output_encoding": "json",
+      "input_headers": [
+        "Authorization",
+        "X-Tenant-Id",
+        "X-Region-Code",
+        "X-Correlation-ID"
+      ],
+      "extra_config": {
+        "auth/validator": {
+          "alg": "RS256",
+          "jwk_url": "http://iam-service:8000/auth/jwks",
+          "disable_jwk_security": false,
+          "cache": true,
+          "audience": ["innovabiz-platform"],
+          "roles_key": "roles",
+          "roles": ["user"],
+          "propagate_claims": [
+            ["sub", "x-user-id"],
+            ["tid", "x-tenant-id"]
+          ]
+        }
+      },
+      "backend": [
+        {
+          "url_pattern": "/api/users/me/methods/{method_id}",
+          "encoding": "json",
+          "sd": "static",
+          "method": "DELETE",
+          "host": [
+            "http://iam-user-service:8000"
+          ],
+          "disable_host_sanitize": false,
+          "target": ""
+        }
+      ]
+    },
+    {
+      "endpoint": "/v1/auth/me/sessions",
+      "method": "GET",
+      "output_encoding": "json",
+      "input_headers": [
+        "Authorization",
+        "X-Tenant-Id",
+        "X-Region-Code",
+        "X-Correlation-ID"
+      ],
+      "extra_config": {
+        "auth/validator": {
+          "alg": "RS256",
+          "jwk_url": "http://iam-service:8000/auth/jwks",
+          "disable_jwk_security": false,
+          "cache": true,
+          "audience": ["innovabiz-platform"],
+          "roles_key": "roles",
+          "roles": ["user"],
+          "propagate_claims": [
+            ["sub", "x-user-id"],
+            ["tid", "x-tenant-id"]
+          ]
+        }
+      },
+      "backend": [
+        {
+          "url_pattern": "/api/users/me/sessions",
+          "encoding": "json",
+          "sd": "static",
+          "method": "GET",
+          "host": [
+            "http://iam-user-service:8000"
+          ],
+          "disable_host_sanitize": false,
+          "target": ""
+        }
+      ]
+    },
+    {
+      "endpoint": "/v1/auth/me/sessions/{session_id}",
+      "method": "DELETE",
+      "output_encoding": "json",
+      "input_headers": [
+        "Authorization",
+        "X-Tenant-Id",
+        "X-Region-Code",
+        "X-Correlation-ID"
+      ],
+      "extra_config": {
+        "auth/validator": {
+          "alg": "RS256",
+          "jwk_url": "http://iam-service:8000/auth/jwks",
+          "disable_jwk_security": false,
+          "cache": true,
+          "audience": ["innovabiz-platform"],
+          "roles_key": "roles",
+          "roles": ["user"],
+          "propagate_claims": [
+            ["sub", "x-user-id"],
+            ["tid", "x-tenant-id"]
+          ]
+        }
+      },
+      "backend": [
+        {
+          "url_pattern": "/api/users/me/sessions/{session_id}",
+          "encoding": "json",
+          "sd": "static",
+          "method": "DELETE",
+          "host": [
+            "http://iam-user-service:8000"
+          ],
+          "disable_host_sanitize": false,
+          "target": ""
+        }
+      ]
+    },
+    {
+      "endpoint": "/v1/auth/health",
+      "method": "GET",
+      "output_encoding": "json",
+      "backend": [
+        {
+          "url_pattern": "/api/health",
+          "encoding": "json",
+          "sd": "static",
+          "method": "GET",
+          "host": [
+            "http://iam-auth-service:8000"
+          ],
+          "disable_host_sanitize": false,
+          "target": ""
+        }
+      ]
+    }
+  ]
+}

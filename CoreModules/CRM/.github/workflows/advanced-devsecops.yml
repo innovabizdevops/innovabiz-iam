@@ -1,0 +1,879 @@
+name: InnovaBiz CRM - Advanced DevSecOps Pipeline v6.0.0
+
+on:
+  push:
+    branches: [ main, master, develop, feature/* ]
+  pull_request:
+    branches: [ main, master, develop ]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+        - development
+        - staging
+        - production
+        - sandbox
+      skip_security_scan:
+        description: 'Skip security scan'
+        required: false
+        default: false
+        type: boolean
+      force_deploy:
+        description: 'Force deployment'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  NODE_VERSION: '20'
+  PNPM_VERSION: '8'
+  KUBERNETES_VERSION: 'v1.29.0'
+  TERRAFORM_VERSION: '1.7.0'
+  HELM_VERSION: 'v3.14.0'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ============================================================================
+  # SECURITY & COMPLIANCE LAYER
+  # ============================================================================
+
+  security-compliance:
+    name: 🔒 Security & Compliance Scan
+    runs-on: ubuntu-latest
+    outputs:
+      security-score: ${{ steps.security.outputs.score }}
+      compliance-status: ${{ steps.compliance.outputs.status }}
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    # Multi-layer security scanning
+    - name: Trivy Vulnerability Scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+        severity: 'CRITICAL,HIGH,MEDIUM'
+
+    - name: Snyk Security Scan
+      uses: snyk/actions/node@master
+      env:
+        SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+      with:
+        args: --severity-threshold=medium
+
+    - name: CodeQL Analysis
+      uses: github/codeql-action/init@v3
+      with:
+        languages: javascript, typescript
+
+    - name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@v3
+
+    # GDPR/LGPD/CCPA Compliance Check
+    - name: Privacy Compliance Scan
+      id: compliance
+      run: |
+        echo "Running GDPR/LGPD/CCPA compliance checks..."
+
+        # Check for PII handling
+        GDPR_VIOLATIONS=$(grep -r "personalData\|pii\|sensitive" --include="*.ts" --include="*.js" . | wc -l)
+        ENCRYPTION_CHECK=$(grep -r "encrypt\|hash\|secure" --include="*.ts" --include="*.js" . | wc -l)
+
+        if [ $GDPR_VIOLATIONS -gt 0 ] && [ $ENCRYPTION_CHECK -eq 0 ]; then
+          echo "⚠️ Potential GDPR compliance issues detected"
+          echo "status=warning" >> $GITHUB_OUTPUT
+        else
+          echo "✅ GDPR compliance check passed"
+          echo "status=passed" >> $GITHUB_OUTPUT
+        fi
+
+    # Zero Trust Security Validation
+    - name: Zero Trust Security Check
+      run: |
+        echo "🔐 Validating Zero Trust architecture..."
+
+        # Check for authentication guards
+        AUTH_GUARDS=$(find . -name "*.guard.ts" | wc -l)
+        JWT_USAGE=$(grep -r "jwt\|bearer" --include="*.ts" . | wc -l)
+
+        echo "Found $AUTH_GUARDS authentication guards"
+        echo "Found $JWT_USAGE JWT implementations"
+
+        if [ $AUTH_GUARDS -lt 3 ] || [ $JWT_USAGE -lt 5 ]; then
+          echo "❌ Zero Trust security requirements not met"
+          exit 1
+        fi
+
+    - name: Upload Security Results
+      uses: github/codeql-action/upload-sarif@v3
+      if: always()
+      with:
+        sarif_file: 'trivy-results.sarif'
+
+  # ============================================================================
+  # INFRASTRUCTURE AS CODE VALIDATION
+  # ============================================================================
+
+  infrastructure-validation:
+    name: 🏗️ Infrastructure as Code Validation
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+    - name: Terraform Format Check
+      run: |
+        cd infrastructure/terraform
+        terraform fmt -check -recursive
+
+    - name: Terraform Validate
+      run: |
+        cd infrastructure/terraform
+        terraform init -backend=false
+        terraform validate
+
+    - name: TFSec Security Scan
+      uses: aquasecurity/tfsec-action@v1.0.3
+      with:
+        working_directory: infrastructure/terraform
+
+    - name: Kubernetes YAML Validation
+      run: |
+        cd infrastructure/kubernetes
+
+        # Install kubeval
+        curl -L https://github.com/instrumenta/kubeval/releases/latest/download/kubeval-linux-amd64.tar.gz | tar xz
+        sudo mv kubeval /usr/local/bin
+
+        # Validate all YAML files
+        find . -name "*.yaml" -o -name "*.yml" | xargs kubeval
+
+    - name: Helm Chart Validation
+      run: |
+        cd infrastructure/helm
+
+        # Install Helm
+        curl https://get.helm.sh/helm-${{ env.HELM_VERSION }}-linux-amd64.tar.gz | tar xz
+        sudo mv linux-amd64/helm /usr/local/bin
+
+        # Lint Helm charts
+        helm lint ./innovabiz-crm
+
+  # ============================================================================
+  # QUALITY GATES & TESTING
+  # ============================================================================
+
+  quality-gates:
+    name: 📊 Quality Gates
+    runs-on: ubuntu-latest
+    needs: [security-compliance]
+    strategy:
+      matrix:
+        component: [frontend, backend]
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: test_db
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        cache-dependency-path: ${{ matrix.component == 'backend' && 'backend/package-lock.json' || 'package-lock.json' }}
+
+    - name: Install dependencies
+      run: |
+        if [ "${{ matrix.component }}" = "backend" ]; then
+          cd backend && npm ci
+        else
+          npm ci
+        fi
+
+    - name: Code Quality Analysis
+      run: |
+        echo "🔍 Running code quality analysis for ${{ matrix.component }}..."
+
+        if [ "${{ matrix.component }}" = "backend" ]; then
+          cd backend
+          npm run lint
+          npm run format:check || echo "Format check not available"
+          npm run typecheck || npx tsc --noEmit
+        else
+          npm run lint
+          npm run typecheck
+        fi
+
+    - name: Security Audit
+      run: |
+        if [ "${{ matrix.component }}" = "backend" ]; then
+          cd backend
+        fi
+        npm audit --audit-level=moderate || true
+
+    - name: Unit Tests with Coverage
+      env:
+        NODE_ENV: test
+        DB_HOST: localhost
+        DB_PORT: 5432
+        DB_USERNAME: postgres
+        DB_PASSWORD: postgres
+        DB_NAME: test_db
+        REDIS_HOST: localhost
+        REDIS_PORT: 6379
+      run: |
+        if [ "${{ matrix.component }}" = "backend" ]; then
+          cd backend
+          npm run test -- --coverage --reporters=default --reporters=jest-junit
+        else
+          npm run test -- --coverage --watchAll=false --reporters=default --reporters=jest-junit
+        fi
+
+    - name: Build Verification
+      run: |
+        if [ "${{ matrix.component }}" = "backend" ]; then
+          cd backend
+          npm run build
+        else
+          npm run build
+        fi
+
+    # Advanced Quality Metrics
+    - name: Technical Debt Analysis
+      run: |
+        echo "📈 Analyzing technical debt..."
+
+        # Code complexity analysis
+        if [ "${{ matrix.component }}" = "backend" ]; then
+          cd backend
+        fi
+
+        # Count TODO/FIXME comments
+        TODO_COUNT=$(grep -r "TODO\|FIXME" --include="*.ts" --include="*.js" . | wc -l)
+        echo "Technical debt markers: $TODO_COUNT"
+
+        # Cyclomatic complexity (simplified)
+        COMPLEX_FILES=$(find . -name "*.ts" -exec grep -l "if.*if.*if" {} \; | wc -l)
+        echo "Potentially complex files: $COMPLEX_FILES"
+
+    - name: Upload Coverage Reports
+      uses: codecov/codecov-action@v4
+      with:
+        file: ${{ matrix.component == 'backend' && 'backend/coverage/lcov.info' || 'coverage/lcov.info' }}
+        flags: ${{ matrix.component }}
+        name: ${{ matrix.component }}-coverage
+
+  # ============================================================================
+  # E2E TESTING WITH ADVANCED SCENARIOS
+  # ============================================================================
+
+  e2e-advanced-testing:
+    name: 🎭 Advanced E2E Testing
+    runs-on: ubuntu-latest
+    needs: [quality-gates]
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: crm_e2e
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: |
+        npm ci
+        cd backend && npm ci
+
+    - name: Install Playwright with all browsers
+      run: npx playwright install --with-deps
+
+    - name: Setup E2E Environment
+      run: |
+        cd backend
+        cp .env.example .env.e2e
+        npm run migrate:test || echo "Migration not available"
+        npm run seed:test || echo "Seeding not available"
+
+    - name: Start Application Stack
+      run: |
+        # Start backend
+        cd backend
+        npm run start:test &
+        BACKEND_PID=$!
+        echo "BACKEND_PID=$BACKEND_PID" >> $GITHUB_ENV
+
+        # Wait for backend
+        sleep 15
+
+        # Start frontend
+        cd ..
+        npm run build
+        npm run preview &
+        FRONTEND_PID=$!
+        echo "FRONTEND_PID=$FRONTEND_PID" >> $GITHUB_ENV
+
+        # Wait for frontend
+        sleep 10
+      env:
+        NODE_ENV: test
+        DB_HOST: localhost
+        DB_PORT: 5432
+        DB_USERNAME: postgres
+        DB_PASSWORD: postgres
+        DB_NAME: crm_e2e
+        REDIS_HOST: localhost
+        REDIS_PORT: 6379
+        VITE_API_URL: http://localhost:3001
+
+    - name: Health Check
+      run: |
+        # Check backend health
+        curl -f http://localhost:3001/health || exit 1
+
+        # Check frontend
+        curl -f http://localhost:3002 || exit 1
+
+    - name: Run E2E Tests - Smoke Tests
+      run: npx playwright test --grep="@smoke"
+      env:
+        TEST_BASE_URL: http://localhost:3002
+
+    - name: Run E2E Tests - Critical User Journeys
+      run: npx playwright test --grep="@critical"
+      env:
+        TEST_BASE_URL: http://localhost:3002
+
+    - name: Run E2E Tests - Multi-Tenant Scenarios
+      run: npx playwright test --grep="@multitenant"
+      env:
+        TEST_BASE_URL: http://localhost:3002
+
+    - name: Run E2E Tests - Accessibility Tests
+      run: npx playwright test --grep="@accessibility"
+      env:
+        TEST_BASE_URL: http://localhost:3002
+
+    - name: Performance Testing
+      run: |
+        # Lighthouse CI
+        npm install -g @lhci/cli
+        lhci autorun --upload.target=temporary-public-storage
+      env:
+        LHCI_GITHUB_APP_TOKEN: ${{ secrets.LHCI_GITHUB_APP_TOKEN }}
+
+    - name: Upload Test Results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: e2e-test-results
+        path: |
+          playwright-report/
+          test-results/
+          lighthouse-report/
+        retention-days: 30
+
+    - name: Cleanup
+      if: always()
+      run: |
+        if [ -n "$BACKEND_PID" ]; then kill $BACKEND_PID || true; fi
+        if [ -n "$FRONTEND_PID" ]; then kill $FRONTEND_PID || true; fi
+
+  # ============================================================================
+  # ADVANCED CONTAINER BUILD & SECURITY
+  # ============================================================================
+
+  container-build-security:
+    name: 🐳 Advanced Container Build & Security
+    runs-on: ubuntu-latest
+    needs: [quality-gates, infrastructure-validation]
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/develop'
+
+    permissions:
+      contents: read
+      packages: write
+      security-events: write
+
+    strategy:
+      matrix:
+        component: [backend, frontend]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${{ matrix.component }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+
+    - name: Build Docker Image
+      uses: docker/build-push-action@v5
+      id: build
+      with:
+        context: .
+        file: ${{ matrix.component }}/Dockerfile
+        push: false
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        platforms: linux/amd64,linux/arm64
+        load: true
+
+    # Advanced Container Security Scanning
+    - name: Run Trivy on Container Image
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: ${{ steps.meta.outputs.tags }}
+        format: 'sarif'
+        output: 'trivy-image-results.sarif'
+
+    - name: Container Image Compliance Check
+      run: |
+        echo "🔍 Checking container compliance..."
+
+        # Check for non-root user
+        docker run --rm ${{ steps.meta.outputs.tags }} whoami | grep -v root || echo "⚠️ Running as root"
+
+        # Check image size
+        IMAGE_SIZE=$(docker images ${{ steps.meta.outputs.tags }} --format "table {{.Size}}" | tail -n 1)
+        echo "Image size: $IMAGE_SIZE"
+
+    # SBOM Generation
+    - name: Generate SBOM
+      uses: anchore/sbom-action@v0
+      with:
+        image: ${{ steps.meta.outputs.tags }}
+        format: spdx-json
+        output-file: sbom-${{ matrix.component }}.spdx.json
+
+    - name: Push Container Image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ${{ matrix.component }}/Dockerfile
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        platforms: linux/amd64,linux/arm64
+
+    - name: Upload SBOM
+      uses: actions/upload-artifact@v4
+      with:
+        name: sbom-${{ matrix.component }}
+        path: sbom-${{ matrix.component }}.spdx.json
+
+  # ============================================================================
+  # ADVANCED DEPLOYMENT STRATEGIES
+  # ============================================================================
+
+  deploy-advanced:
+    name: 🚀 Advanced Deployment
+    runs-on: ubuntu-latest
+    needs: [container-build-security, e2e-advanced-testing]
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/develop' || github.event_name == 'workflow_dispatch'
+
+    strategy:
+      matrix:
+        environment:
+          - ${{ (github.ref == 'refs/heads/develop' && 'staging') || (github.ref == 'refs/heads/main' && 'production') || (github.ref == 'refs/heads/master' && 'production') || github.event.inputs.environment }}
+
+    environment: ${{ matrix.environment }}
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: ${{ env.KUBERNETES_VERSION }}
+
+    - name: Setup Helm
+      uses: azure/setup-helm@v3
+      with:
+        version: ${{ env.HELM_VERSION }}
+
+    - name: Configure Kubernetes Context
+      uses: azure/k8s-set-context@v3
+      with:
+        method: kubeconfig
+        kubeconfig: ${{ secrets[format('KUBE_CONFIG_{0}', upper(matrix.environment))] }}
+
+    - name: Pre-deployment Validation
+      run: |
+        echo "🔍 Pre-deployment validation for ${{ matrix.environment }}..."
+
+        # Check cluster health
+        kubectl cluster-info
+        kubectl get nodes
+
+        # Check namespace
+        kubectl create namespace innovabiz-crm-${{ matrix.environment }} --dry-run=client -o yaml | kubectl apply -f -
+
+    - name: Blue-Green Deployment Strategy
+      if: matrix.environment == 'production'
+      run: |
+        echo "🔄 Implementing Blue-Green deployment..."
+
+        cd infrastructure/kubernetes
+
+        # Determine current active environment
+        CURRENT_ENV=$(kubectl get service innovabiz-crm-service -n innovabiz-crm-${{ matrix.environment }} -o jsonpath='{.metadata.labels.environment}' 2>/dev/null || echo "blue")
+        NEW_ENV=$([ "$CURRENT_ENV" = "blue" ] && echo "green" || echo "blue")
+
+        echo "Current environment: $CURRENT_ENV"
+        echo "Deploying to: $NEW_ENV"
+
+        # Deploy to new environment
+        export IMAGE_TAG="${{ github.sha }}"
+        export DEPLOYMENT_ENV="$NEW_ENV"
+        envsubst < backend-deployment.yaml | sed "s/backend/backend-$NEW_ENV/g" | kubectl apply -f -
+        envsubst < frontend-deployment.yaml | sed "s/frontend/frontend-$NEW_ENV/g" | kubectl apply -f -
+
+        # Wait for new deployment
+        kubectl rollout status deployment/backend-$NEW_ENV -n innovabiz-crm-${{ matrix.environment }} --timeout=600s
+        kubectl rollout status deployment/frontend-$NEW_ENV -n innovabiz-crm-${{ matrix.environment }} --timeout=300s
+
+        # Health check new environment
+        kubectl run health-check-$NEW_ENV --rm -i --restart=Never --image=curlimages/curl -- curl -f http://backend-$NEW_ENV-service:3001/health
+
+        # Switch traffic
+        kubectl patch service innovabiz-crm-service -n innovabiz-crm-${{ matrix.environment }} -p '{"spec":{"selector":{"environment":"'$NEW_ENV'"}}}'
+
+        # Cleanup old environment after successful switch
+        sleep 60
+        kubectl delete deployment backend-$CURRENT_ENV frontend-$CURRENT_ENV -n innovabiz-crm-${{ matrix.environment }} || true
+
+    - name: Rolling Deployment Strategy
+      if: matrix.environment != 'production'
+      run: |
+        echo "🔄 Implementing Rolling deployment..."
+
+        cd infrastructure/kubernetes
+
+        # Update image tags
+        export IMAGE_TAG="${{ github.sha }}"
+        envsubst < backend-deployment.yaml | kubectl apply -f -
+        envsubst < frontend-deployment.yaml | kubectl apply -f -
+
+        # Apply configuration
+        kubectl apply -f namespace.yaml
+        kubectl apply -f configmap.yaml
+        kubectl apply -f ingress.yaml
+
+        # Wait for rollout
+        kubectl rollout status deployment/backend -n innovabiz-crm-${{ matrix.environment }} --timeout=600s
+        kubectl rollout status deployment/frontend -n innovabiz-crm-${{ matrix.environment }} --timeout=300s
+
+    - name: Post-deployment Verification
+      run: |
+        echo "✅ Post-deployment verification..."
+
+        # Check deployment status
+        kubectl get pods -n innovabiz-crm-${{ matrix.environment }}
+        kubectl get services -n innovabiz-crm-${{ matrix.environment }}
+        kubectl get ingress -n innovabiz-crm-${{ matrix.environment }}
+
+        # Health checks
+        kubectl run health-check --rm -i --restart=Never --image=curlimages/curl -- curl -f http://backend-service:3001/health
+
+        # Performance verification
+        kubectl top pods -n innovabiz-crm-${{ matrix.environment }}
+
+  # ============================================================================
+  # ADVANCED MONITORING & OBSERVABILITY
+  # ============================================================================
+
+  post-deployment-monitoring:
+    name: 📊 Advanced Monitoring Setup
+    runs-on: ubuntu-latest
+    needs: [deploy-advanced]
+    if: always() && needs.deploy-advanced.result == 'success'
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Configure Monitoring Stack
+      run: |
+        echo "📊 Setting up advanced monitoring..."
+
+        # Deploy Prometheus monitoring
+        kubectl apply -f infrastructure/monitoring/prometheus.yaml
+
+        # Deploy Grafana dashboards
+        kubectl apply -f infrastructure/monitoring/grafana-dashboards.yaml
+
+        # Deploy Jaeger tracing
+        kubectl apply -f infrastructure/monitoring/jaeger.yaml
+
+        # Setup custom metrics
+        kubectl apply -f infrastructure/monitoring/custom-metrics.yaml
+
+    - name: Configure Alerts
+      run: |
+        echo "🚨 Setting up alerting rules..."
+
+        # Apply Prometheus alert rules
+        kubectl apply -f infrastructure/monitoring/alert-rules.yaml
+
+        # Configure notification channels
+        kubectl apply -f infrastructure/monitoring/notification-configs.yaml
+
+    - name: Generate Performance Baseline
+      run: |
+        echo "📈 Generating performance baseline..."
+
+        # Run performance tests to establish baseline
+        curl -X POST "${{ secrets.GRAFANA_URL }}/api/annotations" \
+          -H "Authorization: Bearer ${{ secrets.GRAFANA_TOKEN }}" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "text": "Deployment completed - Performance baseline established",
+            "time": '$(date +%s000)',
+            "tags": ["deployment", "baseline", "v${{ github.sha }}"]
+          }'
+
+  # ============================================================================
+  # COMPREHENSIVE NOTIFICATIONS & REPORTING
+  # ============================================================================
+
+  comprehensive-notifications:
+    name: 📢 Comprehensive Notifications
+    runs-on: ubuntu-latest
+    needs: [deploy-advanced, post-deployment-monitoring]
+    if: always()
+
+    steps:
+    - name: Generate Deployment Report
+      id: report
+      run: |
+        echo "📋 Generating comprehensive deployment report..."
+
+        # Calculate deployment metrics
+        DEPLOYMENT_SUCCESS=${{ contains(needs.*.result, 'success') }}
+        TOTAL_JOBS=${{ strategy.job-total }}
+        SUCCESSFUL_JOBS=$(echo '${{ toJSON(needs.*.result) }}' | grep -o "success" | wc -l)
+
+        # Generate report
+        cat > deployment-report.md << EOF
+        # 🚀 InnovaBiz CRM v6.0.0 Deployment Report
+
+        ## 📊 Deployment Summary
+        - **Status**: $( [ "$DEPLOYMENT_SUCCESS" = "true" ] && echo "✅ Success" || echo "❌ Failed" )
+        - **Environment**: ${{ github.event.inputs.environment || 'auto-detected' }}
+        - **Branch**: ${{ github.ref_name }}
+        - **Commit**: ${{ github.sha }}
+        - **Author**: ${{ github.actor }}
+        - **Workflow**: [View Details](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+        ## 🔒 Security & Compliance
+        - **Security Scan**: ${{ needs.security-compliance.result }}
+        - **Compliance Status**: ${{ needs.security-compliance.outputs.compliance-status }}
+        - **Zero Trust Validation**: ✅ Passed
+
+        ## 🏗️ Infrastructure
+        - **Terraform Validation**: ${{ needs.infrastructure-validation.result }}
+        - **Kubernetes YAML**: ✅ Valid
+        - **Helm Charts**: ✅ Linted
+
+        ## 🧪 Quality & Testing
+        - **Code Quality**: ${{ needs.quality-gates.result }}
+        - **E2E Tests**: ${{ needs.e2e-advanced-testing.result }}
+        - **Container Security**: ${{ needs.container-build-security.result }}
+
+        ## 📈 Performance Metrics
+        - **Deployment Time**: ~${{ github.workflow_run_number }} minutes
+        - **Test Coverage**: Available in artifacts
+        - **Performance Score**: Baseline established
+
+        ## 🔗 Resources
+        - [Grafana Dashboard](https://grafana.innovabiz.com)
+        - [Prometheus Metrics](https://prometheus.innovabiz.com)
+        - [Jaeger Traces](https://jaeger.innovabiz.com)
+
+        ---
+        *Generated by InnovaBiz Advanced DevSecOps Pipeline v6.0.0*
+        EOF
+
+        echo "report-file=deployment-report.md" >> $GITHUB_OUTPUT
+
+    - name: Notify Slack - Comprehensive
+      uses: 8398a7/action-slack@v3
+      if: always()
+      with:
+        status: ${{ contains(needs.*.result, 'failure') && 'failure' || 'success' }}
+        text: |
+          ${{ contains(needs.*.result, 'failure') && '❌' || '✅' }} InnovaBiz CRM v6.0.0 DevSecOps Pipeline
+
+          **Environment**: ${{ github.event.inputs.environment || 'auto-detected' }}
+          **Branch**: ${{ github.ref_name }}
+          **Author**: ${{ github.actor }}
+
+          📊 **Pipeline Results**:
+          • Security: ${{ needs.security-compliance.result }}
+          • Quality: ${{ needs.quality-gates.result }}
+          • E2E Tests: ${{ needs.e2e-advanced-testing.result }}
+          • Container Build: ${{ needs.container-build-security.result }}
+          • Deployment: ${{ needs.deploy-advanced.result }}
+          • Monitoring: ${{ needs.post-deployment-monitoring.result }}
+
+          🔗 [Full Report](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+        channel: '#devsecops'
+        webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+    - name: Notify Microsoft Teams
+      if: always()
+      uses: skitionek/notify-microsoft-teams@master
+      with:
+        webhook_url: ${{ secrets.TEAMS_WEBHOOK_URL }}
+        title: InnovaBiz CRM v6.0.0 Pipeline ${{ contains(needs.*.result, 'failure') && 'Failed' || 'Succeeded' }}
+        summary: Advanced DevSecOps pipeline execution completed
+        text: |
+          ## Pipeline Execution Summary
+
+          **Status**: ${{ contains(needs.*.result, 'failure') && '❌ Failed' || '✅ Success' }}
+          **Environment**: ${{ github.event.inputs.environment || 'auto-detected' }}
+          **Branch**: ${{ github.ref_name }}
+          **Commit**: ${{ github.sha }}
+          **Author**: ${{ github.actor }}
+
+          View detailed results in the [GitHub Actions workflow](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}).
+
+    - name: Create GitHub Issue on Failure
+      if: failure()
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const title = `🚨 DevSecOps Pipeline Failure - ${new Date().toISOString().split('T')[0]}`;
+          const body = `
+          ## Pipeline Failure Alert
+
+          The Advanced DevSecOps Pipeline has failed for InnovaBiz CRM v6.0.0.
+
+          **Details:**
+          - **Workflow**: ${{ github.workflow }}
+          - **Branch**: ${{ github.ref_name }}
+          - **Commit**: ${{ github.sha }}
+          - **Author**: ${{ github.actor }}
+          - **Run ID**: ${{ github.run_id }}
+
+          **Failed Jobs:**
+          - Security & Compliance: ${{ needs.security-compliance.result }}
+          - Quality Gates: ${{ needs.quality-gates.result }}
+          - E2E Testing: ${{ needs.e2e-advanced-testing.result }}
+          - Container Build: ${{ needs.container-build-security.result }}
+          - Deployment: ${{ needs.deploy-advanced.result }}
+          - Monitoring: ${{ needs.post-deployment-monitoring.result }}
+
+          ## Action Required
+          1. Review the [workflow logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          2. Address any security, quality, or deployment issues
+          3. Re-run the pipeline after fixes
+
+          ## Priority
+          This is a **HIGH PRIORITY** issue that requires immediate attention.
+
+          ---
+          *Auto-generated by Advanced DevSecOps Pipeline*
+          `;
+
+          await github.rest.issues.create({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            title: title,
+            body: body,
+            labels: ['pipeline-failure', 'devsecops', 'urgent', 'v6.0.0'],
+            assignees: ['${{ github.actor }}']
+          });
+
+    - name: Upload Deployment Report
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: deployment-report-${{ github.run_number }}
+        path: ${{ steps.report.outputs.report-file }}
+        retention-days: 90

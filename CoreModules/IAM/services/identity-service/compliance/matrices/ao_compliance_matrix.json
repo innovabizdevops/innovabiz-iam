@@ -1,0 +1,345 @@
+{
+  "region": "AO",
+  "version": "1.0.0",
+  "description": "Matriz de Conformidade Regulatória para Angola",
+  "last_updated": "2023-07-15",
+  "frameworks": [
+    {
+      "id": "lei-22-11",
+      "name": "Lei de Proteção de Dados Pessoais (Lei nº 22/11)",
+      "description": "Lei que estabelece o regime jurídico de proteção de dados pessoais em Angola",
+      "version": "2011",
+      "authority": "Assembleia Nacional de Angola",
+      "url": "https://www.apd.ao/fotos/frontend_1/editor2/110623_lei_22-11_de_17_junho_-_lei_da_protecao_de_dados_pessoais.pdf",
+      "requirements": [
+        {
+          "id": "lei-22-11-r01",
+          "name": "Consentimento Explícito",
+          "description": "Processamento de dados pessoais requer consentimento explícito e informado do titular dos dados",
+          "article": "Art. 24",
+          "criticality": "alta",
+          "tags": ["consentimento", "processamento_dados"]
+        },
+        {
+          "id": "lei-22-11-r02",
+          "name": "Finalidade Específica",
+          "description": "Dados pessoais devem ser coletados para finalidades específicas, explícitas e legítimas",
+          "article": "Art. 6",
+          "criticality": "alta",
+          "tags": ["finalidade", "limitacao_proposito"]
+        },
+        {
+          "id": "lei-22-11-r03",
+          "name": "Direitos do Titular",
+          "description": "Garantia dos direitos de acesso, retificação, atualização e eliminação dos dados pelo titular",
+          "article": "Art. 17-22",
+          "criticality": "alta",
+          "tags": ["direitos_titular", "acesso_dados"]
+        },
+        {
+          "id": "lei-22-11-r04",
+          "name": "Medidas de Segurança",
+          "description": "Implementação de medidas técnicas e organizacionais para proteger os dados pessoais",
+          "article": "Art. 13",
+          "criticality": "alta",
+          "tags": ["seguranca", "protecao"]
+        },
+        {
+          "id": "lei-22-11-r05",
+          "name": "Limitação de Retenção",
+          "description": "Os dados pessoais devem ser mantidos apenas pelo tempo necessário para as finalidades de tratamento",
+          "article": "Art. 31",
+          "criticality": "media",
+          "tags": ["retencao", "armazenamento"]
+        },
+        {
+          "id": "lei-22-11-r06",
+          "name": "Transferência Internacional",
+          "description": "Transferência de dados para outros países apenas mediante garantias de proteção adequadas",
+          "article": "Art. 33",
+          "criticality": "alta",
+          "tags": ["transferencia", "internacional"]
+        }
+      ]
+    },
+    {
+      "id": "lei-14-21",
+      "name": "Lei de Prevenção e Combate ao Branqueamento de Capitais e Financiamento do Terrorismo (Lei nº 14/21)",
+      "description": "Lei que estabelece medidas de prevenção e repressão ao branqueamento de capitais e financiamento do terrorismo",
+      "version": "2021",
+      "authority": "Assembleia Nacional de Angola",
+      "url": "https://www.governo.gov.ao/fotos/frontend_1/gov_documentos/lei_14.21_de_19_de_maio_2062149075606550e818a1.pdf",
+      "requirements": [
+        {
+          "id": "lei-14-21-r01",
+          "name": "Verificação de Identidade",
+          "description": "Identificação e verificação da identidade dos clientes antes do estabelecimento de relações de negócio",
+          "article": "Art. 26",
+          "criticality": "alta",
+          "tags": ["kyc", "verificacao_identidade"]
+        },
+        {
+          "id": "lei-14-21-r02",
+          "name": "Monitoramento de Transações",
+          "description": "Monitoramento contínuo de transações para detectar atividades suspeitas",
+          "article": "Art. 29",
+          "criticality": "alta",
+          "tags": ["monitoramento", "transacoes_suspeitas"]
+        },
+        {
+          "id": "lei-14-21-r03",
+          "name": "Comunicação de Operações Suspeitas",
+          "description": "Comunicação de operações suspeitas à Unidade de Informação Financeira (UIF)",
+          "article": "Art. 39-40",
+          "criticality": "alta",
+          "tags": ["comunicacao", "uif", "operacoes_suspeitas"]
+        },
+        {
+          "id": "lei-14-21-r04",
+          "name": "Medidas Reforçadas para PEPs",
+          "description": "Implementação de medidas reforçadas para clientes que são Pessoas Expostas Politicamente",
+          "article": "Art. 19",
+          "criticality": "alta",
+          "tags": ["pep", "medidas_reforcadas"]
+        },
+        {
+          "id": "lei-14-21-r05",
+          "name": "Manutenção de Registros",
+          "description": "Conservação de documentos e registros de transações por um período mínimo de 7 anos",
+          "article": "Art. 45",
+          "criticality": "media",
+          "tags": ["registros", "documentacao"]
+        },
+        {
+          "id": "lei-14-21-r06",
+          "name": "Limites de Transações em Dinheiro",
+          "description": "Restrições e controles sobre transações em dinheiro acima de determinados limites",
+          "article": "Art. 31",
+          "criticality": "media",
+          "tags": ["limite_transacao", "dinheiro"]
+        }
+      ]
+    },
+    {
+      "id": "aviso-bna-02-20",
+      "name": "Aviso do BNA sobre Sistemas de Pagamentos (Aviso nº 02/20)",
+      "description": "Regulamentação sobre sistemas de pagamentos eletrônicos e segurança das transações",
+      "version": "2020",
+      "authority": "Banco Nacional de Angola (BNA)",
+      "url": "https://www.bna.ao/uploads/%7B9ad6aa3a-2e59-4e9a-9afb-94844e997526%7D.pdf",
+      "requirements": [
+        {
+          "id": "aviso-bna-02-20-r01",
+          "name": "Autenticação Forte",
+          "description": "Implementação de autenticação forte do cliente para transações eletrônicas",
+          "article": "Art. 17",
+          "criticality": "alta",
+          "tags": ["autenticacao", "seguranca"]
+        },
+        {
+          "id": "aviso-bna-02-20-r02",
+          "name": "Notificação de Transações",
+          "description": "Envio de notificações aos clientes para todas as transações eletrônicas",
+          "article": "Art. 14",
+          "criticality": "media",
+          "tags": ["notificacao", "transparencia"]
+        },
+        {
+          "id": "aviso-bna-02-20-r03",
+          "name": "Limites Transacionais",
+          "description": "Estabelecimento de limites para transações eletrônicas baseados no perfil e categoria do cliente",
+          "article": "Art. 22",
+          "criticality": "alta",
+          "tags": ["limites", "transacoes_eletronicas"]
+        },
+        {
+          "id": "aviso-bna-02-20-r04",
+          "name": "Gestão de Incidentes",
+          "description": "Procedimentos para gestão e notificação de incidentes de segurança",
+          "article": "Art. 28",
+          "criticality": "alta",
+          "tags": ["incidentes", "seguranca"]
+        },
+        {
+          "id": "aviso-bna-02-20-r05",
+          "name": "Restrições Geográficas",
+          "description": "Controles para transações internacionais com base em listas de países sancionados e de alto risco",
+          "article": "Art. 25",
+          "criticality": "alta",
+          "tags": ["internacional", "restricoes_geograficas"]
+        }
+      ]
+    },
+    {
+      "id": "multicaixa-interop",
+      "name": "Regulamento do Sistema MultiCaixa",
+      "description": "Requisitos de interoperabilidade para o Sistema Nacional de Pagamentos MultiCaixa",
+      "version": "3.2",
+      "authority": "Empresa Interbancária de Serviços (EMIS)",
+      "url": "https://www.emis.co.ao/pt/empresas/multicaixa/",
+      "requirements": [
+        {
+          "id": "multicaixa-interop-r01",
+          "name": "Formatos de Mensagem",
+          "description": "Conformidade com os formatos de mensagem definidos pelo sistema MultiCaixa",
+          "article": "Secção 3.1",
+          "criticality": "alta",
+          "tags": ["interoperabilidade", "mensagens"]
+        },
+        {
+          "id": "multicaixa-interop-r02",
+          "name": "Identificação de Transações",
+          "description": "Uso de referências únicas para cada transação no formato especificado",
+          "article": "Secção 4.2",
+          "criticality": "alta",
+          "tags": ["identificacao", "rastreabilidade"]
+        },
+        {
+          "id": "multicaixa-interop-r03",
+          "name": "Validação de Beneficiários",
+          "description": "Validação de contas de beneficiários antes da conclusão de transferências",
+          "article": "Secção 5.3",
+          "criticality": "alta",
+          "tags": ["beneficiarios", "validacao"]
+        },
+        {
+          "id": "multicaixa-interop-r04",
+          "name": "Tempo de Resposta",
+          "description": "Garantia de tempos de resposta dentro dos limites definidos para transações",
+          "article": "Secção 6.1",
+          "criticality": "media",
+          "tags": ["performance", "tempo_resposta"]
+        }
+      ]
+    },
+    {
+      "id": "financeiro-bna",
+      "name": "Regulamentos Gerais para Instituições Financeiras",
+      "description": "Conjunto de normas gerais aplicáveis a instituições financeiras em Angola",
+      "version": "2022",
+      "authority": "Banco Nacional de Angola (BNA)",
+      "url": "https://www.bna.ao/",
+      "requirements": [
+        {
+          "id": "financeiro-bna-r01",
+          "name": "Proteção ao Consumidor",
+          "description": "Medidas de proteção aos consumidores de serviços financeiros",
+          "article": "Aviso 01/22",
+          "criticality": "alta",
+          "tags": ["protecao_consumidor", "transparencia"]
+        },
+        {
+          "id": "financeiro-bna-r02",
+          "name": "Verificação de Idade",
+          "description": "Verificação da idade mínima para diferentes tipos de serviços financeiros",
+          "article": "Aviso 08/21",
+          "criticality": "media",
+          "tags": ["verificacao_idade", "restricoes_servicos"]
+        },
+        {
+          "id": "financeiro-bna-r03",
+          "name": "Registro de Operações",
+          "description": "Manutenção de registros detalhados de todas as operações financeiras",
+          "article": "Aviso 12/21",
+          "criticality": "alta",
+          "tags": ["registros", "operacoes"]
+        },
+        {
+          "id": "financeiro-bna-r04",
+          "name": "Reportes Regulatórios",
+          "description": "Envio de relatórios periódicos ao regulador conforme especificações",
+          "article": "Aviso 05/22",
+          "criticality": "media",
+          "tags": ["reportes", "regulatorio"]
+        }
+      ]
+    }
+  ],
+  "compliance_levels": [
+    {
+      "level": "total",
+      "description": "Todos os requisitos regulatórios são atendidos",
+      "min_score": 95,
+      "color": "#00AA00",
+      "actions_required": []
+    },
+    {
+      "level": "adequado",
+      "description": "Conformidade adequada com os principais requisitos",
+      "min_score": 85,
+      "color": "#88AA00",
+      "actions_required": [
+        "Implementar plano para corrigir não-conformidades de baixa criticidade"
+      ]
+    },
+    {
+      "level": "parcial",
+      "description": "Conformidade parcial, com deficiências em áreas importantes",
+      "min_score": 70,
+      "color": "#FFAA00",
+      "actions_required": [
+        "Ação corretiva imediata para requisitos de alta criticidade",
+        "Plano de remediação em 30 dias para outros itens"
+      ]
+    },
+    {
+      "level": "inadequado",
+      "description": "Múltiplas não-conformidades significativas",
+      "min_score": 50,
+      "color": "#FF5500",
+      "actions_required": [
+        "Revisão completa das políticas e procedimentos",
+        "Plano de remediação imediata",
+        "Notificação ao comitê de compliance"
+      ]
+    },
+    {
+      "level": "crítico",
+      "description": "Sérias deficiências de conformidade com risco operacional e regulatório",
+      "min_score": 0,
+      "color": "#FF0000",
+      "actions_required": [
+        "Suspensão da funcionalidade afetada",
+        "Análise de causa raiz",
+        "Revisão completa do sistema",
+        "Notificação à alta administração"
+      ]
+    }
+  ],
+  "scoring": {
+    "weight_by_criticality": {
+      "alta": 3,
+      "media": 2,
+      "baixa": 1
+    },
+    "framework_weights": {
+      "lei-22-11": 30,
+      "lei-14-21": 30,
+      "aviso-bna-02-20": 25,
+      "multicaixa-interop": 10,
+      "financeiro-bna": 5
+    }
+  },
+  "thresholds": {
+    "critical_failure": [
+      "lei-22-11-r01",
+      "lei-22-11-r03",
+      "lei-14-21-r01",
+      "lei-14-21-r04",
+      "aviso-bna-02-20-r01"
+    ],
+    "auto_remediation_candidates": [
+      "lei-22-11-r05",
+      "lei-14-21-r05",
+      "aviso-bna-02-20-r02",
+      "multicaixa-interop-r01",
+      "financeiro-bna-r02"
+    ]
+  },
+  "metadata": {
+    "created_by": "INNOVABIZ Compliance Team",
+    "reviewed_by": "Legal & Regulatory Affairs",
+    "approved_date": "2023-07-10",
+    "next_review": "2024-01-10"
+  }
+}

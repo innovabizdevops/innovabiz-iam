@@ -1,0 +1,228 @@
+{
+  "framework_id": "multicaixa-interop",
+  "region": "AO",
+  "version": "1.0.0",
+  "description": "Casos de teste para verificação de conformidade com o Regulamento do Sistema MultiCaixa",
+  "testcases": [
+    {
+      "id": "tc-multicaixa-interop-r01-01",
+      "requirement_id": "multicaixa-interop-r01",
+      "name": "Formato de Mensagem Inválido",
+      "description": "Verifica se a política rejeita mensagens com formato não compatível com o MultiCaixa",
+      "policy_file": "payment_message.rego",
+      "input": {
+        "user": {
+          "id": "system",
+          "tenant_id": "tenant_ao_1",
+          "region": "AO",
+          "roles": ["system"]
+        },
+        "action": "process",
+        "resource": "payment_message",
+        "message": {
+          "header": {
+            "version": "1.0",
+            "format": "proprietary"
+          },
+          "transaction_type": "transfer",
+          "complies_with_multicaixa_format": false
+        }
+      },
+      "expected_decision": {
+        "allow_processing": false,
+        "reasons": ["incompatible_message_format"]
+      },
+      "tags": ["interoperabilidade", "mensagens", "alta_prioridade"]
+    },
+    {
+      "id": "tc-multicaixa-interop-r01-02",
+      "requirement_id": "multicaixa-interop-r01",
+      "name": "Formato de Mensagem Válido",
+      "description": "Verifica se a política aceita mensagens com formato compatível com o MultiCaixa",
+      "policy_file": "payment_message.rego",
+      "input": {
+        "user": {
+          "id": "system",
+          "tenant_id": "tenant_ao_1",
+          "region": "AO",
+          "roles": ["system"]
+        },
+        "action": "process",
+        "resource": "payment_message",
+        "message": {
+          "header": {
+            "version": "3.2",
+            "format": "multicaixa_standard"
+          },
+          "transaction_type": "transfer",
+          "complies_with_multicaixa_format": true
+        }
+      },
+      "expected_decision": {
+        "allow_processing": true
+      },
+      "tags": ["interoperabilidade", "mensagens"]
+    },
+    {
+      "id": "tc-multicaixa-interop-r02-01",
+      "requirement_id": "multicaixa-interop-r02",
+      "name": "Referência de Transação Inválida",
+      "description": "Verifica se a política rejeita transações sem referência única no formato especificado",
+      "policy_file": "payment_transfer.rego",
+      "input": {
+        "user": {
+          "id": "user123",
+          "tenant_id": "tenant_ao_1",
+          "region": "AO",
+          "roles": ["customer"]
+        },
+        "action": "transfer",
+        "resource": "interbank_payment",
+        "destination_bank": "other_bank",
+        "source_bank": "our_bank",
+        "transaction_reference": "simple-ref-123",
+        "transaction_format_valid": false,
+        "amount": 25000
+      },
+      "expected_decision": {
+        "allow_transfer": false,
+        "reasons": ["invalid_transaction_reference_format"]
+      },
+      "tags": ["identificacao", "rastreabilidade", "alta_prioridade"]
+    },
+    {
+      "id": "tc-multicaixa-interop-r02-02",
+      "requirement_id": "multicaixa-interop-r02",
+      "name": "Referência de Transação Válida",
+      "description": "Verifica se a política aceita transações com referência única no formato especificado",
+      "policy_file": "payment_transfer.rego",
+      "input": {
+        "user": {
+          "id": "user123",
+          "tenant_id": "tenant_ao_1",
+          "region": "AO",
+          "roles": ["customer"]
+        },
+        "action": "transfer",
+        "resource": "interbank_payment",
+        "destination_bank": "other_bank",
+        "source_bank": "our_bank",
+        "transaction_reference": "MC-20230715-12345678-90ABC",
+        "transaction_format_valid": true,
+        "amount": 25000
+      },
+      "expected_decision": {
+        "allow_transfer": true
+      },
+      "tags": ["identificacao", "rastreabilidade"]
+    },
+    {
+      "id": "tc-multicaixa-interop-r03-01",
+      "requirement_id": "multicaixa-interop-r03",
+      "name": "Transferência sem Validação de Beneficiário",
+      "description": "Verifica se a política rejeita transferências sem validação prévia do beneficiário",
+      "policy_file": "payment_transfer.rego",
+      "input": {
+        "user": {
+          "id": "user456",
+          "tenant_id": "tenant_ao_1",
+          "region": "AO",
+          "roles": ["customer"]
+        },
+        "action": "transfer",
+        "resource": "interbank_payment",
+        "destination_bank": "other_bank",
+        "source_bank": "our_bank",
+        "destination_account": "dest12345",
+        "beneficiary_validated": false,
+        "amount": 50000
+      },
+      "expected_decision": {
+        "allow_transfer": false,
+        "reasons": ["beneficiary_validation_required"]
+      },
+      "tags": ["beneficiarios", "validacao", "alta_prioridade"]
+    },
+    {
+      "id": "tc-multicaixa-interop-r03-02",
+      "requirement_id": "multicaixa-interop-r03",
+      "name": "Transferência com Validação de Beneficiário",
+      "description": "Verifica se a política aceita transferências com validação prévia do beneficiário",
+      "policy_file": "payment_transfer.rego",
+      "input": {
+        "user": {
+          "id": "user456",
+          "tenant_id": "tenant_ao_1",
+          "region": "AO",
+          "roles": ["customer"]
+        },
+        "action": "transfer",
+        "resource": "interbank_payment",
+        "destination_bank": "other_bank",
+        "source_bank": "our_bank",
+        "destination_account": "dest12345",
+        "beneficiary_validated": true,
+        "beneficiary_name": "João Silva",
+        "beneficiary_validation_timestamp": "2023-07-14T15:30:00Z",
+        "amount": 50000
+      },
+      "expected_decision": {
+        "allow_transfer": true
+      },
+      "tags": ["beneficiarios", "validacao"]
+    },
+    {
+      "id": "tc-multicaixa-interop-r04-01",
+      "requirement_id": "multicaixa-interop-r04",
+      "name": "Tempo de Resposta Inadequado",
+      "description": "Verifica se a política monitora e sinaliza tempos de resposta inadequados",
+      "policy_file": "performance_monitoring.rego",
+      "input": {
+        "user": {
+          "id": "system",
+          "tenant_id": "tenant_ao_1",
+          "region": "AO",
+          "roles": ["system"]
+        },
+        "action": "monitor",
+        "resource": "transaction_performance",
+        "transaction_type": "interbank_transfer",
+        "response_time_ms": 8500,
+        "sla_limit_ms": 5000,
+        "timestamp": "2023-07-15T10:30:00Z"
+      },
+      "expected_decision": {
+        "compliant": false,
+        "escalate": true,
+        "log_sla_violation": true
+      },
+      "tags": ["performance", "tempo_resposta"]
+    },
+    {
+      "id": "tc-multicaixa-interop-r04-02",
+      "requirement_id": "multicaixa-interop-r04",
+      "name": "Tempo de Resposta Adequado",
+      "description": "Verifica se a política reconhece tempos de resposta dentro dos limites",
+      "policy_file": "performance_monitoring.rego",
+      "input": {
+        "user": {
+          "id": "system",
+          "tenant_id": "tenant_ao_1",
+          "region": "AO",
+          "roles": ["system"]
+        },
+        "action": "monitor",
+        "resource": "transaction_performance",
+        "transaction_type": "interbank_transfer",
+        "response_time_ms": 3200,
+        "sla_limit_ms": 5000,
+        "timestamp": "2023-07-15T10:30:00Z"
+      },
+      "expected_decision": {
+        "compliant": true,
+        "log_performance_metric": true
+      },
+      "tags": ["performance", "tempo_resposta"]
+    }
+  ]
+}

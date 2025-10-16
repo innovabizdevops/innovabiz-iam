@@ -1,0 +1,289 @@
+{
+  "endpoints": [
+    {
+      "endpoint": "/api/v1/multi-context/attributes",
+      "method": "GET",
+      "backend": [
+        {
+          "url_pattern": "/api/v1/attributes",
+          "host": [
+            "http://multi-context-service:8080"
+          ],
+          "method": "GET",
+          "encoding": "json"
+        }
+      ],
+      "output_encoding": "json",
+      "headers_to_pass": [
+        "Authorization",
+        "X-User-ID",
+        "X-Tenant-ID",
+        "X-User-Role",
+        "X-User-Roles"
+      ],
+      "querystring_params": [
+        "page",
+        "pageSize",
+        "sortBy",
+        "sortDir",
+        "contextId",
+        "type",
+        "verificationLevel",
+        "includeDeleted"
+      ],
+      "extra_config": {
+        "auth/validator": {
+          "alg": "RS256",
+          "jwk_url": "http://iam-service:8081/jwk/symmetric.json",
+          "disable_jwk_security": false,
+          "operation_debug": false,
+          "cache": true,
+          "cache_duration": 3600
+        },
+        "qos/ratelimit/router": {
+          "max_rate": 100,
+          "client_max_rate": 10,
+          "strategy": "ip"
+        },
+        "security/cors": {
+          "allow_origins": ["*"],
+          "allow_methods": ["GET", "POST", "PUT", "DELETE", "PATCH"],
+          "allow_headers": ["Origin", "Authorization", "Content-Type"],
+          "expose_headers": ["Content-Length"],
+          "max_age": 3600
+        }
+      }
+    },
+    {
+      "endpoint": "/api/v1/multi-context/attributes",
+      "method": "POST",
+      "backend": [
+        {
+          "url_pattern": "/api/v1/attributes",
+          "host": [
+            "http://multi-context-service:8080"
+          ],
+          "method": "POST",
+          "encoding": "json"
+        }
+      ],
+      "output_encoding": "json",
+      "headers_to_pass": ["Authorization", "X-User-ID", "X-Tenant-ID", "X-User-Role", "X-User-Roles"],
+      "extra_config": {
+        "auth/validator": {
+          "alg": "RS256",
+          "jwk_url": "http://iam-service:8081/jwk/symmetric.json",
+          "disable_jwk_security": false,
+          "operation_debug": false,
+          "cache": true
+        },
+        "validation/json-schema": {
+          "type": "object",
+          "required": ["contextId", "type", "key", "value"],
+          "properties": {
+            "contextId": {"type": "string", "format": "uuid"},
+            "type": {"type": "string"},
+            "key": {"type": "string", "minLength": 1},
+            "value": {"type": "string"},
+            "isPublic": {"type": "boolean"},
+            "metadata": {"type": "object"}
+          }
+        }
+      }
+    },
+    {
+      "endpoint": "/api/v1/multi-context/attributes/{id}",
+      "method": "GET",
+      "backend": [
+        {
+          "url_pattern": "/api/v1/attributes/{id}",
+          "host": [
+            "http://multi-context-service:8080"
+          ],
+          "method": "GET",
+          "encoding": "json"
+        }
+      ],
+      "output_encoding": "json",
+      "headers_to_pass": ["Authorization", "X-User-ID", "X-Tenant-ID", "X-User-Role", "X-User-Roles"],
+      "extra_config": {
+        "auth/validator": {
+          "alg": "RS256",
+          "jwk_url": "http://iam-service:8081/jwk/symmetric.json",
+          "disable_jwk_security": false
+        }
+      }
+    },
+    {
+      "endpoint": "/api/v1/multi-context/attributes/{id}",
+      "method": "PUT",
+      "backend": [
+        {
+          "url_pattern": "/api/v1/attributes/{id}",
+          "host": [
+            "http://multi-context-service:8080"
+          ],
+          "method": "PUT",
+          "encoding": "json"
+        }
+      ],
+      "output_encoding": "json",
+      "headers_to_pass": ["Authorization", "X-User-ID", "X-Tenant-ID", "X-User-Role", "X-User-Roles"],
+      "extra_config": {
+        "auth/validator": {
+          "alg": "RS256",
+          "jwk_url": "http://iam-service:8081/jwk/symmetric.json",
+          "disable_jwk_security": false
+        },
+        "validation/json-schema": {
+          "type": "object",
+          "properties": {
+            "value": {"type": "string"},
+            "isPublic": {"type": "boolean"},
+            "metadata": {"type": "object"}
+          },
+          "required": ["value"]
+        }
+      }
+    },
+    {
+      "endpoint": "/api/v1/multi-context/attributes/{id}",
+      "method": "DELETE",
+      "backend": [
+        {
+          "url_pattern": "/api/v1/attributes/{id}",
+          "host": [
+            "http://multi-context-service:8080"
+          ],
+          "method": "DELETE",
+          "encoding": "json"
+        }
+      ],
+      "output_encoding": "json",
+      "headers_to_pass": ["Authorization", "X-User-ID", "X-Tenant-ID", "X-User-Role", "X-User-Roles"],
+      "extra_config": {
+        "auth/validator": {
+          "alg": "RS256",
+          "jwk_url": "http://iam-service:8081/jwk/symmetric.json",
+          "disable_jwk_security": false
+        },
+        "validation/json-schema": {
+          "type": "object",
+          "required": ["reason"],
+          "properties": {
+            "reason": {"type": "string", "minLength": 3}
+          }
+        }
+      }
+    },
+    {
+      "endpoint": "/api/v1/multi-context/attributes/{id}/verification",
+      "method": "PATCH",
+      "backend": [
+        {
+          "url_pattern": "/api/v1/attributes/{id}/verification",
+          "host": [
+            "http://multi-context-service:8080"
+          ],
+          "method": "PATCH",
+          "encoding": "json"
+        }
+      ],
+      "output_encoding": "json",
+      "headers_to_pass": ["Authorization", "X-User-ID", "X-Tenant-ID", "X-User-Role", "X-User-Roles"],
+      "extra_config": {
+        "auth/validator": {
+          "alg": "RS256",
+          "jwk_url": "http://iam-service:8081/jwk/symmetric.json",
+          "disable_jwk_security": false,
+          "roles": ["verifier", "admin"]
+        },
+        "validation/json-schema": {
+          "type": "object",
+          "required": ["level", "reason"],
+          "properties": {
+            "level": {"type": "string", "enum": ["LOW", "MEDIUM", "HIGH"]},
+            "reason": {"type": "string", "minLength": 3},
+            "evidence": {"type": "string"},
+            "expiresAt": {"type": "string", "format": "date-time"}
+          }
+        }
+      }
+    },
+    {
+      "endpoint": "/api/v1/multi-context/attributes/{id}/verification-history",
+      "method": "GET",
+      "backend": [
+        {
+          "url_pattern": "/api/v1/attributes/{id}/verification-history",
+          "host": [
+            "http://multi-context-service:8080"
+          ],
+          "method": "GET",
+          "encoding": "json"
+        }
+      ],
+      "output_encoding": "json",
+      "headers_to_pass": ["Authorization", "X-User-ID", "X-Tenant-ID", "X-User-Role", "X-User-Roles"],
+      "extra_config": {
+        "auth/validator": {
+          "alg": "RS256",
+          "jwk_url": "http://iam-service:8081/jwk/symmetric.json",
+          "disable_jwk_security": false
+        }
+      }
+    },
+    {
+      "endpoint": "/api/v1/multi-context/attributes/search",
+      "method": "POST",
+      "backend": [
+        {
+          "url_pattern": "/api/v1/attributes/search",
+          "host": [
+            "http://multi-context-service:8080"
+          ],
+          "method": "POST",
+          "encoding": "json"
+        }
+      ],
+      "output_encoding": "json",
+      "headers_to_pass": ["Authorization", "X-User-ID", "X-Tenant-ID", "X-User-Role", "X-User-Roles"],
+      "extra_config": {
+        "auth/validator": {
+          "alg": "RS256",
+          "jwk_url": "http://iam-service:8081/jwk/symmetric.json",
+          "disable_jwk_security": false,
+          "roles": ["admin"]
+        },
+        "validation/json-schema": {
+          "type": "object",
+          "properties": {
+            "contextIds": {
+              "type": "array",
+              "items": {"type": "string", "format": "uuid"}
+            },
+            "types": {
+              "type": "array",
+              "items": {"type": "string"}
+            },
+            "keys": {
+              "type": "array",
+              "items": {"type": "string"}
+            },
+            "valuePatterns": {
+              "type": "array",
+              "items": {"type": "string"}
+            },
+            "verificationLevels": {
+              "type": "array",
+              "items": {"type": "string", "enum": ["NONE", "LOW", "MEDIUM", "HIGH"]}
+            },
+            "includeDeleted": {"type": "boolean"},
+            "page": {"type": "integer", "minimum": 0},
+            "pageSize": {"type": "integer", "minimum": 1, "maximum": 100}
+          }
+        }
+      }
+    }
+  ]
+}

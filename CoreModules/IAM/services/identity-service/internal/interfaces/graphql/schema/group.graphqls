@@ -1,0 +1,265 @@
+# INNOVABIZ IAM - Schema GraphQL para Grupos
+# Copyright (c) 2025 INNOVABIZ
+#
+# Definição do schema GraphQL para operações relacionadas a grupos no módulo Core IAM,
+# seguindo a arquitetura multi-dimensional, multi-tenant e com observabilidade total
+# da plataforma INNOVABIZ.
+#
+# Compliance:
+# - ISO/IEC 27001:2022 (A.5.15 - Controle de acesso)
+# - PCI DSS v4.0 (Requisito 7.2.4 - Gestão de grupos)
+# - LGPD/GDPR/PDPA (Controle de acesso)
+# - BNA Instrução 7/2021 (Segurança cibernética)
+# - SOX (Rastreabilidade e auditoria)
+# - NIST CSF (Proteção de identidade)
+
+# Tipo para representar um grupo
+type Group {
+  id: ID!
+  code: String!
+  name: String!
+  description: String
+  status: GroupStatus!
+  type: String
+  parentGroupId: ID
+  parentGroup: Group
+  attributes: JSONObject
+  metadata: JSONObject
+  tenantId: ID!
+  createdAt: DateTime!
+  updatedAt: DateTime
+  createdBy: ID
+  updatedBy: ID
+  userCount: Int
+  childGroupsCount: Int
+  path: String
+  level: Int
+}
+
+# Tipo para representar estatísticas de grupos
+type GroupStatistics {
+  tenantId: ID!
+  groupId: ID
+  timestampGenerated: DateTime!
+  totalGroups: Int
+  activeGroups: Int
+  inactiveGroups: Int
+  lockedGroups: Int
+  directUsers: Int
+  totalUsers: Int
+  directChildGroups: Int
+  totalChildGroups: Int
+  maxHierarchyDepth: Int
+  distributionByType: JSONObject
+  distributionByLevel: JSONObject
+}
+
+# Resultado da listagem de grupos com paginação
+type GroupListResult {
+  items: [Group!]!
+  totalCount: Int!
+  pageInfo: PageInfo!
+}
+
+# Enumeração para status de grupo
+enum GroupStatus {
+  ACTIVE
+  INACTIVE
+  LOCKED
+}
+
+# Entrada para criação de grupo
+input CreateGroupInput {
+  code: String!
+  name: String!
+  description: String
+  type: String
+  parentGroupId: ID
+  attributes: JSONObject
+  metadata: JSONObject
+  tenantId: ID!
+}
+
+# Entrada para atualização de grupo
+input UpdateGroupInput {
+  id: ID!
+  code: String
+  name: String
+  description: String
+  type: String
+  parentGroupId: ID
+  attributes: JSONObject
+  metadata: JSONObject
+  tenantId: ID!
+}
+
+# Filtro para listagem de grupos
+input GroupFilter {
+  ids: [ID!]
+  codes: [String!]
+  nameContains: String
+  descriptionContains: String
+  statuses: [GroupStatus!]
+  types: [String!]
+  parentGroupId: ID
+  createdAtStart: DateTime
+  createdAtEnd: DateTime
+  updatedAtStart: DateTime
+  updatedAtEnd: DateTime
+  createdBy: ID
+  updatedBy: ID
+  hasParent: Boolean
+}
+
+# Entrada para alteração de status de grupo
+input ChangeGroupStatusInput {
+  id: ID!
+  status: GroupStatus!
+  tenantId: ID!
+}
+
+# Entrada para adicionar usuário a grupo
+input AddUserToGroupInput {
+  groupId: ID!
+  userId: ID!
+  tenantId: ID!
+}
+
+# Entrada para remover usuário de grupo
+input RemoveUserFromGroupInput {
+  groupId: ID!
+  userId: ID!
+  tenantId: ID!
+}
+
+# Definição das queries relacionadas a grupos
+extend type Query {
+  # Buscar grupo por ID
+  group(id: ID!, tenantId: ID!): Group
+  
+  # Buscar grupo por código
+  groupByCode(code: String!, tenantId: ID!): Group
+  
+  # Listar grupos com filtros e paginação
+  groups(
+    tenantId: ID!
+    filter: GroupFilter
+    page: Int = 1
+    pageSize: Int = 10
+    sortBy: String = "name"
+    sortDirection: SortDirection = ASC
+  ): GroupListResult!
+  
+  # Buscar grupos por ID de usuário
+  groupsByUser(
+    userId: ID!
+    tenantId: ID!
+    recursive: Boolean = false
+    page: Int = 1
+    pageSize: Int = 10
+  ): GroupListResult!
+  
+  # Buscar grupo pai
+  parentGroup(groupId: ID!, tenantId: ID!): Group
+  
+  # Buscar grupos filhos
+  childGroups(
+    groupId: ID!
+    tenantId: ID!
+    recursive: Boolean = false
+    page: Int = 1
+    pageSize: Int = 10
+  ): GroupListResult!
+  
+  # Verificar se um usuário pertence a um grupo
+  isUserInGroup(groupId: ID!, userId: ID!, tenantId: ID!): Boolean!
+  
+  # Listar membros de um grupo
+  groupMembers(
+    groupId: ID!
+    tenantId: ID!
+    recursive: Boolean = false
+    filter: UserFilter
+    page: Int = 1
+    pageSize: Int = 10
+  ): UserListResult!
+  
+  # Contar usuários em um grupo
+  groupUserCount(groupId: ID!, tenantId: ID!, recursive: Boolean = false): Int!
+  
+  # Obter estatísticas de grupos
+  groupsStatistics(tenantId: ID!, groupId: ID): GroupStatistics!
+  
+  # Verificar referência circular em hierarquia de grupos
+  checkGroupCircularReference(groupId: ID!, parentGroupId: ID!, tenantId: ID!): Boolean!
+}
+
+# Definição das mutations relacionadas a grupos
+extend type Mutation {
+  # Criar um novo grupo
+  createGroup(input: CreateGroupInput!): Group!
+  
+  # Atualizar grupo existente
+  updateGroup(input: UpdateGroupInput!): Group!
+  
+  # Alterar status de um grupo
+  changeGroupStatus(input: ChangeGroupStatusInput!): Group!
+  
+  # Deletar um grupo (exclusão lógica)
+  deleteGroup(id: ID!, tenantId: ID!): Boolean!
+  
+  # Adicionar usuário a grupo
+  addUserToGroup(input: AddUserToGroupInput!): Boolean!
+  
+  # Remover usuário de grupo
+  removeUserFromGroup(input: RemoveUserFromGroupInput!): Boolean!
+}
+
+# Tipo para representar informações de paginação
+type PageInfo {
+  currentPage: Int!
+  pageSize: Int!
+  totalPages: Int!
+  hasNextPage: Boolean!
+  hasPreviousPage: Boolean!
+}
+
+# Direção de ordenação para consultas
+enum SortDirection {
+  ASC
+  DESC
+}
+
+# Definição do schema para tipo JSON
+scalar JSONObject
+
+# Definição do schema para DateTime
+scalar DateTime
+
+# Filtro de usuários (referenciado em groupMembers)
+input UserFilter {
+  ids: [ID!]
+  usernameContains: String
+  emailContains: String
+  statuses: [String!]
+  types: [String!]
+  createdAtStart: DateTime
+  createdAtEnd: DateTime
+  updatedAtStart: DateTime
+  updatedAtEnd: DateTime
+}
+
+# Tipo para resultado de listagem de usuários (referenciado em groupMembers)
+type UserListResult {
+  items: [User!]!
+  totalCount: Int!
+  pageInfo: PageInfo!
+}
+
+# Referência ao tipo User (já definido em outro lugar)
+type User {
+  id: ID!
+  username: String!
+  email: String!
+  # outros campos de usuário
+}

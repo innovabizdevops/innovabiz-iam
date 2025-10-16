@@ -1,0 +1,565 @@
+# 🚀 CI/CD PIPELINE - INNOVABIZ PLATFORM
+# Pipeline DevSecOps completo para plataforma enterprise
+# Versão: 2.1.0 | Data: 2025-01-27 | Autor: Eduardo Jeremias
+# 
+# Compliance: ISO 27001, NIST Cybersecurity Framework, DevSecOps Best Practices
+# Cobertura: Build, Test, Security, Quality, Deploy, Monitor
+# Arquitetura: Multi-stage, Multi-environment, Multi-tenant
+
+name: 'INNOVABIZ Platform CI/CD'
+
+on:
+  push:
+    branches: [main, develop, 'release/*', 'hotfix/*']
+    paths:
+      - 'CoreModules/**'
+      - 'Infrastructure/**'
+      - 'scripts/**'
+      - '.github/workflows/**'
+  pull_request:
+    branches: [main, develop]
+    types: [opened, synchronize, reopened]
+  schedule:
+    # Execução diária para verificações de segurança
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Ambiente de deploy'
+        required: true
+        default: 'development'
+        type: choice
+        options:
+          - development
+          - staging
+          - production
+      skip_tests:
+        description: 'Pular testes (apenas para emergências)'
+        required: false
+        default: false
+        type: boolean
+
+# Variáveis globais
+env:
+  NODE_VERSION: '20.x'
+  DOCKER_REGISTRY: 'ghcr.io'
+  DOCKER_IMAGE_PREFIX: 'innovabiz'
+  SONAR_PROJECT_KEY: 'innovabiz-platform'
+  SNYK_ORG: 'innovabiz'
+
+# Configurações de segurança
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+  checks: write
+  pull-requests: write
+  packages: write
+
+jobs:
+  # ===============================================
+  # JOB 1: ANÁLISE DE MUDANÇAS E SETUP
+  # ===============================================
+  setup-and-changes:
+    name: '🔍 Setup e Análise de Mudanças'
+    runs-on: ubuntu-latest
+    outputs:
+      iam-changed: ${{ steps.changes.outputs.iam }}
+      payment-changed: ${{ steps.changes.outputs.payment }}
+      risk-changed: ${{ steps.changes.outputs.risk }}
+      ml-changed: ${{ steps.changes.outputs.ml }}
+      crm-changed: ${{ steps.changes.outputs.crm }}
+      mobile-money-changed: ${{ steps.changes.outputs.mobile-money }}
+      infrastructure-changed: ${{ steps.changes.outputs.infrastructure }}
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    
+    steps:
+      - name: 'Checkout código'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 'Detectar mudanças por módulo'
+        uses: dorny/paths-filter@v2
+        id: changes
+        with:
+          filters: |
+            iam:
+              - 'CoreModules/IAM/**'
+            payment:
+              - 'CoreModules/PaymentGateway/**'
+            risk:
+              - 'CoreModules/RiskManagement/**'
+            ml:
+              - 'CoreModules/MachineLearning/**'
+            crm:
+              - 'CoreModules/CRM/**'
+            mobile-money:
+              - 'CoreModules/MobileMoney/**'
+            infrastructure:
+              - 'Infrastructure/**'
+              - 'scripts/**'
+              - 'docker-compose*.yml'
+              - 'Dockerfile*'
+
+      - name: 'Gerar matriz de build'
+        id: matrix
+        run: |
+          modules=()
+          [[ "${{ steps.changes.outputs.iam }}" == "true" ]] && modules+=("iam")
+          [[ "${{ steps.changes.outputs.payment }}" == "true" ]] && modules+=("payment-gateway")
+          [[ "${{ steps.changes.outputs.risk }}" == "true" ]] && modules+=("risk-management")
+          [[ "${{ steps.changes.outputs.ml }}" == "true" ]] && modules+=("machine-learning")
+          [[ "${{ steps.changes.outputs.crm }}" == "true" ]] && modules+=("crm")
+          [[ "${{ steps.changes.outputs.mobile-money }}" == "true" ]] && modules+=("mobile-money")
+          
+          if [ ${#modules[@]} -eq 0 ]; then
+            # Se nenhum módulo mudou, testar todos (para PRs principais)
+            modules=("iam" "payment-gateway" "risk-management" "machine-learning" "crm" "mobile-money")
+          fi
+          
+          matrix_json=$(printf '%s\n' "${modules[@]}" | jq -R . | jq -s .)
+          echo "matrix=$matrix_json" >> $GITHUB_OUTPUT
+
+  # ===============================================
+  # JOB 2: VALIDAÇÃO DE CÓDIGO E QUALIDADE
+  # ===============================================
+  code-quality:
+    name: '📊 Qualidade de Código'
+    runs-on: ubuntu-latest
+    needs: setup-and-changes
+    if: ${{ !inputs.skip_tests }}
+    
+    strategy:
+      matrix:
+        module: ${{ fromJson(needs.setup-and-changes.outputs.matrix) }}
+    
+    steps:
+      - name: 'Checkout código'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 'Setup Node.js'
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: 'CoreModules/${{ matrix.module }}/backend/package-lock.json'
+
+      - name: 'Instalar dependências'
+        working-directory: 'CoreModules/${{ matrix.module }}/backend'
+        run: |
+          npm ci --only=production=false
+          npm audit --audit-level=moderate
+
+      - name: 'Lint e formatação'
+        working-directory: 'CoreModules/${{ matrix.module }}/backend'
+        run: |
+          npm run lint
+          npm run format:check
+
+      - name: 'Verificação de tipos TypeScript'
+        working-directory: 'CoreModules/${{ matrix.module }}/backend'
+        run: npm run type-check
+
+      - name: 'Análise de complexidade'
+        working-directory: 'CoreModules/${{ matrix.module }}/backend'
+        run: |
+          npx plato -r -d complexity-report src/
+          echo "📊 Relatório de complexidade gerado"
+
+      - name: 'Upload relatórios de qualidade'
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'quality-reports-${{ matrix.module }}'
+          path: |
+            CoreModules/${{ matrix.module }}/backend/complexity-report/
+            CoreModules/${{ matrix.module }}/backend/coverage/
+          retention-days: 30
+
+  # ===============================================
+  # JOB 3: TESTES AUTOMATIZADOS
+  # ===============================================
+  automated-tests:
+    name: '🧪 Testes Automatizados'
+    runs-on: ubuntu-latest
+    needs: setup-and-changes
+    if: ${{ !inputs.skip_tests }}
+    
+    strategy:
+      matrix:
+        module: ${{ fromJson(needs.setup-and-changes.outputs.matrix) }}
+        test-type: ['unit', 'integration', 'e2e']
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: innovabiz_test
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: 'Checkout código'
+        uses: actions/checkout@v4
+
+      - name: 'Setup Node.js'
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: 'CoreModules/${{ matrix.module }}/backend/package-lock.json'
+
+      - name: 'Instalar dependências'
+        working-directory: 'CoreModules/${{ matrix.module }}/backend'
+        run: npm ci
+
+      - name: 'Configurar ambiente de teste'
+        working-directory: 'CoreModules/${{ matrix.module }}/backend'
+        run: |
+          cp .env.test.example .env.test
+          echo "DATABASE_URL=postgresql://test_user:test_password@localhost:5432/innovabiz_test" >> .env.test
+          echo "REDIS_URL=redis://localhost:6379" >> .env.test
+
+      - name: 'Executar testes unitários'
+        if: matrix.test-type == 'unit'
+        working-directory: 'CoreModules/${{ matrix.module }}/backend'
+        run: |
+          npm run test:unit -- --coverage --coverageReporters=lcov --coverageReporters=text
+          echo "✅ Testes unitários concluídos para ${{ matrix.module }}"
+
+      - name: 'Executar testes de integração'
+        if: matrix.test-type == 'integration'
+        working-directory: 'CoreModules/${{ matrix.module }}/backend'
+        run: |
+          npm run test:integration -- --coverage --coverageReporters=lcov
+          echo "✅ Testes de integração concluídos para ${{ matrix.module }}"
+
+      - name: 'Executar testes E2E'
+        if: matrix.test-type == 'e2e'
+        working-directory: 'CoreModules/${{ matrix.module }}/backend'
+        run: |
+          npm run test:e2e
+          echo "✅ Testes E2E concluídos para ${{ matrix.module }}"
+
+      - name: 'Upload cobertura para Codecov'
+        if: matrix.test-type == 'unit'
+        uses: codecov/codecov-action@v3
+        with:
+          file: 'CoreModules/${{ matrix.module }}/backend/coverage/lcov.info'
+          flags: '${{ matrix.module }}'
+          name: 'coverage-${{ matrix.module }}'
+
+      - name: 'Upload resultados de teste'
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: 'test-results-${{ matrix.module }}-${{ matrix.test-type }}'
+          path: |
+            CoreModules/${{ matrix.module }}/backend/coverage/
+            CoreModules/${{ matrix.module }}/backend/test-results/
+          retention-days: 30
+
+  # ===============================================
+  # JOB 4: ANÁLISE DE SEGURANÇA
+  # ===============================================
+  security-analysis:
+    name: '🔒 Análise de Segurança'
+    runs-on: ubuntu-latest
+    needs: setup-and-changes
+    
+    strategy:
+      matrix:
+        module: ${{ fromJson(needs.setup-and-changes.outputs.matrix) }}
+    
+    steps:
+      - name: 'Checkout código'
+        uses: actions/checkout@v4
+
+      - name: 'Setup Node.js'
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: 'CoreModules/${{ matrix.module }}/backend/package-lock.json'
+
+      - name: 'Instalar dependências'
+        working-directory: 'CoreModules/${{ matrix.module }}/backend'
+        run: npm ci
+
+      - name: 'Auditoria de dependências'
+        working-directory: 'CoreModules/${{ matrix.module }}/backend'
+        run: |
+          npm audit --audit-level=high --production
+          npm audit fix --dry-run
+
+      - name: 'Análise Snyk - Vulnerabilidades'
+        uses: snyk/actions/node@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --severity-threshold=high --file=CoreModules/${{ matrix.module }}/backend/package.json
+
+      - name: 'Upload resultados Snyk para GitHub'
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: snyk.sarif
+
+      - name: 'Análise CodeQL'
+        uses: github/codeql-action/init@v2
+        with:
+          languages: javascript
+          queries: security-and-quality
+
+      - name: 'Executar análise CodeQL'
+        uses: github/codeql-action/analyze@v2
+
+      - name: 'Scan de secrets'
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: 'CoreModules/${{ matrix.module }}/'
+          base: main
+          head: HEAD
+
+      - name: 'Análise OWASP ZAP'
+        if: matrix.module == 'iam' # Executar apenas para módulo crítico
+        uses: zaproxy/action-baseline@v0.7.0
+        with:
+          target: 'http://localhost:3000'
+          rules_file_name: '.zap/rules.tsv'
+
+  # ===============================================
+  # JOB 5: BUILD E CONTAINERIZAÇÃO
+  # ===============================================
+  build-and-containerize:
+    name: '🏗️ Build e Containerização'
+    runs-on: ubuntu-latest
+    needs: [setup-and-changes, code-quality, automated-tests]
+    if: always() && (needs.code-quality.result == 'success' && needs.automated-tests.result == 'success')
+    
+    strategy:
+      matrix:
+        module: ${{ fromJson(needs.setup-and-changes.outputs.matrix) }}
+    
+    steps:
+      - name: 'Checkout código'
+        uses: actions/checkout@v4
+
+      - name: 'Setup Docker Buildx'
+        uses: docker/setup-buildx-action@v3
+
+      - name: 'Login no GitHub Container Registry'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.DOCKER_REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 'Extrair metadados'
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.DOCKER_REGISTRY }}/${{ github.repository }}/${{ env.DOCKER_IMAGE_PREFIX }}-${{ matrix.module }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: 'Build e push da imagem Docker'
+        uses: docker/build-push-action@v5
+        with:
+          context: 'CoreModules/${{ matrix.module }}/backend'
+          file: 'CoreModules/${{ matrix.module }}/backend/Dockerfile'
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            NODE_VERSION=${{ env.NODE_VERSION }}
+            BUILD_DATE=${{ github.event.head_commit.timestamp }}
+            VCS_REF=${{ github.sha }}
+
+      - name: 'Scan de segurança da imagem'
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.DOCKER_REGISTRY }}/${{ github.repository }}/${{ env.DOCKER_IMAGE_PREFIX }}-${{ matrix.module }}:${{ github.sha }}
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: 'Upload resultados Trivy'
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+  # ===============================================
+  # JOB 6: DEPLOY PARA AMBIENTES
+  # ===============================================
+  deploy:
+    name: '🚀 Deploy para ${{ matrix.environment }}'
+    runs-on: ubuntu-latest
+    needs: [setup-and-changes, build-and-containerize, security-analysis]
+    if: always() && (needs.build-and-containerize.result == 'success' && needs.security-analysis.result == 'success')
+    
+    strategy:
+      matrix:
+        environment: 
+          - ${{ github.ref == 'refs/heads/main' && 'production' || 'staging' }}
+        module: ${{ fromJson(needs.setup-and-changes.outputs.matrix) }}
+    
+    environment:
+      name: ${{ matrix.environment }}
+      url: ${{ steps.deploy.outputs.url }}
+    
+    steps:
+      - name: 'Checkout código'
+        uses: actions/checkout@v4
+
+      - name: 'Setup kubectl'
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'v1.28.0'
+
+      - name: 'Configurar kubeconfig'
+        run: |
+          echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > $HOME/.kube/config
+          chmod 600 $HOME/.kube/config
+
+      - name: 'Deploy usando Helm'
+        id: deploy
+        run: |
+          helm upgrade --install \
+            ${{ env.DOCKER_IMAGE_PREFIX }}-${{ matrix.module }} \
+            ./helm-charts/${{ matrix.module }} \
+            --namespace ${{ matrix.environment }} \
+            --create-namespace \
+            --set image.repository=${{ env.DOCKER_REGISTRY }}/${{ github.repository }}/${{ env.DOCKER_IMAGE_PREFIX }}-${{ matrix.module }} \
+            --set image.tag=${{ github.sha }} \
+            --set environment=${{ matrix.environment }} \
+            --set ingress.hosts[0].host=${{ matrix.module }}-${{ matrix.environment }}.innovabiz.com \
+            --values ./helm-charts/${{ matrix.module }}/values-${{ matrix.environment }}.yaml \
+            --wait --timeout=10m
+          
+          echo "url=https://${{ matrix.module }}-${{ matrix.environment }}.innovabiz.com" >> $GITHUB_OUTPUT
+
+      - name: 'Verificar saúde do deployment'
+        run: |
+          kubectl wait --for=condition=ready pod \
+            -l app.kubernetes.io/name=${{ env.DOCKER_IMAGE_PREFIX }}-${{ matrix.module }} \
+            -n ${{ matrix.environment }} \
+            --timeout=300s
+
+      - name: 'Executar smoke tests'
+        run: |
+          curl -f https://${{ matrix.module }}-${{ matrix.environment }}.innovabiz.com/health || exit 1
+          echo "✅ Smoke tests passaram para ${{ matrix.module }}"
+
+  # ===============================================
+  # JOB 7: TESTES PÓS-DEPLOY E MONITORAMENTO
+  # ===============================================
+  post-deploy-tests:
+    name: '🔍 Testes Pós-Deploy'
+    runs-on: ubuntu-latest
+    needs: [deploy]
+    if: always() && needs.deploy.result == 'success'
+    
+    strategy:
+      matrix:
+        module: ${{ fromJson(needs.setup-and-changes.outputs.matrix) }}
+    
+    steps:
+      - name: 'Checkout código'
+        uses: actions/checkout@v4
+
+      - name: 'Setup Node.js'
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: 'Executar testes de performance'
+        run: |
+          npx artillery run tests/performance/${{ matrix.module }}-load-test.yml
+          echo "✅ Testes de performance concluídos"
+
+      - name: 'Verificar métricas de observabilidade'
+        run: |
+          # Verificar se métricas estão sendo coletadas
+          curl -f "https://prometheus-${{ matrix.environment }}.innovabiz.com/api/v1/query?query=up{job=\"${{ matrix.module }}\"}" || exit 1
+          echo "✅ Métricas de observabilidade verificadas"
+
+      - name: 'Notificar equipes'
+        if: always()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          channel: '#deployments'
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+          fields: repo,message,commit,author,action,eventName,ref,workflow
+
+  # ===============================================
+  # JOB 8: LIMPEZA E RELATÓRIOS
+  # ===============================================
+  cleanup-and-reports:
+    name: '🧹 Limpeza e Relatórios'
+    runs-on: ubuntu-latest
+    needs: [post-deploy-tests]
+    if: always()
+    
+    steps:
+      - name: 'Gerar relatório de pipeline'
+        run: |
+          echo "## 📊 Relatório do Pipeline CI/CD" > pipeline-report.md
+          echo "**Data:** $(date)" >> pipeline-report.md
+          echo "**Commit:** ${{ github.sha }}" >> pipeline-report.md
+          echo "**Branch:** ${{ github.ref_name }}" >> pipeline-report.md
+          echo "**Status:** ${{ job.status }}" >> pipeline-report.md
+
+      - name: 'Upload relatório'
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'pipeline-report'
+          path: 'pipeline-report.md'
+          retention-days: 90
+
+      - name: 'Limpeza de artefatos antigos'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const artifacts = await github.rest.actions.listWorkflowRunArtifacts({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: context.runId,
+            });
+            
+            // Manter apenas os últimos 10 artefatos
+            if (artifacts.data.artifacts.length > 10) {
+              const oldArtifacts = artifacts.data.artifacts.slice(10);
+              for (const artifact of oldArtifacts) {
+                await github.rest.actions.deleteArtifact({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  artifact_id: artifact.id,
+                });
+              }
+            }

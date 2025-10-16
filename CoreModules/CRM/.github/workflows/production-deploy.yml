@@ -1,0 +1,241 @@
+name: 🚀 InnovaBiz CRM Core v4.3.0 - Production Deploy
+
+on:
+  push:
+    branches: [main, production]
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      deploy_environment:
+        description: 'Ambiente de deploy'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - staging
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  NODE_VERSION: '18'
+
+jobs:
+  # Análise de qualidade e testes
+  quality-check:
+    name: 🔍 Verificações de Qualidade
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: 📦 Install Dependencies
+        run: |
+          npm ci
+          cd frontend && npm ci
+
+      - name: 🧪 Run Tests
+        run: |
+          npm run test:coverage
+          npm run test:e2e
+
+      - name: 🔍 ESLint Analysis
+        run: npm run lint
+
+      - name: 🛡️ Security Audit
+        run: npm audit --audit-level moderate
+
+      - name: 📊 SonarCloud Analysis
+        uses: SonarSource/sonarcloud-github-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+  # Build das imagens Docker
+  build-images:
+    name: 🔨 Build Docker Images
+    runs-on: ubuntu-latest
+    needs: quality-check
+    outputs:
+      backend-image: ${{ steps.meta-backend.outputs.tags }}
+      frontend-image: ${{ steps.meta-frontend.outputs.tags }}
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🔐 Login to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🏷️ Backend Metadata
+        id: meta-backend
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: 🏷️ Frontend Metadata
+        id: meta-frontend
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-frontend
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: 🔨 Build Backend Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./backend/Dockerfile.prod
+          push: true
+          tags: ${{ steps.meta-backend.outputs.tags }}
+          labels: ${{ steps.meta-backend.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: 🔨 Build Frontend Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./frontend/Dockerfile.prod
+          push: true
+          tags: ${{ steps.meta-frontend.outputs.tags }}
+          labels: ${{ steps.meta-frontend.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # Deploy em produção
+  deploy-production:
+    name: 🚀 Deploy Produção
+    runs-on: ubuntu-latest
+    needs: build-images
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
+    environment:
+      name: production
+      url: https://app.innovabiz.com
+    steps:
+      - name: 📥 Checkout Deploy Scripts
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            deployment/production/
+            scripts/
+
+      - name: 🔐 Setup SSH
+        uses: webfactory/ssh-agent@v0.8.0
+        with:
+          ssh-private-key: ${{ secrets.PRODUCTION_SSH_KEY }}
+
+      - name: 📋 Prepare Environment
+        run: |
+          echo "BACKEND_IMAGE=${{ needs.build-images.outputs.backend-image }}" >> .env.deploy
+          echo "FRONTEND_IMAGE=${{ needs.build-images.outputs.frontend-image }}" >> .env.deploy
+          echo "DEPLOY_VERSION=${GITHUB_SHA:0:7}" >> .env.deploy
+
+      - name: 🚀 Deploy to Production
+        run: |
+          scp -o StrictHostKeyChecking=no -r deployment/production/* ${{ secrets.PRODUCTION_USER }}@${{ secrets.PRODUCTION_HOST }}:/opt/innovabiz-crm/
+          scp -o StrictHostKeyChecking=no .env.deploy ${{ secrets.PRODUCTION_USER }}@${{ secrets.PRODUCTION_HOST }}:/opt/innovabiz-crm/
+          
+          ssh -o StrictHostKeyChecking=no ${{ secrets.PRODUCTION_USER }}@${{ secrets.PRODUCTION_HOST }} << 'EOF'
+            cd /opt/innovabiz-crm
+            source .env.deploy
+            
+            # Backup pré-deploy
+            ./scripts/backup-pre-deploy.sh
+            
+            # Deploy
+            ./deploy.sh
+            
+            # Health check
+            ./scripts/health-check-production.sh
+          EOF
+
+      - name: 🧪 Post-Deploy Tests
+        run: |
+          # Aguardar aplicação ficar disponível
+          sleep 120
+          
+          # Testes de fumaça
+          curl -f https://api.innovabiz.com/health || exit 1
+          curl -f https://app.innovabiz.com || exit 1
+
+      - name: 📊 Update Deployment Status
+        uses: chrnorm/deployment-status@v2
+        if: always()
+        with:
+          token: '${{ github.token }}'
+          state: ${{ job.status == 'success' && 'success' || 'failure' }}
+          deployment-id: ${{ steps.deployment.outputs.deployment-id }}
+
+  # Notificações
+  notify:
+    name: 📢 Notificações
+    runs-on: ubuntu-latest
+    needs: [deploy-production]
+    if: always()
+    steps:
+      - name: 📧 Teams Notification
+        if: success()
+        uses: skitionek/notify-microsoft-teams@master
+        with:
+          webhook_url: ${{ secrets.TEAMS_WEBHOOK }}
+          title: '✅ Deploy Produção Concluído - InnovaBiz CRM v4.3.0'
+          summary: 'Deploy realizado com sucesso'
+          text: |
+            🚀 **Deploy em Produção Concluído**
+            
+            **Versão:** v4.3.0
+            **Commit:** ${{ github.sha }}
+            **Autor:** ${{ github.actor }}
+            **Ambiente:** Produção
+            
+            🌐 [Aplicação](https://app.innovabiz.com)
+            📊 [Monitoramento](https://monitoring.innovabiz.com:3001)
+
+      - name: 📧 Slack Notification
+        if: success()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: success
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+          text: |
+            :rocket: **InnovaBiz CRM v4.3.0 Deploy Concluído!**
+            
+            Ambiente: Produção
+            Versão: v4.3.0
+            Commit: ${{ github.sha }}
+            
+            :link: [Aplicação](https://app.innovabiz.com) | [Monitoramento](https://monitoring.innovabiz.com:3001)
+
+      - name: 🚨 Alert on Failure
+        if: failure()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: failure
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+          text: |
+            :x: **FALHA no Deploy InnovaBiz CRM v4.3.0**
+            
+            Ambiente: Produção
+            Commit: ${{ github.sha }}
+            Erro: Verificar logs do workflow
+            
+            :eyes: [Ver Logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})

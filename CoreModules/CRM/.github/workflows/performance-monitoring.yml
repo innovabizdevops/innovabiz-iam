@@ -1,0 +1,719 @@
+name: Performance Monitoring & Testing
+
+on:
+  schedule:
+    - cron: '0 */6 * * *' # Every 6 hours
+  push:
+    branches: [ main, master, develop ]
+    paths:
+      - 'src/**'
+      - 'backend/**'
+      - 'tests/performance/**'
+  pull_request:
+    branches: [ main, master ]
+    paths:
+      - 'src/**'
+      - 'backend/**'
+      - 'tests/performance/**'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to test'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+      duration:
+        description: 'Test duration in minutes'
+        required: false
+        default: '5'
+        type: string
+      load_pattern:
+        description: 'Load test pattern'
+        required: false
+        default: 'normal'
+        type: choice
+        options:
+          - light
+          - normal
+          - heavy
+          - stress
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  lighthouse-audit:
+    name: Lighthouse Performance Audit
+    runs-on: ubuntu-latest
+    if: github.event_name != 'schedule' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: crm_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: |
+        npm ci
+        cd backend && npm ci
+
+    - name: Build application
+      run: |
+        npm run build
+        cd backend && npm run build
+
+    - name: Start application
+      run: |
+        cd backend
+        npm run start:prod &
+        sleep 10
+        cd ..
+        npm run preview &
+        sleep 5
+      env:
+        NODE_ENV: production
+        DB_HOST: localhost
+        DB_PORT: 5432
+        DB_USERNAME: postgres
+        DB_PASSWORD: postgres
+        DB_NAME: crm_test
+        REDIS_HOST: localhost
+        REDIS_PORT: 6379
+
+    - name: Run Lighthouse CI
+      uses: treosh/lighthouse-ci-action@v10
+      with:
+        uploadDir: './lighthouse-reports'
+        configPath: './lighthouse.config.js'
+        urls: |
+          http://localhost:3002
+          http://localhost:3002/login
+          http://localhost:3002/dashboard
+          http://localhost:3002/customers
+
+    - name: Upload Lighthouse reports
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: lighthouse-reports
+        path: ./lighthouse-reports
+        retention-days: 30
+
+  load-testing:
+    name: Load Testing with k6
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        scenario: [api-load, ui-load, stress-test]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup k6
+      uses: grafana/setup-k6-action@v1
+
+    - name: Determine test parameters
+      id: params
+      run: |
+        ENVIRONMENT="${{ github.event.inputs.environment || 'staging' }}"
+        DURATION="${{ github.event.inputs.duration || '5' }}"
+        LOAD_PATTERN="${{ github.event.inputs.load_pattern || 'normal' }}"
+
+        case $LOAD_PATTERN in
+          light)
+            VUS=10
+            THRESHOLD_P95=2000
+            ;;
+          normal)
+            VUS=50
+            THRESHOLD_P95=1500
+            ;;
+          heavy)
+            VUS=200
+            THRESHOLD_P95=3000
+            ;;
+          stress)
+            VUS=500
+            THRESHOLD_P95=5000
+            ;;
+        esac
+
+        echo "environment=$ENVIRONMENT" >> $GITHUB_OUTPUT
+        echo "duration=$DURATION" >> $GITHUB_OUTPUT
+        echo "vus=$VUS" >> $GITHUB_OUTPUT
+        echo "threshold_p95=$THRESHOLD_P95" >> $GITHUB_OUTPUT
+
+    - name: Create k6 test script
+      run: |
+        mkdir -p tests/performance
+        cat > tests/performance/${{ matrix.scenario }}.js << 'EOF'
+        import http from 'k6/http';
+        import { check, sleep } from 'k6';
+        import { Rate } from 'k6/metrics';
+
+        const errorRate = new Rate('errors');
+        const BASE_URL = __ENV.BASE_URL || 'https://staging-crm.innovabiz.com';
+
+        export let options = {
+          stages: [
+            { duration: '2m', target: ${{ steps.params.outputs.vus }} },
+            { duration: '${{ steps.params.outputs.duration }}m', target: ${{ steps.params.outputs.vus }} },
+            { duration: '2m', target: 0 },
+          ],
+          thresholds: {
+            http_req_duration: ['p(95)<${{ steps.params.outputs.threshold_p95 }}'],
+            http_req_failed: ['rate<0.1'],
+            errors: ['rate<0.1'],
+          },
+        };
+
+        export default function() {
+          let response;
+
+          if ('${{ matrix.scenario }}' === 'api-load') {
+            // API endpoints testing
+            response = http.get(`${BASE_URL}/api/health`);
+            check(response, {
+              'status is 200': (r) => r.status === 200,
+              'response time < 500ms': (r) => r.timings.duration < 500,
+            }) || errorRate.add(1);
+
+            response = http.get(`${BASE_URL}/api/auth/me`, {
+              headers: { 'Authorization': 'Bearer test-token' }
+            });
+            check(response, {
+              'auth check works': (r) => r.status === 200 || r.status === 401,
+            }) || errorRate.add(1);
+
+          } else if ('${{ matrix.scenario }}' === 'ui-load') {
+            // UI pages testing
+            response = http.get(`${BASE_URL}/`);
+            check(response, {
+              'homepage loads': (r) => r.status === 200,
+              'contains title': (r) => r.body.includes('<title>'),
+            }) || errorRate.add(1);
+
+            response = http.get(`${BASE_URL}/login`);
+            check(response, {
+              'login page loads': (r) => r.status === 200,
+            }) || errorRate.add(1);
+
+          } else if ('${{ matrix.scenario }}' === 'stress-test') {
+            // Stress testing with higher load
+            const scenarios = [
+              `${BASE_URL}/`,
+              `${BASE_URL}/api/health`,
+              `${BASE_URL}/login`,
+            ];
+
+            const url = scenarios[Math.floor(Math.random() * scenarios.length)];
+            response = http.get(url);
+            check(response, {
+              'status is not 5xx': (r) => r.status < 500,
+            }) || errorRate.add(1);
+          }
+
+          sleep(1);
+        }
+
+        export function handleSummary(data) {
+          return {
+            'performance-results-${{ matrix.scenario }}.json': JSON.stringify(data, null, 2),
+          };
+        }
+        EOF
+
+    - name: Run k6 test
+      run: |
+        k6 run tests/performance/${{ matrix.scenario }}.js
+      env:
+        BASE_URL: ${{ steps.params.outputs.environment == 'production' && 'https://crm.innovabiz.com' || 'https://staging-crm.innovabiz.com' }}
+
+    - name: Upload performance results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: performance-results-${{ matrix.scenario }}
+        path: performance-results-${{ matrix.scenario }}.json
+        retention-days: 30
+
+  memory-profiling:
+    name: Memory & CPU Profiling
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: crm_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: |
+        npm ci
+        cd backend && npm ci
+
+    - name: Install profiling tools
+      run: |
+        npm install -g clinic autocannon
+
+    - name: Build backend
+      run: |
+        cd backend
+        npm run build
+
+    - name: Profile backend performance
+      run: |
+        cd backend
+
+        # Start backend with profiling
+        clinic doctor --on-port='autocannon localhost:3001/api/health -d 30' -- node dist/main.js &
+        CLINIC_PID=$!
+
+        # Wait for profiling to complete
+        wait $CLINIC_PID
+
+        # Move clinic reports
+        mv .clinic/* ../clinic-reports/ 2>/dev/null || true
+      env:
+        NODE_ENV: production
+        DB_HOST: localhost
+        DB_PORT: 5432
+        DB_USERNAME: postgres
+        DB_PASSWORD: postgres
+        DB_NAME: crm_test
+        REDIS_HOST: localhost
+        REDIS_PORT: 6379
+
+    - name: Memory usage analysis
+      run: |
+        # Create memory usage report
+        cat > memory-report.md << 'EOF'
+        # Memory & Performance Analysis
+
+        ## System Information
+        - Node.js Version: $(node --version)
+        - CPU Cores: $(nproc)
+        - Available Memory: $(free -h | grep '^Mem:' | awk '{print $2}')
+
+        ## Analysis Summary
+        This report contains profiling data for the InnovaBiz CRM backend service.
+
+        ### Key Metrics to Monitor:
+        - Memory usage patterns
+        - CPU utilization
+        - Event loop delays
+        - Garbage collection frequency
+
+        ### Recommendations:
+        - Monitor memory leaks in production
+        - Optimize database queries
+        - Implement caching strategies
+        - Use connection pooling
+
+        Generated on: $(date)
+        EOF
+
+    - name: Upload profiling reports
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: profiling-reports
+        path: |
+          clinic-reports/
+          memory-report.md
+        retention-days: 30
+
+  database-performance:
+    name: Database Performance Testing
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: crm_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: |
+        cd backend
+        npm ci
+
+    - name: Setup test database
+      run: |
+        cd backend
+        npm run migrate:test
+        npm run seed:test
+      env:
+        NODE_ENV: test
+        DB_HOST: localhost
+        DB_PORT: 5432
+        DB_USERNAME: postgres
+        DB_PASSWORD: postgres
+        DB_NAME: crm_test
+
+    - name: Install pgbench
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y postgresql-client
+
+    - name: Run database performance tests
+      run: |
+        # Initialize pgbench
+        pgbench -i -s 10 postgresql://postgres:postgres@localhost:5432/crm_test
+
+        # Run performance tests
+        echo "Running database performance tests..."
+
+        # Simple read test
+        pgbench -c 10 -j 2 -t 1000 -r postgresql://postgres:postgres@localhost:5432/crm_test > pgbench-results.txt
+
+        # Custom query performance
+        cat > custom-queries.sql << 'EOF'
+        SELECT * FROM users WHERE tenant_id = 'test-tenant' LIMIT 100;
+        SELECT COUNT(*) FROM customers WHERE created_at > NOW() - INTERVAL '1 day';
+        SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT 50;
+        EOF
+
+        echo "Custom query performance:" >> pgbench-results.txt
+        pgbench -f custom-queries.sql -c 5 -j 1 -t 100 postgresql://postgres:postgres@localhost:5432/crm_test >> pgbench-results.txt
+
+    - name: Analyze query performance
+      run: |
+        cd backend
+        cat > analyze-queries.js << 'EOF'
+        const { Pool } = require('pg');
+
+        const pool = new Pool({
+          host: 'localhost',
+          port: 5432,
+          database: 'crm_test',
+          user: 'postgres',
+          password: 'postgres',
+        });
+
+        async function analyzeQueries() {
+          const queries = [
+            'SELECT * FROM users WHERE tenant_id = $1 LIMIT 100',
+            'SELECT COUNT(*) FROM customers WHERE created_at > NOW() - INTERVAL \'1 day\'',
+            'SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT 50',
+          ];
+
+          console.log('Query Performance Analysis:\n');
+
+          for (let i = 0; i < queries.length; i++) {
+            const query = queries[i];
+            console.log(`Query ${i + 1}: ${query}`);
+
+            try {
+              const start = Date.now();
+              const result = await pool.query(`EXPLAIN ANALYZE ${query}`, ['test-tenant']);
+              const duration = Date.now() - start;
+
+              console.log(`Execution time: ${duration}ms`);
+              console.log('Execution plan:');
+              result.rows.forEach(row => console.log(`  ${row['QUERY PLAN']}`));
+              console.log('---\n');
+            } catch (error) {
+              console.log(`Error: ${error.message}\n`);
+            }
+          }
+
+          await pool.end();
+        }
+
+        analyzeQueries().catch(console.error);
+        EOF
+
+        node analyze-queries.js > query-analysis.txt
+
+    - name: Upload database performance results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: database-performance
+        path: |
+          pgbench-results.txt
+          query-analysis.txt
+        retention-days: 30
+
+  performance-report:
+    name: Generate Performance Report
+    runs-on: ubuntu-latest
+    needs: [lighthouse-audit, load-testing, memory-profiling, database-performance]
+    if: always()
+
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+
+    - name: Generate comprehensive report
+      run: |
+        cat > performance-report.md << 'EOF'
+        # 📊 InnovaBiz CRM Performance Report
+
+        **Generated:** $(date)
+        **Trigger:** ${{ github.event_name }}
+        **Branch:** ${{ github.ref_name }}
+        **Commit:** ${{ github.sha }}
+
+        ## 🚀 Executive Summary
+
+        This report provides a comprehensive analysis of the InnovaBiz CRM system performance across multiple dimensions:
+
+        ### Test Results Overview
+        - **Lighthouse Audit:** ${{ needs.lighthouse-audit.result }}
+        - **Load Testing:** ${{ needs.load-testing.result }}
+        - **Memory Profiling:** ${{ needs.memory-profiling.result }}
+        - **Database Performance:** ${{ needs.database-performance.result }}
+
+        ## 📈 Lighthouse Performance Metrics
+
+        Lighthouse audits were performed on key application pages to measure:
+        - Performance score
+        - First Contentful Paint (FCP)
+        - Largest Contentful Paint (LCP)
+        - Cumulative Layout Shift (CLS)
+        - Time to Interactive (TTI)
+
+        *Detailed Lighthouse reports are available in the artifacts.*
+
+        ## 🔥 Load Testing Results
+
+        Load tests were executed using k6 with the following scenarios:
+        - **API Load Test:** Stress testing backend API endpoints
+        - **UI Load Test:** Frontend page load performance
+        - **Stress Test:** System behavior under extreme load
+
+        ### Key Performance Indicators
+        - Response time p95 threshold: Varies by load pattern
+        - Error rate threshold: < 10%
+        - Concurrent users: Varies by test scenario
+
+        ## 🧠 Memory & CPU Profiling
+
+        Memory profiling using Node.js Clinic Doctor provides insights into:
+        - Memory usage patterns
+        - CPU utilization
+        - Event loop performance
+        - Garbage collection efficiency
+
+        ## 🗄️ Database Performance
+
+        Database performance testing includes:
+        - Connection pooling efficiency
+        - Query execution time analysis
+        - Index utilization
+        - Concurrent connection handling
+
+        ## 🎯 Recommendations
+
+        Based on the performance analysis:
+
+        ### High Priority
+        - [ ] Optimize slow database queries (> 100ms)
+        - [ ] Implement Redis caching for frequently accessed data
+        - [ ] Optimize frontend bundle size
+
+        ### Medium Priority
+        - [ ] Implement connection pooling optimization
+        - [ ] Add database query monitoring
+        - [ ] Optimize image loading and lazy loading
+
+        ### Low Priority
+        - [ ] Fine-tune garbage collection settings
+        - [ ] Implement service worker for offline functionality
+        - [ ] Add performance monitoring dashboards
+
+        ## 📋 Action Items
+
+        1. **Database Optimization**
+           - Review and optimize slow queries
+           - Add missing database indexes
+           - Implement query result caching
+
+        2. **Frontend Performance**
+           - Implement code splitting
+           - Optimize asset delivery
+           - Add performance budgets
+
+        3. **Infrastructure**
+           - Monitor resource utilization
+           - Implement auto-scaling
+           - Add performance alerts
+
+        ## 🔗 Additional Resources
+
+        - [Lighthouse Best Practices](https://web.dev/lighthouse-best-practices/)
+        - [Node.js Performance Best Practices](https://nodejs.org/en/docs/guides/simple-profiling/)
+        - [PostgreSQL Performance Tuning](https://wiki.postgresql.org/wiki/Performance_Optimization)
+
+        ---
+        *This report is automatically generated as part of the CI/CD pipeline.*
+        EOF
+
+    - name: Upload performance report
+      uses: actions/upload-artifact@v4
+      with:
+        name: performance-report
+        path: performance-report.md
+        retention-days: 90
+
+    - name: Comment on PR
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          let report = '';
+
+          try {
+            report = fs.readFileSync('performance-report.md', 'utf8');
+          } catch (error) {
+            report = '📊 Performance testing completed. Detailed results are available in the workflow artifacts.';
+          }
+
+          await github.rest.issues.createComment({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: context.issue.number,
+            body: report.length > 65536 ? report.substring(0, 65500) + '\n\n*Report truncated. Full report available in artifacts.*' : report
+          });
+
+  performance-alerts:
+    name: Performance Alerts
+    runs-on: ubuntu-latest
+    needs: [lighthouse-audit, load-testing, memory-profiling, database-performance]
+    if: failure() && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+
+    steps:
+    - name: Notify performance degradation
+      uses: 8398a7/action-slack@v3
+      with:
+        status: failure
+        text: |
+          🚨 Performance Alert - InnovaBiz CRM
+
+          Performance tests have failed on the main branch.
+          This may indicate performance degradation.
+
+          **Failed Tests:**
+          ${{ needs.lighthouse-audit.result == 'failure' && '- Lighthouse Audit\n' || '' }}
+          ${{ needs.load-testing.result == 'failure' && '- Load Testing\n' || '' }}
+          ${{ needs.memory-profiling.result == 'failure' && '- Memory Profiling\n' || '' }}
+          ${{ needs.database-performance.result == 'failure' && '- Database Performance\n' || '' }}
+
+          **Action Required:** Review performance metrics and optimize system performance.
+
+          🔗 Workflow: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        channel: '#performance-alerts'
+        webhook_url: ${{ secrets.PERFORMANCE_SLACK_WEBHOOK_URL }}
+
+    - name: Create performance issue
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const title = 'Performance Degradation Detected';
+          const body = `
+          ## 🚨 Performance Alert
+
+          Performance tests have failed, indicating potential performance degradation.
+
+          ### Failed Tests
+          ${{ needs.lighthouse-audit.result == 'failure' ? '- ❌ Lighthouse Audit' : '- ✅ Lighthouse Audit' }}
+          ${{ needs.load-testing.result == 'failure' ? '- ❌ Load Testing' : '- ✅ Load Testing' }}
+          ${{ needs.memory-profiling.result == 'failure' ? '- ❌ Memory Profiling' : '- ✅ Memory Profiling' }}
+          ${{ needs.database-performance.result == 'failure' ? '- ❌ Database Performance' : '- ✅ Database Performance' }}
+
+          ### Immediate Actions Required
+          1. Review performance metrics in the workflow artifacts
+          2. Identify performance bottlenecks
+          3. Implement optimizations
+          4. Re-run performance tests
+
+          **Workflow Run:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          **Commit:** ${{ github.sha }}
+          `;
+
+          await github.rest.issues.create({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            title: title,
+            body: body,
+            labels: ['performance', 'urgent', 'bug']
+          });

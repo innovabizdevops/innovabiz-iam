@@ -1,0 +1,656 @@
+---
+# INNOVABIZ IAM Audit Service - AlertManager Deployment
+# Versão: 1.0.0
+# Ano: 2025
+# Ambiente: Multi-plataforma, Multi-dimensional e Multi-Contexto
+# Alinhado com: ISO 20000, ITIL v4, ISO 27001, NIST SP 800-53
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alertmanager-config
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: alertmanager
+    app.kubernetes.io/part-of: innovabiz-observability
+    app.kubernetes.io/component: alerting
+    innovabiz.com/module: iam-audit
+    innovabiz.com/tier: observability
+data:
+  alertmanager.yml: |
+    global:
+      resolve_timeout: 5m
+      smtp_smarthost: '${SMTP_HOST}:${SMTP_PORT}'
+      smtp_from: '${SMTP_FROM_ADDRESS}'
+      smtp_auth_username: '${SMTP_USER}'
+      smtp_auth_password: '${SMTP_PASSWORD}'
+      smtp_require_tls: true
+      slack_api_url: '${SLACK_WEBHOOK_URL}'
+      http_config:
+        follow_redirects: true
+        enable_http2: true
+        tls_config:
+          cert_file: '/etc/alertmanager/certs/tls.crt'
+          key_file: '/etc/alertmanager/certs/tls.key'
+
+    templates:
+      - '/etc/alertmanager/templates/*.tmpl'
+
+    route:
+      receiver: 'ops-team-slack'
+      group_by: ['tenant', 'region', 'service', 'severity', 'alertname']
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+      
+      routes:
+      # Crítico (P1) - Alertas de alta severidade que precisam de atenção imediata
+      - receiver: 'ops-team-pagerduty'
+        group_wait: 10s
+        group_interval: 1m
+        repeat_interval: 30m
+        matchers:
+          - severity="critical"
+        continue: true
+
+      # Alto (P2) - Alertas de alta prioridade que precisam de atenção rápida
+      - receiver: 'ops-team-slack'
+        group_wait: 30s
+        group_interval: 5m
+        repeat_interval: 1h
+        matchers:
+          - severity="high"
+        continue: true
+
+      # Médio (P3) - Alertas que precisam de atenção, mas não são críticos
+      - receiver: 'ops-team-email'
+        group_wait: 2m
+        group_interval: 10m
+        repeat_interval: 2h
+        matchers:
+          - severity="medium"
+        continue: true
+
+      # Baixo (P4) - Alertas informativos
+      - receiver: 'ops-team-slack'
+        group_wait: 5m
+        group_interval: 15m
+        repeat_interval: 6h
+        matchers:
+          - severity="low"
+        continue: true
+      
+      # Alertas de segurança
+      - receiver: 'security-team'
+        matchers:
+          - category="security"
+        continue: true
+
+      # Alertas de compliance
+      - receiver: 'compliance-team'
+        matchers:
+          - category="compliance"
+        continue: true
+
+      # VIP Tenants
+      - receiver: 'vip-tenants'
+        matchers:
+          - tenant=~"tenant1|tenant2|tenant3"
+        continue: true
+
+    inhibit_rules:
+      - source_matchers: [severity="critical"]
+        target_matchers: [severity="high"]
+        equal: ['tenant', 'service', 'instance']
+        
+      - source_matchers: [severity="high"]
+        target_matchers: [severity="medium"]
+        equal: ['tenant', 'service', 'instance']
+        
+      - source_matchers: [severity="medium"]
+        target_matchers: [severity="low"]
+        equal: ['tenant', 'service', 'instance']
+
+    receivers:
+      - name: 'ops-team-pagerduty'
+        pagerduty_configs:
+          - service_key: '${PAGERDUTY_SERVICE_KEY}'
+            send_resolved: true
+            details:
+              tenant: '{{ .CommonLabels.tenant }}'
+              region: '{{ .CommonLabels.region }}'
+              environment: '{{ .CommonLabels.environment }}'
+              severity: '{{ .CommonLabels.severity }}'
+              summary: '{{ .CommonAnnotations.summary }}'
+            description: '{{ .CommonAnnotations.description }}'
+            client: 'INNOVABIZ IAM Audit'
+            client_url: 'https://${GRAFANA_HOST}/d/iam-audit-overview'
+        slack_configs:
+          - channel: '#iam-audit-alerts-critical'
+            send_resolved: true
+            icon_url: 'https://innovabiz.com/assets/images/alert-critical.png'
+            title: '[{{ .CommonLabels.severity | toUpper }}] {{ .CommonLabels.alertname }}'
+            title_link: 'https://${GRAFANA_HOST}/d/iam-audit-overview'
+            text: >-
+              *Descrição:* {{ .CommonAnnotations.description }}
+              
+              *Tenant:* {{ .CommonLabels.tenant }}
+              
+              *Região:* {{ .CommonLabels.region }}
+              
+              *Ambiente:* {{ .CommonLabels.environment }}
+              
+              *Serviço:* {{ .CommonLabels.service }}
+              
+              *Severidade:* {{ .CommonLabels.severity | toUpper }}
+              
+              *Runbook:* {{ .CommonAnnotations.runbook_url }}
+            short_fields: true
+            actions:
+              - type: button
+                text: 'Ver Dashboard'
+                url: 'https://${GRAFANA_HOST}/d/iam-audit-overview'
+              - type: button
+                text: 'Ver Runbook'
+                url: '{{ .CommonAnnotations.runbook_url }}'
+
+      - name: 'ops-team-slack'
+        slack_configs:
+          - channel: '#iam-audit-alerts'
+            send_resolved: true
+            icon_url: 'https://innovabiz.com/assets/images/alert.png'
+            title: '[{{ .CommonLabels.severity | toUpper }}] {{ .CommonLabels.alertname }}'
+            title_link: 'https://${GRAFANA_HOST}/d/iam-audit-overview'
+            text: >-
+              *Descrição:* {{ .CommonAnnotations.description }}
+              
+              *Tenant:* {{ .CommonLabels.tenant }}
+              
+              *Região:* {{ .CommonLabels.region }}
+              
+              *Ambiente:* {{ .CommonLabels.environment }}
+              
+              *Serviço:* {{ .CommonLabels.service }}
+              
+              *Severidade:* {{ .CommonLabels.severity | toUpper }}
+              
+              *Runbook:* {{ .CommonAnnotations.runbook_url }}
+            short_fields: true
+            actions:
+              - type: button
+                text: 'Ver Dashboard'
+                url: 'https://${GRAFANA_HOST}/d/iam-audit-overview'
+              - type: button
+                text: 'Ver Runbook'
+                url: '{{ .CommonAnnotations.runbook_url }}'
+
+      - name: 'ops-team-email'
+        email_configs:
+          - to: '${OPS_TEAM_EMAIL}'
+            send_resolved: true
+            html: |
+              <h2>[{{ .CommonLabels.severity | toUpper }}] {{ .CommonLabels.alertname }}</h2>
+              <p><strong>Descrição:</strong> {{ .CommonAnnotations.description }}</p>
+              <p><strong>Tenant:</strong> {{ .CommonLabels.tenant }}</p>
+              <p><strong>Região:</strong> {{ .CommonLabels.region }}</p>
+              <p><strong>Ambiente:</strong> {{ .CommonLabels.environment }}</p>
+              <p><strong>Serviço:</strong> {{ .CommonLabels.service }}</p>
+              <p><strong>Severidade:</strong> {{ .CommonLabels.severity | toUpper }}</p>
+              <p><strong>Runbook:</strong> <a href="{{ .CommonAnnotations.runbook_url }}">Acessar Runbook</a></p>
+              <p><strong>Dashboard:</strong> <a href="https://${GRAFANA_HOST}/d/iam-audit-overview">Acessar Dashboard</a></p>
+
+      - name: 'security-team'
+        email_configs:
+          - to: '${SECURITY_TEAM_EMAIL}'
+            send_resolved: true
+            html: |
+              <h2>[SEGURANÇA] {{ .CommonLabels.alertname }}</h2>
+              <p><strong>Descrição:</strong> {{ .CommonAnnotations.description }}</p>
+              <p><strong>Tenant:</strong> {{ .CommonLabels.tenant }}</p>
+              <p><strong>Região:</strong> {{ .CommonLabels.region }}</p>
+              <p><strong>Ambiente:</strong> {{ .CommonLabels.environment }}</p>
+              <p><strong>Serviço:</strong> {{ .CommonLabels.service }}</p>
+              <p><strong>Severidade:</strong> {{ .CommonLabels.severity | toUpper }}</p>
+              <p><strong>Runbook:</strong> <a href="{{ .CommonAnnotations.runbook_url }}">Acessar Runbook</a></p>
+              <p><strong>Dashboard:</strong> <a href="https://${GRAFANA_HOST}/d/iam-audit-security">Acessar Dashboard</a></p>
+        slack_configs:
+          - channel: '#iam-audit-security'
+            send_resolved: true
+            icon_url: 'https://innovabiz.com/assets/images/alert-security.png'
+            title: '[SEGURANÇA] {{ .CommonLabels.alertname }}'
+            title_link: 'https://${GRAFANA_HOST}/d/iam-audit-security'
+            text: >-
+              *Descrição:* {{ .CommonAnnotations.description }}
+              
+              *Tenant:* {{ .CommonLabels.tenant }}
+              
+              *Região:* {{ .CommonLabels.region }}
+              
+              *Ambiente:* {{ .CommonLabels.environment }}
+              
+              *Serviço:* {{ .CommonLabels.service }}
+              
+              *Severidade:* {{ .CommonLabels.severity | toUpper }}
+              
+              *Runbook:* {{ .CommonAnnotations.runbook_url }}
+
+      - name: 'compliance-team'
+        email_configs:
+          - to: '${COMPLIANCE_TEAM_EMAIL}'
+            send_resolved: true
+            html: |
+              <h2>[COMPLIANCE] {{ .CommonLabels.alertname }}</h2>
+              <p><strong>Descrição:</strong> {{ .CommonAnnotations.description }}</p>
+              <p><strong>Tenant:</strong> {{ .CommonLabels.tenant }}</p>
+              <p><strong>Região:</strong> {{ .CommonLabels.region }}</p>
+              <p><strong>Ambiente:</strong> {{ .CommonLabels.environment }}</p>
+              <p><strong>Serviço:</strong> {{ .CommonLabels.service }}</p>
+              <p><strong>Severidade:</strong> {{ .CommonLabels.severity | toUpper }}</p>
+              <p><strong>Runbook:</strong> <a href="{{ .CommonAnnotations.runbook_url }}">Acessar Runbook</a></p>
+              <p><strong>Dashboard:</strong> <a href="https://${GRAFANA_HOST}/d/iam-audit-compliance">Acessar Dashboard</a></p>
+
+      - name: 'vip-tenants'
+        email_configs:
+          - to: '${VIP_SUPPORT_EMAIL}'
+            send_resolved: true
+            html: |
+              <h2>[VIP TENANT] {{ .CommonLabels.alertname }}</h2>
+              <p><strong>Descrição:</strong> {{ .CommonAnnotations.description }}</p>
+              <p><strong>Tenant:</strong> {{ .CommonLabels.tenant }}</p>
+              <p><strong>Região:</strong> {{ .CommonLabels.region }}</p>
+              <p><strong>Ambiente:</strong> {{ .CommonLabels.environment }}</p>
+              <p><strong>Serviço:</strong> {{ .CommonLabels.service }}</p>
+              <p><strong>Severidade:</strong> {{ .CommonLabels.severity | toUpper }}</p>
+              <p><strong>Runbook:</strong> <a href="{{ .CommonAnnotations.runbook_url }}">Acessar Runbook</a></p>
+              <p><strong>Dashboard:</strong> <a href="https://${GRAFANA_HOST}/d/iam-audit-vip">Acessar Dashboard</a></p>
+        slack_configs:
+          - channel: '#iam-audit-vip'
+            send_resolved: true
+            icon_url: 'https://innovabiz.com/assets/images/alert-vip.png'
+            title: '[VIP TENANT: {{ .CommonLabels.tenant }}] {{ .CommonLabels.alertname }}'
+            title_link: 'https://${GRAFANA_HOST}/d/iam-audit-vip'
+            text: >-
+              *Descrição:* {{ .CommonAnnotations.description }}
+              
+              *Tenant:* {{ .CommonLabels.tenant }}
+              
+              *Região:* {{ .CommonLabels.region }}
+              
+              *Ambiente:* {{ .CommonLabels.environment }}
+              
+              *Serviço:* {{ .CommonLabels.service }}
+              
+              *Severidade:* {{ .CommonLabels.severity | toUpper }}
+              
+              *Runbook:* {{ .CommonAnnotations.runbook_url }}
+  
+  alert_templates.tmpl: |
+    {{ define "slack.innovabiz.title" }}
+    [{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ .Alerts.Firing | len }}{{ end }}] {{ .CommonLabels.alertname }}
+    {{ end }}
+
+    {{ define "slack.innovabiz.text" }}
+    {{ range .Alerts }}
+      *Alert:* {{ .Annotations.summary }}
+      *Description:* {{ .Annotations.description }}
+      *Details:*
+      {{ range .Labels.SortedPairs }} • {{ .Name }}: {{ .Value }}
+      {{ end }}
+      *Runbook:* {{ .Annotations.runbook_url }}
+    {{ end }}
+    {{ end }}
+
+    {{ define "email.innovabiz.subject" }}
+    [{{ .Status | toUpper }}] {{ .CommonLabels.alertname }} ({{ .Alerts | len }} alert{{ if gt (len .Alerts) 1 }}s{{ end }})
+    {{ end }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: iam-audit-alerts
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: alertmanager
+    app.kubernetes.io/part-of: innovabiz-observability
+    app.kubernetes.io/component: alerting
+    innovabiz.com/module: iam-audit
+    innovabiz.com/tier: observability
+data:
+  alert_rules.yml: |
+    groups:
+    - name: iam_audit_service_alerts
+      rules:
+      # Alertas de disponibilidade
+      - alert: IAMAuditServiceDown
+        expr: up{job="iam-audit-service"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: iam-audit
+          category: availability
+        annotations:
+          summary: "IAM Audit Service indisponível"
+          description: "O IAM Audit Service está indisponível há mais de 1 minuto."
+          runbook_url: "https://docs.innovabiz.com/iam-audit/runbooks/service-down"
+
+      # Alertas de latência
+      - alert: IAMAuditServiceHighLatency
+        expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{job="iam-audit-service"}[5m])) by (le, path, tenant, region)) > 1
+        for: 5m
+        labels:
+          severity: high
+          service: iam-audit
+          category: performance
+        annotations:
+          summary: "Alta latência no IAM Audit Service"
+          description: "O IAM Audit Service está apresentando latência P95 > 1s para {{ $labels.path }} no tenant {{ $labels.tenant }}, região {{ $labels.region }}."
+          runbook_url: "https://docs.innovabiz.com/iam-audit/runbooks/high-latency"
+
+      # Alertas de taxa de erro
+      - alert: IAMAuditServiceHighErrorRate
+        expr: sum(rate(http_requests_total{job="iam-audit-service", status_code=~"5.."}[5m])) by (tenant, region) / sum(rate(http_requests_total{job="iam-audit-service"}[5m])) by (tenant, region) > 0.05
+        for: 5m
+        labels:
+          severity: high
+          service: iam-audit
+          category: reliability
+        annotations:
+          summary: "Alta taxa de erros no IAM Audit Service"
+          description: "O IAM Audit Service está apresentando taxa de erros > 5% no tenant {{ $labels.tenant }}, região {{ $labels.region }}."
+          runbook_url: "https://docs.innovabiz.com/iam-audit/runbooks/high-error-rate"
+
+      # Alertas de falha em eventos de auditoria
+      - alert: IAMAuditEventFailures
+        expr: rate(audit_events_errors_total{job="iam-audit-service"}[5m]) > 0
+        for: 5m
+        labels:
+          severity: high
+          service: iam-audit
+          category: functionality
+        annotations:
+          summary: "Falhas em eventos de auditoria"
+          description: "Eventos de auditoria estão falhando no tenant {{ $labels.tenant }}, região {{ $labels.region }}, tipo {{ $labels.event_type }}."
+          runbook_url: "https://docs.innovabiz.com/iam-audit/runbooks/audit-event-failures"
+
+      # Alertas de falha em verificações de conformidade
+      - alert: IAMAuditComplianceCheckFailures
+        expr: rate(compliance_checks_failed_total{job="iam-audit-service"}[5m]) > 0
+        for: 5m
+        labels:
+          severity: high
+          service: iam-audit
+          category: compliance
+        annotations:
+          summary: "Falhas em verificações de conformidade"
+          description: "Verificações de conformidade estão falhando no tenant {{ $labels.tenant }}, região {{ $labels.region }}, tipo {{ $labels.check_type }}."
+          runbook_url: "https://docs.innovabiz.com/iam-audit/runbooks/compliance-check-failures"
+
+      # Alertas de política de retenção
+      - alert: IAMAuditRetentionPolicyFailures
+        expr: rate(retention_policy_failures_total{job="iam-audit-service"}[15m]) > 0
+        for: 5m
+        labels:
+          severity: medium
+          service: iam-audit
+          category: compliance
+        annotations:
+          summary: "Falhas em políticas de retenção"
+          description: "Políticas de retenção estão falhando no tenant {{ $labels.tenant }}, região {{ $labels.region }}, política {{ $labels.policy }}."
+          runbook_url: "https://docs.innovabiz.com/iam-audit/runbooks/retention-policy-failures"
+
+      # Alertas de saúde do banco de dados
+      - alert: IAMAuditDatabaseHealth
+        expr: health_check_status{job="iam-audit-service", component="database"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          service: iam-audit
+          category: infrastructure
+        annotations:
+          summary: "Problemas de saúde no banco de dados"
+          description: "O health check do banco de dados para o IAM Audit Service está falhando no tenant {{ $labels.tenant }}, região {{ $labels.region }}."
+          runbook_url: "https://docs.innovabiz.com/iam-audit/runbooks/database-health"
+
+      # Alertas de segurança
+      - alert: IAMAuditUnauthorizedAccess
+        expr: rate(security_unauthorized_access_total{job="iam-audit-service"}[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+          service: iam-audit
+          category: security
+        annotations:
+          summary: "Acessos não autorizados detectados"
+          description: "Detectados acessos não autorizados no IAM Audit Service no tenant {{ $labels.tenant }}, região {{ $labels.region }}, path {{ $labels.path }}."
+          runbook_url: "https://docs.innovabiz.com/iam-audit/runbooks/unauthorized-access"
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: alertmanager
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: alertmanager
+    app.kubernetes.io/part-of: innovabiz-observability
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: alertmanager-certs
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: alertmanager
+    app.kubernetes.io/part-of: innovabiz-observability
+type: Opaque
+# Dados dos certificados serão gerenciados pelo Cert-Manager ou preenchidos no pipeline
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: alertmanager
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: alertmanager
+    app.kubernetes.io/part-of: innovabiz-observability
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9093"
+spec:
+  type: ClusterIP
+  ports:
+  - name: web
+    port: 9093
+    targetPort: web
+  selector:
+    app.kubernetes.io/name: alertmanager
+    app.kubernetes.io/part-of: innovabiz-observability
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: alertmanager
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: alertmanager
+    app.kubernetes.io/part-of: innovabiz-observability
+    app.kubernetes.io/component: alerting
+    innovabiz.com/module: iam-audit
+    innovabiz.com/tier: observability
+spec:
+  serviceName: alertmanager
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: alertmanager
+      app.kubernetes.io/part-of: innovabiz-observability
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: alertmanager
+        app.kubernetes.io/part-of: innovabiz-observability
+        app.kubernetes.io/component: alerting
+        innovabiz.com/module: iam-audit
+        innovabiz.com/tier: observability
+      annotations:
+        checksum/config: "${CONFIG_HASH}"
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9093"
+    spec:
+      serviceAccountName: alertmanager
+      securityContext:
+        fsGroup: 65534
+        runAsGroup: 65534
+        runAsNonRoot: true
+        runAsUser: 65534
+      terminationGracePeriodSeconds: 30
+      containers:
+      - name: alertmanager
+        image: prom/alertmanager:v0.26.0
+        imagePullPolicy: IfNotPresent
+        args:
+        - --config.file=/etc/alertmanager/alertmanager.yml
+        - --storage.path=/alertmanager
+        - --cluster.listen-address=0.0.0.0:9094
+        - --cluster.peer=alertmanager-0.alertmanager:9094
+        - --cluster.peer=alertmanager-1.alertmanager:9094
+        - --web.external-url=https://${ALERTMANAGER_HOST}
+        - --template-file=/etc/alertmanager/templates/alert_templates.tmpl
+        ports:
+        - name: web
+          containerPort: 9093
+        - name: mesh
+          containerPort: 9094
+        env:
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        livenessProbe:
+          httpGet:
+            path: /-/healthy
+            port: web
+          initialDelaySeconds: 30
+          timeoutSeconds: 30
+          periodSeconds: 15
+        readinessProbe:
+          httpGet:
+            path: /-/ready
+            port: web
+          initialDelaySeconds: 30
+          timeoutSeconds: 30
+          periodSeconds: 15
+        resources:
+          limits:
+            cpu: 200m
+            memory: 256Mi
+          requests:
+            cpu: 50m
+            memory: 64Mi
+        volumeMounts:
+        - name: config-volume
+          mountPath: /etc/alertmanager/alertmanager.yml
+          subPath: alertmanager.yml
+        - name: templates
+          mountPath: /etc/alertmanager/templates/alert_templates.tmpl
+          subPath: alert_templates.tmpl
+        - name: alertmanager-data
+          mountPath: /alertmanager
+        - name: certs
+          mountPath: /etc/alertmanager/certs
+          readOnly: true
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
+          readOnlyRootFilesystem: false
+      volumes:
+      - name: config-volume
+        configMap:
+          name: alertmanager-config
+          items:
+            - key: alertmanager.yml
+              path: alertmanager.yml
+      - name: templates
+        configMap:
+          name: alertmanager-config
+          items:
+            - key: alert_templates.tmpl
+              path: alert_templates.tmpl
+      - name: certs
+        secret:
+          secretName: alertmanager-certs
+  volumeClaimTemplates:
+  - metadata:
+      name: alertmanager-data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      storageClassName: managed-premium
+      resources:
+        requests:
+          storage: 2Gi
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: alertmanager
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: alertmanager
+    app.kubernetes.io/part-of: innovabiz-observability
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+    nginx.ingress.kubernetes.io/auth-type: "basic"
+    nginx.ingress.kubernetes.io/auth-secret: "alertmanager-auth"
+    nginx.ingress.kubernetes.io/auth-realm: "Authentication Required"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  tls:
+  - hosts:
+    - ${ALERTMANAGER_HOST}
+    secretName: alertmanager-tls
+  rules:
+  - host: ${ALERTMANAGER_HOST}
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: alertmanager
+            port:
+              name: web
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: alertmanager-auth
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: alertmanager
+    app.kubernetes.io/part-of: innovabiz-observability
+type: Opaque
+data:
+  auth: ${ALERTMANAGER_AUTH_HASH}  # htpasswd -nb admin <password> | base64
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: alertmanager
+  namespace: iam-system
+  labels:
+    app.kubernetes.io/name: alertmanager
+    app.kubernetes.io/part-of: innovabiz-observability
+    release: prometheus-operator
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: alertmanager
+      app.kubernetes.io/part-of: innovabiz-observability
+  namespaceSelector:
+    matchNames:
+      - iam-system
+  endpoints:
+  - port: web
+    interval: 15s
