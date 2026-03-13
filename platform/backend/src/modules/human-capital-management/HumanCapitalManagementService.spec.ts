@@ -1,12 +1,13 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { HumanCapitalManagementService } from './HumanCapitalManagementService';
+import { PRISMA_MOCK_PROVIDER } from '../../test-utils/prisma-mock';
 
 describe('HumanCapitalManagementService', () => {
     let service: HumanCapitalManagementService;
 
     beforeEach(async () => {
         const module: TestingModule = await Test.createTestingModule({
-            providers: [HumanCapitalManagementService],
+            providers: [HumanCapitalManagementService, PRISMA_MOCK_PROVIDER],
         }).compile();
         service = module.get<HumanCapitalManagementService>(HumanCapitalManagementService);
     });
@@ -78,17 +79,17 @@ describe('HumanCapitalManagementService', () => {
         });
         it('should findOne', async () => {
             const c = await service.create({ n: 'X' });
-            expect((await service.findOne(c.id)).n).toBe('X');
+            expect(((await service.findOne(c.id)) as any).n).toBe('X');
         });
         it('should return not found', async () => {
-            expect((await service.findOne('FAKE')).error).toBe('Not Found');
+            expect(((await service.findOne('FAKE')) as any).error).toBe('Not Found');
         });
         it('should update', async () => {
             const c = await service.create({ n: 'A' });
-            expect((await service.update(c.id, { n: 'B' })).status).toBe('UPDATED');
+            expect(((await service.update(c.id, { n: 'B' })) as any).status).toBe('UPDATED');
         });
         it('should fail update on missing', async () => {
-            expect((await service.update('FAKE', {})).error).toBe('Not Found');
+            expect(((await service.update('FAKE', {})) as any).error).toBe('Not Found');
         });
         it('should remove', async () => {
             const c = await service.create({ n: 'D' });

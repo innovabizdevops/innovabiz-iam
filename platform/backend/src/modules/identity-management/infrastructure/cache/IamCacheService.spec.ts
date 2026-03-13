@@ -17,7 +17,7 @@ describe('IamCacheService', () => {
     beforeEach(async () => {
         const module: TestingModule = await Test.createTestingModule({
             imports: [CacheModule.register({ ttl: 60000, max: 100 })],
-            providers: [IamCacheService],
+            providers: [IamCacheService, PRISMA_MOCK_PROVIDER],
         }).compile();
 
         service = module.get<IamCacheService>(IamCacheService);

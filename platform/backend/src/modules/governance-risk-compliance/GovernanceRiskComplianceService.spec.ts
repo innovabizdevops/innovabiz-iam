@@ -1,12 +1,13 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { GovernanceRiskComplianceService } from './GovernanceRiskComplianceService';
+import { PRISMA_MOCK_PROVIDER } from '../../test-utils/prisma-mock';
 
 describe('GovernanceRiskComplianceService', () => {
     let service: GovernanceRiskComplianceService;
 
     beforeEach(async () => {
         const module: TestingModule = await Test.createTestingModule({
-            providers: [GovernanceRiskComplianceService],
+            providers: [GovernanceRiskComplianceService, PRISMA_MOCK_PROVIDER],
         }).compile();
         service = module.get<GovernanceRiskComplianceService>(GovernanceRiskComplianceService);
     });
