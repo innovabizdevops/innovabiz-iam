@@ -1,0 +1,79 @@
+version: '3.8'
+
+services:
+  # ---------------------------------------------
+  # CORE CORTEX (Backend)
+  # ---------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ibos-core
+    restart: always
+    ports:
+      - "3001:3001" # NestJS API
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://user:password@postgres:5432/ibos_db
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=${JWT_SECRET:-super_secret_singularity_key}
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - singularity-mesh
+
+  # ---------------------------------------------
+  # HOLOGRAPHIC INTERFACE (Frontend)
+  # ---------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: ibos-holo-interface
+    restart: always
+    ports:
+      - "3000:3000" # Next.js
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=http://localhost:3001
+    depends_on:
+      - backend
+    networks:
+      - singularity-mesh
+
+  # ---------------------------------------------
+  # MEMORY MATRIX (Database)
+  # ---------------------------------------------
+  postgres:
+    image: postgres:15-alpine
+    container_name: ibos-memory
+    restart: always
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: ibos_db
+      POSTGRES_HOST_AUTH_METHOD: trust
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    networks:
+      - singularity-mesh
+
+  # ---------------------------------------------
+  # NERVOUS SYSTEM (Message Bus)
+  # ---------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: ibos-nerve-center
+    restart: always
+    networks:
+      - singularity-mesh
+
+networks:
+  singularity-mesh:
+    driver: bridge
+
+volumes:
+  postgres_data:
