@@ -1,0 +1,1265 @@
+generator client {
+  provider = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model agents {
+  id          Int       @id @default(autoincrement())
+  name        String    @unique @db.VarChar(200)
+  type        String    @db.VarChar(50)
+  description String?
+  use_cases   String[]  @default([]) @db.VarChar
+  created_at  DateTime? @default(now()) @db.Timestamp(6)
+  updated_at  DateTime? @default(now()) @db.Timestamp(6)
+
+  @@index([type], map: "idx_agents_type")
+}
+
+model alembic_version {
+  version_num String @id(map: "alembic_version_pkc") @db.VarChar(32)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model capabilities {
+  id                        String                     @id @db.VarChar(20)
+  name                      String                     @db.VarChar(500)
+  level                     Int
+  description               String?
+  parent_id                 String?                    @db.VarChar(20)
+  metadata                  Json?                      @default("{}")
+  data_quality_score        Decimal?                   @db.Decimal(3, 2)
+  data_owner                String?                    @db.VarChar(100)
+  data_steward              String?                    @db.VarChar(100)
+  tenant_id                 String                     @default("default") @db.VarChar(50)
+  created_at                DateTime?                  @default(now()) @db.Timestamp(6)
+  created_by                String?                    @db.VarChar(100)
+  updated_at                DateTime?                  @default(now()) @db.Timestamp(6)
+  updated_by                String?                    @db.VarChar(100)
+  search_vector             Unsupported("tsvector")?   @default(dbgenerated("to_tsvector('english'::regconfig, (((COALESCE(name, ''::character varying))::text || ' '::text) || COALESCE(description, ''::text)))"))
+  capabilities              capabilities?              @relation("capabilitiesTocapabilities", fields: [parent_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  other_capabilities        capabilities[]             @relation("capabilitiesTocapabilities")
+  capability_geography      capability_geography[]
+  capability_industries     capability_industries[]
+  capability_modules        capability_modules[]
+  capability_organizational capability_organizational?
+  capability_performance    capability_performance?
+  capability_strategy       capability_strategy?
+
+  @@index([level, tenant_id], map: "idx_cap_level_tenant")
+  @@index([metadata], map: "idx_cap_metadata", type: Gin)
+  @@index([name], map: "idx_cap_name")
+  @@index([name(ops: raw("gin_trgm_ops"))], map: "idx_cap_name_trgm", type: Gin)
+  @@index([search_vector], map: "idx_cap_search", type: Gin)
+}
+
+model capability_geography {
+  capability_id String       @db.VarChar(20)
+  country_code  String       @db.VarChar(2)
+  tenant_id     String       @default("default") @db.VarChar(50)
+  created_at    DateTime?    @default(now()) @db.Timestamp(6)
+  capabilities  capabilities @relation(fields: [capability_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  countries     countries    @relation(fields: [country_code], references: [code], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([capability_id, country_code])
+  @@index([country_code], map: "idx_capgeo_country")
+}
+
+model capability_industries {
+  capability_id String       @db.VarChar(20)
+  industry_id   Int
+  tenant_id     String       @default("default") @db.VarChar(50)
+  created_at    DateTime?    @default(now()) @db.Timestamp(6)
+  capabilities  capabilities @relation(fields: [capability_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  industries    industries   @relation(fields: [industry_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([capability_id, industry_id])
+  @@index([industry_id], map: "idx_capind_industry")
+}
+
+model capability_modules {
+  capability_id     String       @db.VarChar(20)
+  module_id         Int
+  relationship_type String?      @db.VarChar(50)
+  tenant_id         String       @default("default") @db.VarChar(50)
+  created_at        DateTime?    @default(now()) @db.Timestamp(6)
+  capabilities      capabilities @relation(fields: [capability_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  modules           modules      @relation(fields: [module_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([capability_id, module_id])
+  @@index([module_id], map: "idx_capmod_module")
+  @@index([relationship_type], map: "idx_capmod_type")
+}
+
+model capability_organizational {
+  capability_id     String       @id @db.VarChar(20)
+  company_types     String[]     @default([]) @db.VarChar
+  org_structures    String[]     @default([]) @db.VarChar
+  business_segments String[]     @default([]) @db.VarChar
+  service_types     String[]     @default([]) @db.VarChar
+  product_types     String[]     @default([]) @db.VarChar
+  customer_types    String[]     @default([]) @db.VarChar
+  tenant_id         String       @default("default") @db.VarChar(50)
+  capabilities      capabilities @relation(fields: [capability_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([company_types], map: "idx_org_company_types", type: Gin)
+  @@index([business_segments], map: "idx_org_segments", type: Gin)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model capability_performance {
+  capability_id   String       @id @db.VarChar(20)
+  bsc_perspective String?      @db.VarChar(100)
+  indicator_types String[]     @default([]) @db.VarChar
+  swot_relevance  String[]     @default([]) @db.VarChar
+  results_types   String[]     @default([]) @db.VarChar
+  tenant_id       String       @default("default") @db.VarChar(50)
+  capabilities    capabilities @relation(fields: [capability_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([bsc_perspective, tenant_id], map: "idx_perf_bsc")
+}
+
+model capability_strategy {
+  capability_id           String       @id @db.VarChar(20)
+  relevant_strategies     String[]     @default([]) @db.VarChar
+  applicable_market_types String[]     @default([]) @db.VarChar
+  competitor_relevance    String[]     @default([]) @db.VarChar
+  plan_types              String[]     @default([]) @db.VarChar
+  tenant_id               String       @default("default") @db.VarChar(50)
+  capabilities            capabilities @relation(fields: [capability_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model countries {
+  code                 String                 @id @db.VarChar(2)
+  name                 String                 @db.VarChar(100)
+  continent            String                 @db.VarChar(50)
+  region               String?                @db.VarChar(100)
+  population           BigInt?
+  gdp_usd              BigInt?
+  created_at           DateTime?              @default(now()) @db.Timestamp(6)
+  updated_at           DateTime?              @default(now()) @db.Timestamp(6)
+  capability_geography capability_geography[]
+
+  @@index([continent], map: "idx_countries_continent")
+}
+
+model industries {
+  id                    Int                     @id @default(autoincrement())
+  name                  String                  @unique @db.VarChar(200)
+  category              String                  @db.VarChar(100)
+  sub_sectors           String[]                @default([]) @db.VarChar
+  description           String?
+  created_at            DateTime?               @default(now()) @db.Timestamp(6)
+  updated_at            DateTime?               @default(now()) @db.Timestamp(6)
+  capability_industries capability_industries[]
+
+  @@index([category], map: "idx_industries_category")
+  @@index([sub_sectors], map: "idx_industries_sub_sectors", type: Gin)
+}
+
+model modules {
+  id                 Int                  @id @default(autoincrement())
+  name               String               @unique @db.VarChar(200)
+  category           String               @db.VarChar(100)
+  description        String?
+  dependencies       Json?                @default("{}")
+  created_at         DateTime?            @default(now()) @db.Timestamp(6)
+  updated_at         DateTime?            @default(now()) @db.Timestamp(6)
+  capability_modules capability_modules[]
+
+  @@index([category], map: "idx_modules_category")
+  @@index([dependencies], map: "idx_modules_dependencies", type: Gin)
+}
+
+// ---------------------------------------------------------
+// UNIVERSAL FACTORY PERSISTENCE (Hyper-Dimensional Storage)
+// ---------------------------------------------------------
+
+model UniversalEntity {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Multi-Tenancy
+  tenantId  String   @default("default")
+
+  // Dimension Coordinates
+  domain    String   
+  entityType String  
+
+  // Hyper-Cube Coordinates
+  region    String?  
+  industry  String?
+
+  // The Data Payload
+  data      Json
+
+  // Metadata
+  tags      String[]
+  deleted   Boolean  @default(false)
+
+  @@index([tenantId, domain, entityType])
+}
+
+// ---------------------------------------------------------
+// COGNITIVE MEMORY (Chat Persistence)
+// ---------------------------------------------------------
+
+model ChatSession {
+  id        String   @id @default(uuid())
+  userId    String   @default("anonymous") // Future: Link to User model
+  agentId   String   // Links to Agent ID (Markdown File ID)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  messages  ChatMessage[]
+
+  @@index([userId])
+  @@index([agentId])
+}
+
+model ChatMessage {
+  id        String      @id @default(uuid())
+  sessionId String
+  session   ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  sender    String      // 'user' | 'agent'
+  text      String      @db.Text
+  metadata  Json?       // Stores { delegatedTo: string, usage: ... }
+  createdAt DateTime    @default(now())
+
+  @@index([sessionId])
+  @@index([createdAt])
+}
+
+// ---------------------------------------------------------
+// VERTICAL ECOSYSTEM MODELS (Phase 9)
+// ---------------------------------------------------------
+
+model HealthcarePatient {
+  id          String   @id @default(uuid())
+  firstName   String
+  lastName    String
+  dob         DateTime
+  status      String   @default("Active") // Active, Discharged
+  lastVisit   DateTime @default(now())
+  
+  appointments HealthcareAppointment[]
+
+  tenantId    String   @default("default")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([tenantId])
+}
+
+model HealthcareAppointment {
+  id          String   @id @default(uuid())
+  patientId   String
+  patient     HealthcarePatient @relation(fields: [patientId], references: [id])
+  date        DateTime
+  doctor      String
+  status      String   @default("Scheduled") // Scheduled, Completed, Cancelled
+  notes       String?
+  
+  tenantId    String   @default("default")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([patientId])
+  @@index([tenantId])
+}
+
+model FinancialAccount {
+  id          String   @id @default(uuid())
+  name        String
+  type        String   // Checkings, Savings, Investment
+  balance     Decimal  @db.Decimal(19, 4)
+  currency    String   @default("USD")
+  
+  transactions FinancialTransaction[]
+  
+  tenantId    String   @default("default")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([tenantId])
+}
+
+model FinancialTransaction {
+  id          String   @id @default(uuid())
+  accountId   String
+  account     FinancialAccount @relation(fields: [accountId], references: [id])
+  amount      Decimal  @db.Decimal(19, 4)
+  type        String   // Credit, Debit
+  category    String?
+  status      String   @default("Pending")
+  date        DateTime @default(now())
+  
+  tenantId    String   @default("default")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([accountId])
+}
+
+model GovernmentCitizen {
+  id          String   @id @default(uuid())
+  nationalId  String   @unique
+  firstName   String
+  lastName    String
+  address     String?
+  city        String?
+  
+  requests    GovernmentServiceRequest[]
+  
+  tenantId    String   @default("default")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([tenantId])
+}
+
+model GovernmentServiceRequest {
+  id          String   @id @default(uuid())
+  citizenId   String
+  citizen     GovernmentCitizen @relation(fields: [citizenId], references: [id])
+  serviceType String   // Permit, License, Tax
+  status      String   // Pending, Approved, Rejected
+  
+  tenantId    String   @default("default")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([citizenId])
+}
+
+model EducationStudent {
+  id          String   @id @default(uuid())
+  studentId   String   @unique
+  firstName   String
+  lastName    String
+  email       String?
+  
+  enrollments EducationEnrollment[]
+  
+  tenantId    String   @default("default")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([tenantId])
+}
+
+model EducationCourse {
+  id          String   @id @default(uuid())
+  code        String   @unique
+  name        String
+  credits     Int
+  
+  enrollments EducationEnrollment[]
+  
+  tenantId    String   @default("default")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model EducationEnrollment {
+  id          String   @id @default(uuid())
+  studentId   String
+  student     EducationStudent @relation(fields: [studentId], references: [id])
+  courseId    String
+  course      EducationCourse @relation(fields: [courseId], references: [id])
+  grade       String?
+  
+  tenantId    String   @default("default")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([studentId, courseId])
+}
+
+model RetailProduct {
+  id          String   @id @default(uuid())
+  sku         String   @unique
+  name        String
+  price       Decimal  @db.Decimal(10, 2)
+  stock       Int
+  category    String?
+  
+  orderItems  RetailOrderItem[]
+  
+  tenantId    String   @default("default")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([tenantId])
+}
+
+model RetailOrder {
+  id          String   @id @default(uuid())
+  customer    String?
+  status      String   // Pending, Shipped, Delivered
+  total       Decimal  @db.Decimal(10, 2)
+  
+  items       RetailOrderItem[]
+  
+  tenantId    String   @default("default")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([tenantId])
+}
+
+model RetailOrderItem {
+  id          String   @id @default(uuid())
+  orderId     String
+  order       RetailOrder @relation(fields: [orderId], references: [id])
+  productId   String
+  product     RetailProduct @relation(fields: [productId], references: [id])
+  quantity    Int
+  price       Decimal  @db.Decimal(10, 2)
+  
+  @@index([orderId])
+  @@index([productId])
+}
+
+// ---------------------------------------------------------
+// IAM — Identity & Access Management (Hexagonal Persistence)
+// Standards: ISO 27001, NIST 800-53/63-3, GDPR, LGPD, SOX
+// Protocols: SAML 2.0, OAuth 2.0, OIDC, FIDO2/WebAuthn, SCIM 2.0
+// ---------------------------------------------------------
+
+model IamUser {
+  id                String    @id @default(uuid())
+  email             String
+  displayName       String
+  status            String    @default("ACTIVE")   // ACTIVE, SUSPENDED, LOCKED, DEPROVISIONED, PENDING_VERIFICATION
+  source            String    @default("LOCAL")     // LOCAL, SAML, OIDC, OAUTH, WS_FED, SCIM, LDAP, DID
+  federationProvider String?
+  region            String    @default("EU-PT")     // Multi-Region
+  jurisdictions     String[]  @default([])          // Multi-Jurisdição
+  consentTimestamp   DateTime?
+  dataResidency     String?                         // GDPR/LGPD sovereignty
+  mfaEnrolled       Boolean   @default(false)
+  riskScore         Int       @default(0)
+  sovereign         Json?                           // SovereignIdentity (DID, VCs, PQC)
+  cognitive         Json?                           // CognitiveProfile (GenAI, NEURA, EVO, XAI)
+  metadata          Json?
+
+  provisionedAt     DateTime?
+  lastLoginAt       DateTime?
+  passwordChangedAt DateTime?
+
+  sessions          IamSession[]
+  mfaDevices        IamMfaDevice[]
+  apiKeys           IamApiKey[]
+  userRoles         IamUserRole[]
+
+  tenantId          String    @default("default")
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@unique([tenantId, email])
+  @@index([tenantId, status])
+  @@index([tenantId, source])
+  @@index([region])
+}
+
+model IamRole {
+  id            String    @id @default(uuid())
+  name          String
+  description   String?
+  authzModel    String    @default("RBAC")   // RBAC, ABAC, PBAC, ReBAC
+  permissions   String[]  @default([])
+  riskLevel     String    @default("low")    // low, medium, high, critical
+  hierarchy     Json?                        // Parent/child role tree
+  constraints   Json?                        // Time-based, location-based constraints
+  metadata      Json?
+
+  userRoles     IamUserRole[]
+
+  tenantId      String    @default("default")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([tenantId, name])
+  @@index([tenantId, authzModel])
+  @@index([riskLevel])
+}
+
+model IamUserRole {
+  id        String   @id @default(uuid())
+  userId    String
+  user      IamUser  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roleId    String
+  role      IamRole  @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  grantedBy String?
+  expiresAt DateTime?
+
+  tenantId  String   @default("default")
+  createdAt DateTime @default(now())
+
+  @@unique([userId, roleId])
+  @@index([tenantId])
+}
+
+model IamSession {
+  id                String    @id @default(uuid())
+  userId            String
+  user              IamUser   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  isActive          Boolean   @default(true)
+  trustScore        Int       @default(50)
+  trustLevel        String    @default("MEDIUM")   // ZERO, LOW, MEDIUM, HIGH, ABSOLUTE
+  mfaLevel          String    @default("AAL1")     // AAL1, AAL2, AAL3
+  deviceFingerprint String?
+  geoLocation       Json?                          // { country, city, lat, lng }
+  ipAddress         String?
+  userAgent         String?
+  terminatedAt      DateTime?
+  terminationReason String?
+
+  tenantId          String    @default("default")
+  startedAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([tenantId, userId])
+  @@index([tenantId, isActive])
+  @@index([startedAt])
+}
+
+model IamMfaDevice {
+  id            String    @id @default(uuid())
+  userId        String
+  user          IamUser   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type          String                             // FIDO2, TOTP, PUSH, SMS, EMAIL, BIOMETRIC
+  aalLevel      String    @default("AAL2")         // AAL1, AAL2, AAL3
+  displayName   String?
+  isVerified    Boolean   @default(false)
+  phishingSafe  Boolean   @default(false)
+  credentialId  String?                            // WebAuthn credential
+  lastUsedAt    DateTime?
+
+  tenantId      String    @default("default")
+  registeredAt  DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([tenantId, userId])
+  @@index([type])
+}
+
+model IamApiKey {
+  id               String    @id @default(uuid())
+  name             String
+  type             String    @default("SERVICE")   // SERVICE, M2M, PARTNER, PERSONAL
+  keyHash          String?                         // SHA-256 hash (never store raw)
+  scopes           String[]  @default([])
+  isActive         Boolean   @default(true)
+  rateLimitPerMin  Int       @default(1000)
+  lastUsedAt       DateTime?
+  expiresAt        DateTime?
+  revokedAt        DateTime?
+  revokedBy        String?
+
+  userId           String?
+  user             IamUser?  @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  tenantId         String    @default("default")
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@unique([tenantId, name])
+  @@index([tenantId, isActive])
+  @@index([type])
+}
+
+model IamPrivilegedAccount {
+  id               String    @id @default(uuid())
+  accountName      String
+  accountType      String                          // DB Admin, K8s Admin, Cloud Admin, Service Acct
+  privilegeLevel   String    @default("STANDARD")  // STANDARD, ELEVATED, INFRASTRUCTURE, SUPER_ADMIN
+  vaultStatus      String    @default("VAULTED")   // VAULTED, CHECKED_OUT, ROTATING, COMPROMISED
+  jitEnabled       Boolean   @default(false)
+  sessionRecording Boolean   @default(true)
+  lastRotation     DateTime?
+  nextRotation     DateTime?
+  rotationPolicy   Json?                           // { intervalDays, algorithm, compliance }
+  lastCheckout     Json?                           // { userId, timestamp, justification, approved }
+
+  tenantId         String    @default("default")
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@unique([tenantId, accountName])
+  @@index([tenantId, vaultStatus])
+  @@index([privilegeLevel])
+  @@index([nextRotation])
+}
+
+// =============================================================
+// WAVE 1 — CORE BUSINESS MODULES (8 modelos)
+// Princípios: Multi-Tenant | Hexagonal | Metadata-Driven | Audit
+// =============================================================
+
+model GrcFramework {
+  id            String   @id @default(uuid())
+  name          String
+  type          String   // COBIT, NIST, ISO27001, SOX, GDPR, CUSTOM
+  version       String?
+  status        String   @default("DRAFT") // DRAFT, ACTIVE, ARCHIVED
+  scope         String[] @default([])
+  controls      Json?    // { controlId, description, frequency, owner }
+  riskAppetite  Json?    // { category, level, tolerance }
+  metadata      Json?
+
+  tenantId      String   @default("default")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  createdBy     String?
+  updatedBy     String?
+
+  @@unique([tenantId, name, version])
+  @@index([tenantId, type])
+  @@index([status])
+}
+
+model ComplianceRequirement {
+  id            String   @id @default(uuid())
+  regulation    String   // GDPR, LGPD, SOX, HIPAA, PCI-DSS, EU-AI-Act
+  article       String?  // Art. 5, Sec. 302
+  description   String   @db.Text
+  status        String   @default("PENDING") // PENDING, COMPLIANT, NON_COMPLIANT, PARTIALLY
+  dueDate       DateTime?
+  owner         String?
+  evidence      Json?    // { documentIds, auditTrail }
+  riskLevel     String   @default("medium") // low, medium, high, critical
+  metadata      Json?
+
+  tenantId      String   @default("default")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  createdBy     String?
+  updatedBy     String?
+
+  @@index([tenantId, regulation])
+  @@index([tenantId, status])
+  @@index([dueDate])
+}
+
+model AuditFinding {
+  id            String   @id @default(uuid())
+  auditId       String   // Reference to audit plan
+  title         String
+  type          String   // OBSERVATION, MINOR, MAJOR, CRITICAL
+  status        String   @default("OPEN") // OPEN, IN_PROGRESS, RESOLVED, CLOSED
+  description   String   @db.Text
+  rootCause     String?  @db.Text
+  recommendation String?  @db.Text
+  assignee      String?
+  dueDate       DateTime?
+  closedAt      DateTime?
+  evidence      Json?
+  metadata      Json?
+
+  tenantId      String   @default("default")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  createdBy     String?
+  updatedBy     String?
+
+  @@index([tenantId, auditId])
+  @@index([tenantId, status])
+  @@index([type])
+}
+
+model RiskRegister {
+  id            String   @id @default(uuid())
+  title         String
+  category      String   // OPERATIONAL, FINANCIAL, STRATEGIC, COMPLIANCE, CYBER, REPUTATIONAL
+  likelihood    Int      // 1-5
+  impact        Int      // 1-5
+  riskScore     Int?     // likelihood * impact (computed)
+  status        String   @default("IDENTIFIED") // IDENTIFIED, ASSESSED, MITIGATED, ACCEPTED, CLOSED
+  owner         String?
+  mitigations   Json?    // [{ action, status, dueDate, responsible }]
+  description   String?  @db.Text
+  residualRisk  Int?
+  metadata      Json?
+
+  tenantId      String   @default("default")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  createdBy     String?
+  updatedBy     String?
+
+  @@index([tenantId, category])
+  @@index([tenantId, status])
+  @@index([riskScore])
+}
+
+model Contract {
+  id            String   @id @default(uuid())
+  title         String
+  type          String   // NDA, SLA, MSA, SOW, PURCHASE, LICENSE
+  status        String   @default("DRAFT") // DRAFT, REVIEW, APPROVED, ACTIVE, EXPIRED, TERMINATED
+  counterparty  String
+  value         Decimal? @db.Decimal(19, 4)
+  currency      String   @default("USD")
+  startDate     DateTime?
+  endDate       DateTime?
+  renewalType   String?  // AUTO, MANUAL, NONE
+  terms         Json?    // { paymentTerms, penalties, sla }
+  signatories   Json?    // [{ name, role, signedAt }]
+  metadata      Json?
+
+  tenantId      String   @default("default")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  createdBy     String?
+  updatedBy     String?
+
+  @@index([tenantId, status])
+  @@index([tenantId, type])
+  @@index([endDate])
+}
+
+model HcmEmployee {
+  id            String   @id @default(uuid())
+  employeeId    String
+  firstName     String
+  lastName      String
+  email         String
+  department    String?
+  position      String?
+  level         String?  // Junior, Mid, Senior, Lead, Director, VP, C-Level
+  status        String   @default("ACTIVE") // ACTIVE, ON_LEAVE, SUSPENDED, TERMINATED
+  hireDate      DateTime?
+  manager       String?
+  compensation  Json?    // { salary, bonus, equity, currency }
+  skills        String[] @default([])
+  certifications String[] @default([])
+  metadata      Json?
+
+  tenantId      String   @default("default")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  createdBy     String?
+  updatedBy     String?
+
+  @@unique([tenantId, employeeId])
+  @@unique([tenantId, email])
+  @@index([tenantId, department])
+  @@index([tenantId, status])
+}
+
+model MarketingCampaign {
+  id            String   @id @default(uuid())
+  name          String
+  type          String   // EMAIL, SOCIAL, CONTENT, PPC, ABM, EVENT, INFLUENCER
+  status        String   @default("DRAFT") // DRAFT, SCHEDULED, ACTIVE, PAUSED, COMPLETED
+  channel       String[] @default([])
+  budget        Decimal? @db.Decimal(19, 4)
+  spent         Decimal? @db.Decimal(19, 4)
+  currency      String   @default("USD")
+  startDate     DateTime?
+  endDate       DateTime?
+  audience      Json?    // { segments, personas, geoTargeting }
+  metrics       Json?    // { impressions, clicks, conversions, roi }
+  content       Json?    // { subject, body, assets }
+  metadata      Json?
+
+  tenantId      String   @default("default")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  createdBy     String?
+  updatedBy     String?
+
+  @@index([tenantId, status])
+  @@index([tenantId, type])
+  @@index([startDate, endDate])
+}
+
+model Partner {
+  id            String   @id @default(uuid())
+  name          String
+  type          String   // RESELLER, TECHNOLOGY, CONSULTING, REFERRAL, STRATEGIC, OEM
+  status        String   @default("PROSPECT") // PROSPECT, ACTIVE, INACTIVE, SUSPENDED
+  tier          String?  // BRONZE, SILVER, GOLD, PLATINUM, DIAMOND
+  contactEmail  String?
+  contactPhone  String?
+  region        String?
+  industry      String?
+  revenue       Decimal? @db.Decimal(19, 4)
+  agreement     Json?    // { type, startDate, endDate, terms }
+  certifications String[] @default([])
+  metadata      Json?
+
+  tenantId      String   @default("default")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  createdBy     String?
+  updatedBy     String?
+
+  @@unique([tenantId, name])
+  @@index([tenantId, type])
+  @@index([tenantId, status])
+  @@index([tier])
+}
+
+// =============================================================
+// WAVE 2 — OPERATIONS MODULES (8 modelos)
+// =============================================================
+
+model ProcessWorkflow {
+  id            String   @id @default(uuid())
+  name          String
+  category      String   // APPROVAL, ONBOARDING, PROCUREMENT, INCIDENT, CUSTOM
+  status        String   @default("DRAFT") // DRAFT, ACTIVE, SUSPENDED, ARCHIVED
+  version       Int      @default(1)
+  steps         Json     // [{ stepId, name, type, assignee, sla }]
+  triggers      Json?    // { onEvent, onSchedule, onCondition }
+  sla           Json?    // { responseTime, resolutionTime, escalation }
+  metadata      Json?
+
+  tenantId      String   @default("default")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  createdBy     String?
+  updatedBy     String?
+
+  @@unique([tenantId, name, version])
+  @@index([tenantId, category])
+  @@index([status])
+}
+
+model QualityCheck {
+  id            String   @id @default(uuid())
+  name          String
+  type          String   // INSPECTION, AUDIT, TEST, REVIEW, CERTIFICATION
+  status        String   @default("PENDING") // PENDING, IN_PROGRESS, PASSED, FAILED, WAIVED
+  standard      String?  // ISO9001, Six-Sigma, CMMI, Custom
+  targetEntity  String?  // Entity being checked
+  checklist     Json?    // [{ item, result, notes }]
+  score         Decimal? @db.Decimal(5, 2)
+  inspector     String?
+  completedAt   DateTime?
+  metadata      Json?
+
+  tenantId      String   @default("default")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  createdBy     String?
+  updatedBy     String?
+
+  @@index([tenantId, type])
+  @@index([tenantId, status])
+  @@index([standard])
+}
+
+model KnowledgeArticle {
+  id            String   @id @default(uuid())
+  title         String
+  category      String   // FAQ, HOWTO, POLICY, PROCEDURE, REFERENCE, TRAINING
+  status        String   @default("DRAFT") // DRAFT, REVIEW, PUBLISHED, ARCHIVED
+  content       String   @db.Text
+  summary       String?
+  author        String?
+  tags          String[] @default([])
+  views         Int      @default(0)
+  rating        Decimal? @db.Decimal(3, 2)
+  version       Int      @default(1)
+  language      String   @default("en")
+  metadata      Json?
+
+  tenantId      String   @default("default")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  createdBy     String?
+  updatedBy     String?
+
+  @@index([tenantId, category])
+  @@index([tenantId, status])
+  @@index([tags], type: Gin)
+}
+
+model VendorRecord {
+  id            String   @id @default(uuid())
+  name          String
+  category      String   // IT, CONSULTING, MANUFACTURING, LOGISTICS, SERVICES
+  status        String   @default("ACTIVE") // PROSPECT, ACTIVE, SUSPENDED, BLACKLISTED
+  riskRating    String?  // LOW, MEDIUM, HIGH, CRITICAL
+  contactEmail  String?
+  country       String?
+  currency      String   @default("USD")
+  paymentTerms  String?  // NET30, NET60, NET90, PREPAID
+  annualSpend   Decimal? @db.Decimal(19, 4)
+  compliance    Json?    // { certifications, audits, issues }
+  performance   Json?    // { onTimeDelivery, qualityScore, responsiveness }
+  metadata      Json?
+
+  tenantId      String   @default("default")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  createdBy     String?
+  updatedBy     String?
+
+  @@unique([tenantId, name])
+  @@index([tenantId, category])
+  @@index([tenantId, status])
+  @@index([riskRating])
+}
+
+model DataAsset {
+  id            String   @id @default(uuid())
+  name          String
+  type          String   // DATABASE, DATALAKE, API, FILE, STREAM, DATASET
+  classification String  @default("INTERNAL") // PUBLIC, INTERNAL, CONFIDENTIAL, RESTRICTED
+  status        String   @default("ACTIVE") // ACTIVE, DEPRECATED, ARCHIVED
+  owner         String?
+  steward       String?
+  domain        String?  // Business domain
+  schema        Json?    // { fields, types, constraints }
+  lineage       Json?    // { sources, transformations, targets }
+  quality       Json?    // { completeness, accuracy, timeliness }
+  metadata      Json?
+
+  tenantId      String   @default("default")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  createdBy     String?
+  updatedBy     String?
+
+  @@unique([tenantId, name])
+  @@index([tenantId, type])
+  @@index([tenantId, classification])
+  @@index([domain])
+}
+
+model Device {
+  id            String   @id @default(uuid())
+  name          String
+  type          String   // IOT, MOBILE, WORKSTATION, SERVER, NETWORK, OT
+  status        String   @default("ACTIVE") // ACTIVE, MAINTENANCE, DECOMMISSIONED, COMPROMISED
+  serialNumber  String?
+  manufacturer  String?
+  model         String?
+  firmware      String?
+  ipAddress     String?
+  location      String?
+  lastSeen      DateTime?
+  compliance    Json?    // { encrypted, patched, managed }
+  telemetry     Json?    // { cpu, memory, disk, network }
+  metadata      Json?
+
+  tenantId      String   @default("default")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  createdBy     String?
+  updatedBy     String?
+
+  @@unique([tenantId, serialNumber])
+  @@index([tenantId, type])
+  @@index([tenantId, status])
+  @@index([lastSeen])
+}
+
+model IntegrationConfig {
+  id            String   @id @default(uuid())
+  name          String
+  type          String   // REST, GRAPHQL, SOAP, GRPC, EVENT, FILE, ETL
+  provider      String?  // Salesforce, SAP, HubSpot, Custom
+  status        String   @default("ACTIVE") // ACTIVE, ERROR, DISABLED, DEGRADED
+  direction     String   @default("BIDIRECTIONAL") // INBOUND, OUTBOUND, BIDIRECTIONAL
+  endpoint      String?
+  authType      String?  // OAUTH2, API_KEY, BASIC, JWT, MTLS
+  schedule      String?  // CRON expression or REALTIME
+  mappings      Json?    // { source, target, transformations }
+  health        Json?    // { lastSync, errorRate, latency }
+  retryPolicy   Json?    // { maxRetries, backoff, circuitBreaker }
+  metadata      Json?
+
+  tenantId      String   @default("default")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  createdBy     String?
+  updatedBy     String?
+
+  @@unique([tenantId, name])
+  @@index([tenantId, type])
+  @@index([tenantId, status])
+  @@index([provider])
+}
+
+model SupportTicket {
+  id            String   @id @default(uuid())
+  ticketNumber  String
+  subject       String
+  channel       String   // EMAIL, CHAT, PHONE, PORTAL, SOCIAL, BOT
+  priority      String   @default("MEDIUM") // LOW, MEDIUM, HIGH, CRITICAL
+  status        String   @default("NEW") // NEW, OPEN, PENDING, ESCALATED, RESOLVED, CLOSED
+  category      String?
+  description   String   @db.Text
+  assignee      String?
+  requester     String?
+  firstResponse DateTime?
+  resolvedAt    DateTime?
+  satisfaction  Int?     // 1-5
+  sla           Json?    // { responseTarget, resolutionTarget, breached }
+  metadata      Json?
+
+  tenantId      String   @default("default")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  createdBy     String?
+  updatedBy     String?
+
+  @@unique([tenantId, ticketNumber])
+  @@index([tenantId, status])
+  @@index([tenantId, priority])
+  @@index([assignee])
+}
+
+// =============================================================
+// WAVE 3 — DIGITAL & OPEN ECOSYSTEM (10 modelos)
+// =============================================================
+
+model DocumentRecord {
+  id            String   @id @default(uuid())
+  title         String
+  type          String   // CONTRACT, POLICY, REPORT, TEMPLATE, INVOICE, MANUAL
+  format        String?  // PDF, DOCX, XLSX, HTML
+  status        String   @default("DRAFT") // DRAFT, REVIEW, APPROVED, PUBLISHED, ARCHIVED
+  version       Int      @default(1)
+  storageUrl    String?
+  size          BigInt?  // bytes
+  author        String?
+  tags          String[] @default([])
+  permissions   Json?    // { read, write, admin }
+  retention     Json?    // { policy, expiresAt, legalHold }
+  metadata      Json?
+
+  tenantId      String   @default("default")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  createdBy     String?
+  updatedBy     String?
+
+  @@index([tenantId, type])
+  @@index([tenantId, status])
+  @@index([tags], type: Gin)
+}
+
+model NotificationTemplate {
+  id            String   @id @default(uuid())
+  name          String
+  channel       String   // EMAIL, SMS, PUSH, WEBHOOK, IN_APP, WHATSAPP
+  status        String   @default("ACTIVE") // ACTIVE, DISABLED, DRAFT
+  subject       String?
+  body          String   @db.Text
+  bodyHtml      String?  @db.Text
+  variables     String[] @default([]) // {{ userName }}, {{ orderId }}
+  locale        String   @default("en")
+  priority      String   @default("NORMAL") // LOW, NORMAL, HIGH, URGENT
+  metadata      Json?
+
+  tenantId      String   @default("default")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  createdBy     String?
+  updatedBy     String?
+
+  @@unique([tenantId, name, channel, locale])
+  @@index([tenantId, channel])
+  @@index([status])
+}
+
+model OpenBankingApi {
+  id            String   @id @default(uuid())
+  name          String
+  version       String
+  standard      String   // PSD2, OPEN_BANKING_UK, OPEN_BANKING_BR, FDX
+  status        String   @default("ACTIVE") // ACTIVE, DEPRECATED, BETA
+  endpoint      String
+  scope         String[] @default([]) // accounts, payments, funds-confirmation
+  rateLimit     Int?
+  provider      String?  // Bank/TPP name
+  certification Json?    // { certifiedAt, authority, expiresAt }
+  metadata      Json?
+
+  tenantId      String   @default("default")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([tenantId, name, version])
+  @@index([tenantId, standard])
+  @@index([status])
+}
+
+model OpenFinanceProduct {
+  id            String   @id @default(uuid())
+  name          String
+  category      String   // INVESTMENT, INSURANCE, PENSION, CREDIT, MORTGAGE
+  provider      String
+  status        String   @default("ACTIVE")
+  riskLevel     String?  // LOW, MEDIUM, HIGH
+  returns       Json?    // { annual, monthly, benchmark }
+  fees          Json?    // { management, performance, entry, exit }
+  regulation    String?  // MiFID2, SEC, CVM
+  metadata      Json?
+
+  tenantId      String   @default("default")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([tenantId, category])
+  @@index([tenantId, provider])
+}
+
+model OpenInsurancePolicy {
+  id            String   @id @default(uuid())
+  policyNumber  String
+  type          String   // AUTO, HEALTH, LIFE, PROPERTY, LIABILITY, CYBER
+  status        String   @default("ACTIVE") // QUOTE, ACTIVE, SUSPENDED, CANCELLED, EXPIRED
+  insurer       String
+  premium       Decimal? @db.Decimal(19, 4)
+  currency      String   @default("USD")
+  coverage      Json?    // { limits, deductibles, exclusions }
+  startDate     DateTime?
+  endDate       DateTime?
+  holder        Json?    // { name, document, contact }
+  metadata      Json?
+
+  tenantId      String   @default("default")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([tenantId, policyNumber])
+  @@index([tenantId, type])
+  @@index([tenantId, status])
+}
+
+model OpenDataDataset {
+  id            String   @id @default(uuid())
+  name          String
+  category      String   // GOVERNMENT, HEALTH, EDUCATION, ENVIRONMENT, ECONOMY
+  format        String   // CSV, JSON, XML, PARQUET, API
+  license       String?  // CC0, CC-BY, ODbL, CUSTOM
+  status        String   @default("PUBLISHED")
+  source        String?
+  description   String?  @db.Text
+  recordCount   BigInt?
+  updateFreq    String?  // DAILY, WEEKLY, MONTHLY, ANNUAL, REALTIME
+  accessUrl     String?
+  quality       Json?    // { completeness, timeliness, accuracy }
+  metadata      Json?
+
+  tenantId      String   @default("default")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([tenantId, category])
+  @@index([format])
+}
+
+model OpenHealthResource {
+  id            String   @id @default(uuid())
+  resourceType  String   // Patient, Observation, Condition, Medication, Procedure
+  fhirVersion   String   @default("R4") // DSTU2, STU3, R4, R5
+  status        String   @default("ACTIVE")
+  identifier    String?
+  subject       String?  // Patient reference
+  data          Json     // Full FHIR resource payload
+  source        String?  // EHR system
+  interop       Json?    // { HL7v2, DICOM, IHE_profiles }
+  metadata      Json?
+
+  tenantId      String   @default("default")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([tenantId, resourceType])
+  @@index([fhirVersion])
+  @@index([subject])
+}
+
+model OpenEducationCourse {
+  id            String   @id @default(uuid())
+  title         String
+  provider      String
+  format        String   // MOOC, BLENDED, CLASSROOM, SELF_PACED, MICRO
+  standard      String?  // SCORM, xAPI, LTI, cmi5
+  status        String   @default("PUBLISHED")
+  level         String?  // BEGINNER, INTERMEDIATE, ADVANCED, EXPERT
+  duration      Int?     // hours
+  language      String   @default("en")
+  credits       Int?
+  syllabus      Json?    // { modules, assessments, outcomes }
+  pricing       Json?    // { price, currency, subscription }
+  metadata      Json?
+
+  tenantId      String   @default("default")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([tenantId, format])
+  @@index([tenantId, provider])
+  @@index([level])
+}
+
+model OpenInnovationChallenge {
+  id            String   @id @default(uuid())
+  title         String
+  type          String   // HACKATHON, IDEATION, OPEN_CALL, PRIZE, CROWDSOURCE
+  status        String   @default("OPEN") // DRAFT, OPEN, REVIEW, JUDGING, CLOSED
+  description   String   @db.Text
+  sponsor       String?
+  prize         Json?    // { amount, currency, type }
+  criteria      Json?    // { evaluation, weights }
+  startDate     DateTime?
+  endDate       DateTime?
+  submissions   Int      @default(0)
+  metadata      Json?
+
+  tenantId      String   @default("default")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([tenantId, type])
+  @@index([tenantId, status])
+  @@index([endDate])
+}
+
+model InnovationProject {
+  id            String   @id @default(uuid())
+  name          String
+  type          String   // R&D, POC, MVP, PILOT, SCALE
+  status        String   @default("IDEATION") // IDEATION, VALIDATION, DEVELOPMENT, TESTING, LAUNCHED
+  stage         String?  // TRL1-TRL9 (Technology Readiness Level)
+  owner         String?
+  team          String[] @default([])
+  budget        Decimal? @db.Decimal(19, 4)
+  spent         Decimal? @db.Decimal(19, 4)
+  currency      String   @default("USD")
+  startDate     DateTime?
+  targetDate    DateTime?
+  objectives    Json?    // { goals, kpis, milestones }
+  outcomes      Json?    // { results, patents, publications }
+  metadata      Json?
+
+  tenantId      String   @default("default")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  createdBy     String?
+  updatedBy     String?
+
+  @@unique([tenantId, name])
+  @@index([tenantId, type])
+  @@index([tenantId, status])
+  @@index([stage])
+}

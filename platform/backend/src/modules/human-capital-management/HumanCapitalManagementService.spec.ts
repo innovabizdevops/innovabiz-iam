@@ -38,7 +38,7 @@ describe('HumanCapitalManagementService', () => {
 
     describe('getSkillsMatrix', () => {
         it('should return skills matrix', () => {
-            const sm = service.getSkillsMatrix();
+            const sm = service.getSkillsMatrix() as any;
             expect(sm.totalSkillsTracked).toBeGreaterThan(0);
             expect(sm.skills).toBeInstanceOf(Array);
             sm.skills.forEach(s => {
